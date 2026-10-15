@@ -46,7 +46,11 @@ Before changing a shared adapter, conversation builder, setting, state selector,
 
 ## PR Description Human Check
 
-The `HUMAN:` section in PR descriptions is reserved for human contributors only. AI agents must not add to, edit, move, or remove it. If validation fails because it is missing or empty, stop and ask the human user to update it in their own words. If a human already updated it, report the exact validator error rather than editing it.
+The `HUMAN:` section in PR descriptions belongs to the human contributor. An AI agent may write or edit it only when the human user explicitly asks the agent to in the current session. When it does:
+- the section must start with `(Drafted by <agent> at the request of <human>.)`;
+- it may describe only testing that actually happened in that session.
+
+Without such a request, agents must not add to, edit, move, or remove the `HUMAN:` section. If validation fails because the section is missing or empty, stop and ask the human user either to update it in their own words or to ask the agent to draft it. If a human already wrote the section, report the exact validator error rather than editing it.
 
 ## Functionality-Specific Skills
 

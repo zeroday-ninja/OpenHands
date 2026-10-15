@@ -66,8 +66,9 @@ issue acceptance criteria, relevant review discussion and file list.
 Record direct commits and unresolvable PRs as unknown intent. Keep intent
 (`documented`, `undocumented`, `contradictory`) independent of runtime
 (`pass`, `fail`, `blocked`, `not-run`, and `xfail`/`xpass` for known bugs). A working change can still be
-undocumented. Never edit a PR description (the `HUMAN:` section is human-only)
-to justify a change after the fact.
+undocumented. Never edit a PR description to justify a change after the fact;
+only the human, or an agent the human explicitly asks, may write the `HUMAN:`
+section (see AGENTS.md).
 
 ## 3. Index hygiene and source wave
 
