@@ -1,0 +1,11 @@
+[Unit]
+Description=OpenHands -> LM Studio tool_choice compatibility shim (172.17.0.1:1235 -> 127.0.0.1:1234)
+
+[Service]
+ExecStart=/usr/bin/python3 -I %h/.local/share/openhands-lmstudio-shim/shim.py
+# The Docker bridge address only exists once dockerd is up; keep retrying until it does.
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

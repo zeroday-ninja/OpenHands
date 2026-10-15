@@ -112,6 +112,7 @@ you are running inside of — NOT the automation backend.
   - Security: the automation backend receives the same session key as the agent-server through `AUTOMATION_LOCAL_API_KEY`; the frontend does not bake a separate automation API key.
 - `scripts/ingress.mjs` is a standalone HTTP reverse proxy that can be used independently to route traffic to multiple backends based on URL path prefix.
 - `scripts/dev-safe.mjs` (now `npm run dev:minimal`) runs just agent-server + Vite without automation.
+- Local models (LM Studio) with `OH_CONVERSATION_RUNTIME=docker`: an LLM profile's base URL must resolve from both the host agent-server (save-time validation) and the sandboxes. Use the Docker bridge gateway (`172.17.0.1`), not `localhost` or `host.docker.internal`, and use the `lm_studio/<id>` model prefix. gpt-oss additionally needs the `tool_choice` proxy in `examples/lmstudio-shim/`. See `docs/LOCAL_MODELS.md`.
 
 - **Centralized config**: `config/defaults.json` is the single source of truth for version pins (agent-server, automation, automation SDK), port defaults, persistence paths, and package names. All consumers read from this file:
   - JS scripts (`dev-safe.mjs`, `dev-with-automation.mjs`, `check-sdk-version-sync.mjs`) read it via `JSON.parse(readFileSync(...))`.
