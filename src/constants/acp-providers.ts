@@ -4,6 +4,7 @@ import {
 } from "@openhands/typescript-client";
 import type { BackendKind } from "#/api/backend-registry/types";
 import { I18nKey } from "#/i18n/declaration";
+import { acpEffortLabel, splitAcpModelEffort } from "#/utils/acp-model-effort";
 
 export type ACPProviderIcon =
   | "claude-code"
@@ -118,6 +119,11 @@ export interface ACPModelOption {
   id: string;
   /** Human-readable label shown in Settings -> Agent. */
   label: string;
+  /**
+   * Reasoning-effort levels the agent offers for this model; empty when it has
+   * none, absent when the agent hasn't reported them.
+   */
+  efforts?: string[];
 }
 
 // Canvas-only UI metadata per built-in provider, keyed by the ACP registry
@@ -483,19 +489,50 @@ export function labelForAcpModel(
   models: readonly ACPModelOption[] = [],
 ): string | null {
   if (!modelId) return null;
-  return models.find(({ id }) => id === modelId)?.label ?? modelId;
+  // A combined ``<model>/<effort>`` id: name the model, then its effort.
+  const { modelId: baseId, effort } = splitAcpModelEffort(modelId);
+  const base = baseId ? models.find(({ id }) => id === baseId) : undefined;
+  if (effort && base) return `${base.label} · ${acpEffortLabel(effort)}`;
+  const exact = models.find(({ id }) => id === modelId);
+  if (exact) return exact.label;
+  return effort && baseId ? `${baseId} · ${acpEffortLabel(effort)}` : modelId;
 }
 
-/** Picker options for the models an ACP server reported. */
+/**
+ * Picker options for the models an ACP server reported, with each model's
+ * effort levels when the server reported them per model.
+ */
 export function toAcpModelOptions(
   models: readonly ACPModelInfo[] | null | undefined,
+  effortsByModel?: Readonly<Record<string, string[]>> | null,
 ): ACPModelOption[] {
+  const ids = new Set((models ?? []).map(({ model_id }) => model_id));
   return (models ?? [])
-    .filter(({ model_id }) => model_id)
-    .map(({ model_id, name }) => ({
-      id: model_id,
-      label: name?.trim() || model_id,
-    }));
+    .filter(({ model_id }) => {
+      if (!model_id) return false;
+      // Older agent-servers passed a combined id to claude-agent-acp, which
+      // then listed it as a model of its own; it is a listed model + effort.
+      const { modelId: baseId, effort } = splitAcpModelEffort(model_id);
+      return !(effort && baseId && ids.has(baseId));
+    })
+    .map(({ model_id, name }) => {
+      const efforts = effortsByModel?.[model_id];
+      return {
+        id: model_id,
+        label: name?.trim() || model_id,
+        ...(Array.isArray(efforts) ? { efforts: [...efforts] } : {}),
+      };
+    });
+}
+
+/** ``primary`` followed by the models of ``extra`` that it does not list. */
+export function mergeAcpModelOptions(
+  primary: ACPModelOption[],
+  extra: readonly ACPModelOption[],
+): ACPModelOption[] {
+  const listed = new Set(primary.map(({ id }) => id));
+  const added = extra.filter(({ id }) => !listed.has(id));
+  return added.length ? [...primary, ...added] : primary;
 }
 
 /**

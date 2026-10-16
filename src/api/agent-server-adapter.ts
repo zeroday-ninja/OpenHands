@@ -132,6 +132,10 @@ export interface DirectConversationInfo {
   current_model_id?: string | null;
   current_model_name?: string | null;
   available_models?: ACPModelInfo[] | null;
+  /** ACP session's reasoning-effort level; absent on servers without effort support. */
+  current_effort?: string | null;
+  /** Effort levels the ACP session offers for its current model. */
+  available_efforts?: string[] | null;
   workspace?: {
     working_dir?: string | null;
   } | null;
@@ -448,6 +452,8 @@ export function toAppConversation(
     acp_available_models: isAcp
       ? toAcpModelOptions(info.available_models)
       : null,
+    acp_current_effort: isAcp ? (info.current_effort ?? null) : null,
+    acp_available_efforts: isAcp ? (info.available_efforts ?? null) : null,
     tags: info.tags ?? null,
     launched_agent_profile: info.launched_agent_profile ?? null,
     // Chip path: omit ``providerDefault`` so that when no concrete model

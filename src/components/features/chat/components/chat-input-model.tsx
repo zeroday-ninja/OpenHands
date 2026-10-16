@@ -14,6 +14,10 @@ import { ContextMenuListItem } from "#/components/features/context-menu/context-
 import { Divider } from "#/ui/divider";
 import { Typography } from "#/ui/typography";
 import { I18nKey } from "#/i18n/declaration";
+import {
+  acpEffortLabel,
+  composeAcpModelEffort,
+} from "#/utils/acp-model-effort";
 import { cn } from "#/utils/utils";
 import { getLockedCloudHost } from "#/api/agent-server-config";
 import { chatInputPillButtonClassName } from "#/utils/form-control-classes";
@@ -33,6 +37,61 @@ function truncateModelLabel(
     return model;
   }
   return `${model.slice(0, maxChars)}…`;
+}
+
+/**
+ * A section label in the picker. role="presentation" keeps it a valid <li>
+ * child of the ContextMenu <ul> without exposing it as a selectable menu item
+ * (the label text is still announced).
+ */
+function MenuSectionLabel({
+  className,
+  children,
+}: {
+  className: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <li role="presentation" className={cn("px-2 pb-0.5", className)}>
+      <Typography.Text className="text-[11px] font-medium text-text-dim uppercase tracking-wide leading-4">
+        {children}
+      </Typography.Text>
+    </li>
+  );
+}
+
+function PickerRow({
+  testId,
+  label,
+  isSelected,
+  onSelect,
+}: {
+  testId: string;
+  label: string;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <ContextMenuListItem
+      testId={testId}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onSelect();
+      }}
+      className={cn(
+        "flex items-center gap-2",
+        isSelected && "bg-interactive-hover",
+      )}
+    >
+      <span className="flex-1 truncate text-sm leading-5" title={label}>
+        {label}
+      </span>
+      {isSelected && (
+        <CheckIcon width={14} height={14} className="shrink-0" aria-hidden />
+      )}
+    </ContextMenuListItem>
+  );
 }
 
 interface ChatInputModelMenuContentProps {
@@ -56,66 +115,85 @@ export function ChatInputModelMenuContent({
   // Locked-to-Cloud blocks the Canvas settings pages this links to (OHE-3457).
   const showSettingsLink = getLockedCloudHost() === null;
 
-  const handleSelectAcpModel = (modelId: string | null) => {
-    if (modelId !== model.selectedModelId) {
+  const switchTo = (value: string | null) => {
+    if (value !== model.selectedValue) {
       switchAcpModel.mutate({
         conversationId: model.switchConversationId,
-        model: modelId,
+        model: value,
       });
     }
     onClose();
+  };
+
+  const handleSelectAcpModel = (option: {
+    id: string | null;
+    efforts?: string[];
+  }) => {
+    // Keep the chosen effort when the new model offers it.
+    const keepEffort =
+      !!model.selectedEffort &&
+      !!option.efforts?.includes(model.selectedEffort);
+    switchTo(
+      option.id &&
+        composeAcpModelEffort(
+          option.id,
+          keepEffort ? model.selectedEffort : null,
+        ),
+    );
+  };
+
+  const handleSelectEffort = (effort: string | null) => {
+    if (model.effortModelId) {
+      switchTo(composeAcpModelEffort(model.effortModelId, effort));
+    }
   };
 
   return (
     <>
       {model.showAcpPicker ? (
         <>
-          {/* role="presentation" keeps this a valid <li> child of the
-              ContextMenu <ul> without exposing the section label as a
-              selectable menu item (the label text is still announced). */}
-          <li role="presentation" className="px-2 pt-1 pb-0.5">
-            <Typography.Text className="text-[11px] font-medium text-text-dim uppercase tracking-wide leading-4">
-              {t(I18nKey.MODEL$AVAILABLE_MODELS)}
-            </Typography.Text>
-          </li>
+          <MenuSectionLabel className="pt-1">
+            {t(I18nKey.MODEL$AVAILABLE_MODELS)}
+          </MenuSectionLabel>
           {[
             ...(model.agentDefaultLabel
               ? [{ id: null, label: model.agentDefaultLabel }]
               : []),
             ...model.availableAcpModels,
-          ].map((option) => {
-            const isSelected = option.id === model.selectedModelId;
-            return (
-              <ContextMenuListItem
-                key={option.id ?? ""}
-                testId={`chat-input-acp-model-option-${option.id ?? "agent-default"}`}
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  handleSelectAcpModel(option.id);
-                }}
-                className={cn(
-                  "flex items-center gap-2",
-                  isSelected && "bg-interactive-hover",
-                )}
-              >
-                <span
-                  className="flex-1 truncate text-sm leading-5"
-                  title={option.label}
-                >
-                  {option.label}
-                </span>
-                {isSelected && (
-                  <CheckIcon
-                    width={14}
-                    height={14}
-                    className="shrink-0"
-                    aria-hidden
-                  />
-                )}
-              </ContextMenuListItem>
-            );
-          })}
+          ].map((option) => (
+            <PickerRow
+              key={option.id ?? ""}
+              testId={`chat-input-acp-model-option-${option.id ?? "agent-default"}`}
+              label={option.label}
+              isSelected={option.id === model.selectedModelId}
+              onSelect={() => handleSelectAcpModel(option)}
+            />
+          ))}
+          {model.availableEfforts.length > 0 && model.effortModelId && (
+            <>
+              <MenuSectionLabel className="pt-2">
+                {t(I18nKey.MODEL$EFFORT)}
+              </MenuSectionLabel>
+              {[
+                {
+                  effort: null,
+                  label: t(I18nKey.SETTINGS$AGENT_MODEL_AGENT_DEFAULT),
+                },
+                ...model.availableEfforts.map((effort) => ({
+                  effort,
+                  label: acpEffortLabel(effort),
+                })),
+              ].map(({ effort, label }) => (
+                <PickerRow
+                  key={effort ?? ""}
+                  testId={`chat-input-acp-effort-option-${effort ?? "agent-default"}`}
+                  label={label}
+                  isSelected={effort === model.selectedEffort}
+                  onSelect={() => handleSelectEffort(effort)}
+                />
+              ))}
+            </>
+          )}
         </>
       ) : model.displayModel ? (
         <li className="text-sm">

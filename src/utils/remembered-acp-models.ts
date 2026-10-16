@@ -12,8 +12,15 @@ function storageKey(backendId: string, providerKey: string): string {
 
 function isModelOption(value: unknown): value is ACPModelOption {
   if (typeof value !== "object" || value === null) return false;
-  const { id, label } = value as Record<string, unknown>;
-  return typeof id === "string" && !!id && typeof label === "string";
+  const { id, label, efforts } = value as Record<string, unknown>;
+  return (
+    typeof id === "string" &&
+    !!id &&
+    typeof label === "string" &&
+    (efforts === undefined ||
+      (Array.isArray(efforts) &&
+        efforts.every((effort) => typeof effort === "string")))
+  );
 }
 
 function parseLists(raw: string | null): RememberedLists {
@@ -98,7 +105,11 @@ export function rememberAcpModels(
   models: readonly ACPModelOption[],
 ): void {
   if (typeof window === "undefined" || !models.length) return;
-  const list = models.map(({ id, label }) => ({ id, label }));
+  const list = models.map(({ id, label, efforts }) => ({
+    id,
+    label,
+    ...(efforts ? { efforts } : {}),
+  }));
   try {
     const key = storageKey(backendId, providerKey);
     const lists = parseLists(window.localStorage.getItem(key));

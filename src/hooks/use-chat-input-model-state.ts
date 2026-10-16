@@ -15,10 +15,15 @@ import {
   getAcpPreferredDefaultModel,
   getAcpProvider,
   labelForAcpModel,
+  mergeAcpModelOptions,
   resolveEffectiveAcpModel,
   type ACPModelOption,
 } from "#/constants/acp-providers";
 import { I18nKey } from "#/i18n/declaration";
+import {
+  selectableAcpEfforts,
+  splitAcpModelEffort,
+} from "#/utils/acp-model-effort";
 
 export interface ChatInputModelState {
   isAcpContext: boolean;
@@ -26,6 +31,14 @@ export interface ChatInputModelState {
   currentModelId: string | null;
   /** The saved choice the picker marks; null is the agent's own default. */
   selectedModelId: string | null;
+  /** The saved choice as stored, possibly a combined ``<model>/<effort>`` id. */
+  selectedValue: string | null;
+  /** The saved effort; null is the agent's own default effort. */
+  selectedEffort: string | null;
+  /** Effort levels offered for the model an effort pick applies to. */
+  availableEfforts: string[];
+  /** The model an effort pick is combined with. */
+  effortModelId: string | null;
   availableAcpModels: ACPModelOption[];
   /** The picker's Agent default row, or null when it isn't offered. */
   agentDefaultLabel: string | null;
@@ -75,11 +88,14 @@ export function useChatInputModelState(): ChatInputModelState {
         ? conversation?.launched_agent_profile?.secret_refs
         : activeAcpProfile?.secret_refs) ?? null,
   });
-  // The session's own list arrives only after it starts.
+  // The session's own list arrives only after it starts. It names only the
+  // models its ACP server switches to directly; the account's other discovered
+  // models (Claude's Mythos, say) follow, and the Agent Server reaches them by
+  // rebuilding the session.
   const sessionModels = useAcpSessionModels(
     isActiveAcpConversation ? conversation : null,
   );
-  const liveModels = sessionModels.length ? sessionModels : discovered.models;
+  const liveModels = mergeAcpModelOptions(sessionModels, discovered.models);
 
   const settingsAcpModel =
     typeof settings?.agent_settings?.acp_model === "string"
@@ -111,6 +127,26 @@ export function useChatInputModelState(): ChatInputModelState {
   } else {
     currentModelId = conversation?.llm_model ?? settings?.llm_model ?? null;
   }
+
+  // A saved or live id may carry an effort (``opus/high``): the picker shows
+  // and selects the model and its effort separately.
+  const sessionEfforts = isActiveAcpConversation
+    ? (conversation?.acp_available_efforts ?? null)
+    : null;
+  const selectedValue = selectedModelId;
+  const selected = splitAcpModelEffort(selectedValue, sessionEfforts ?? []);
+  const effortModelId =
+    selected.modelId ??
+    (isActiveAcpConversation
+      ? splitAcpModelEffort(currentModelId, sessionEfforts ?? []).modelId
+      : discovered.defaultModelId);
+  const availableEfforts = isAcpContext
+    ? selectableAcpEfforts(
+        // The live session knows its current model's levels best.
+        sessionEfforts ??
+          liveModels.find(({ id }) => id === effortModelId)?.efforts,
+      )
+    : [];
 
   let displayModel = currentModelId;
   if (isAcpContext) {
@@ -147,7 +183,11 @@ export function useChatInputModelState(): ChatInputModelState {
     isAcpContext,
     displayModel,
     currentModelId,
-    selectedModelId,
+    selectedModelId: selected.modelId,
+    selectedValue,
+    selectedEffort: selected.effort,
+    availableEfforts,
+    effortModelId,
     availableAcpModels,
     agentDefaultLabel,
     showAcpPicker,

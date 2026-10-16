@@ -15,10 +15,19 @@ import {
   rememberAcpModels,
 } from "#/utils/remembered-acp-models";
 
+/**
+ * Effort fields an agent-server with ACP effort support adds to discovery;
+ * absent on older servers.
+ */
+type ACPModelDiscoveryWithEffort = ACPModelDiscovery & {
+  current_effort?: string | null;
+  efforts_by_model?: Record<string, string[]>;
+};
+
 async function discover(
   providerKey: string,
   secretNames: string[],
-): Promise<ACPModelDiscovery | null> {
+): Promise<ACPModelDiscoveryWithEffort | null> {
   try {
     return await AcpService.discoverModels(providerKey, secretNames);
   } catch {
@@ -55,7 +64,7 @@ export function useAcpModelDiscovery(
   const queryEnabled =
     enabled && isLocal && !!providerKey && !secrets.isLoading;
 
-  const query = useQuery<ACPModelDiscovery | null, Error>({
+  const query = useQuery<ACPModelDiscoveryWithEffort | null, Error>({
     queryKey: [
       ...ACP_MODEL_DISCOVERY_QUERY_KEYS.all,
       backend.id,
@@ -73,7 +82,11 @@ export function useAcpModelDiscovery(
   const scope = acpModelScope(secretRefs);
   const discovery = queryEnabled ? (query.data ?? null) : null;
   const liveModels = useMemo(
-    () => toAcpModelOptions(discovery?.available_models),
+    () =>
+      toAcpModelOptions(
+        discovery?.available_models,
+        discovery?.efforts_by_model,
+      ),
     [discovery],
   );
   useEffect(() => {
@@ -101,6 +114,7 @@ export function useAcpModelDiscovery(
     models,
     source,
     defaultModelId: discovery?.current_model_id ?? null,
+    defaultEffort: discovery?.current_effort ?? null,
     isDiscovering: queryEnabled && query.isFetching && !query.data,
   };
 }

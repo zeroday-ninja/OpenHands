@@ -273,6 +273,43 @@ describe("AgentSettingsScreen", () => {
     });
   });
 
+  it("loads a saved model's effort and saves effort picks combined with the model", async () => {
+    acpModelDiscoveryMock.mockReturnValue({
+      ...NO_DISCOVERY,
+      models: [
+        {
+          id: "opus",
+          label: "Opus",
+          efforts: ["default", "low", "high", "max"],
+        },
+        { id: "haiku", label: "Haiku", efforts: [] },
+      ],
+      source: "live",
+    });
+    const user = userEvent.setup();
+    const { control } = renderAgentSettingsScreen({
+      agentSettingsOverride: { ...CLAUDE_PROFILE, acp_model: "opus/high" },
+    });
+
+    await screen.findByTestId("agent-command-input");
+    expect(screen.getByLabelText("SETTINGS$AGENT_MODEL")).toHaveValue("Opus");
+    expect(screen.getByLabelText("MODEL$EFFORT")).toHaveValue("High");
+
+    await user.click(screen.getByLabelText("MODEL$EFFORT"));
+    await user.click(await screen.findByRole("option", { name: "Max" }));
+    expect(control().buildAgentProfileFields()).toMatchObject({
+      acp_model: "opus/max",
+    });
+
+    // A model without effort levels drops the effort and its picker.
+    await user.click(screen.getByLabelText("SETTINGS$AGENT_MODEL"));
+    await user.click(await screen.findByRole("option", { name: "Haiku" }));
+    expect(screen.queryByLabelText("MODEL$EFFORT")).toBeNull();
+    expect(control().buildAgentProfileFields()).toMatchObject({
+      acp_model: "haiku",
+    });
+  });
+
   it("offers OpenCode and leaves its default command to the profile resolver", async () => {
     const user = userEvent.setup();
     const { control } = renderAgentSettingsScreen({
