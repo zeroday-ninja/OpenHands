@@ -5,6 +5,7 @@
 // file:// base URLs (it falls back to its document base, e.g.
 // http://localhost:3000/), breaking that resolution; the Node environment
 // has the standard WHATWG URL behavior that honors the file:// base.
+import http from "node:http";
 import net from "node:net";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
@@ -29,6 +30,7 @@ import {
   getRejectPrefixes,
   setServiceLogListener,
   spawnService,
+  startSandboxBridgeIngress,
   validateLocalAutomationPath,
   DEFAULT_AUTOMATION_REPO,
   DEFAULT_AUTOMATION_PACKAGE,
@@ -41,6 +43,7 @@ import {
   resetPersistedSessionApiKeyCache,
 } from "../../scripts/dev-safe.mjs";
 import { createRouter } from "../../scripts/proxy-utils.mjs";
+import { signalProcessTree } from "../../scripts/dev-process-utils.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -72,6 +75,18 @@ describe("buildAutomationRuntimeServicesInfo", () => {
     expect(info.services.ingress.url_from_agent).toBe(
       "http://host.docker.internal:8000",
     );
+    expect(info.services.automation.url_from_agent).toBe(
+      "http://host.docker.internal:8000",
+    );
+  });
+
+  it("omits the frontend sandboxes cannot reach through the bridge ingress", () => {
+    const info = buildAutomationRuntimeServicesInfo(
+      { ...config, sandboxBridgeHost: "172.17.0.1" },
+      { OH_CONVERSATION_RUNTIME: "docker" },
+    ) as RuntimeServicesInfo;
+
+    expect(info.services).not.toHaveProperty("frontend");
     expect(info.services.automation.url_from_agent).toBe(
       "http://host.docker.internal:8000",
     );
@@ -626,28 +641,77 @@ describe("stack mode routing", () => {
     expect(viteEnv.VITE_AUTH_REQUIRED).toBe("true");
   });
 
-  it("makes the key-free ingress reachable to Docker conversations", async () => {
+  // Loopback is bindable everywhere, so it stands in for the Docker bridge
+  // address in these tests (assertPortsFree binds it).
+  const bridgeAt = (address: string | null) => ({
+    detectBridgeHost: () => address,
+  });
+
+  it("keeps the UI on loopback with the key and gives Docker sandboxes a bridge listener", async () => {
     const config = await buildConfig(
       {},
       envWithIsolatedKeyPath({ OH_CONVERSATION_RUNTIME: "docker" }),
+      bridgeAt("127.0.0.1"),
+    );
+
+    expect(config.bindHost).toBe("127.0.0.1");
+    expect(config.sandboxBridgeHost).toBe("127.0.0.1");
+    expect(buildViteFrontendEnv(config)).toMatchObject({
+      VITE_SESSION_API_KEY: config.sessionApiKey,
+    });
+  });
+
+  it("falls back to every interface without the key when the bridge is not local", async () => {
+    const config = await buildConfig(
+      {},
+      envWithIsolatedKeyPath({ OH_CONVERSATION_RUNTIME: "docker" }),
+      bridgeAt(null),
     );
 
     expect(config.bindHost).toBe("0.0.0.0");
+    expect(config.sandboxBridgeHost).toBeNull();
     expect(buildViteFrontendEnv(config)).not.toHaveProperty(
       "VITE_SESSION_API_KEY",
     );
   });
 
-  it("honors an explicit loopback override in Docker conversation mode", async () => {
-    const config = await buildConfig(
+  it("honors explicit binds in Docker conversation mode", async () => {
+    const loopback = await buildConfig(
       {},
       envWithIsolatedKeyPath({
         OH_CONVERSATION_RUNTIME: "docker",
         OH_BIND_HOST: "127.0.0.1",
       }),
+      bridgeAt("127.0.0.1"),
+    );
+    const everyInterface = await buildConfig(
+      {},
+      envWithIsolatedKeyPath({
+        OH_CONVERSATION_RUNTIME: "docker",
+        OH_BIND_HOST: "0.0.0.0",
+      }),
+      bridgeAt("127.0.0.1"),
+    );
+
+    expect(loopback.bindHost).toBe("127.0.0.1");
+    expect(loopback.sandboxBridgeHost).toBe("127.0.0.1");
+    // Every interface already includes the bridge; no second listener.
+    expect(everyInterface.bindHost).toBe("0.0.0.0");
+    expect(everyInterface.sandboxBridgeHost).toBeNull();
+  });
+
+  it("prefers OH_SANDBOX_BRIDGE_HOST over the detected bridge", async () => {
+    const config = await buildConfig(
+      {},
+      envWithIsolatedKeyPath({
+        OH_CONVERSATION_RUNTIME: "docker",
+        OH_SANDBOX_BRIDGE_HOST: "127.0.0.1",
+      }),
+      bridgeAt(null),
     );
 
     expect(config.bindHost).toBe("127.0.0.1");
+    expect(config.sandboxBridgeHost).toBe("127.0.0.1");
   });
 
   it("keeps the session key out of public-mode Vite on loopback", async () => {
@@ -1203,5 +1267,106 @@ describe("buildMarsWebEnv", () => {
         marsWebBridge: false,
       } as never),
     ).toEqual({ MARS_WEB: "0" });
+  });
+});
+
+describe("startSandboxBridgeIngress", () => {
+  // Answers every request with its own name, so a response shows which
+  // backend the ingress chose.
+  async function startNamedBackend(name: string) {
+    const server = http.createServer((_req, res) => {
+      res.setHeader("Content-Type", "application/json");
+      res.end(JSON.stringify({ backend: name }));
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    return { server, port: (server.address() as net.AddressInfo).port };
+  }
+
+  async function freePort() {
+    const server = net.createServer();
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = server.address() as net.AddressInfo;
+    await new Promise((resolve) => server.close(resolve));
+    return port;
+  }
+
+  // Raw HTTP over a socket, as a sandbox would connect: vitest.setup.ts runs
+  // MSW, which intercepts fetch and node:http but not plain sockets.
+  async function rawGet(port: number, pathname: string) {
+    const socket = net.connect(port, "127.0.0.1");
+    await once(socket, "connect");
+    socket.write(
+      `GET ${pathname} HTTP/1.1\r\nHost: host.docker.internal\r\nConnection: close\r\n\r\n`,
+    );
+    const chunks: Buffer[] = [];
+    for await (const chunk of socket) chunks.push(chunk as Buffer);
+    const response = Buffer.concat(chunks).toString("utf8");
+    return {
+      status: Number(response.split(" ", 2)[1]),
+      backend: /"backend":"([a-z-]+)"/.exec(response)?.[1] ?? null,
+    };
+  }
+
+  async function waitUntilListening(port: number) {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const connected = await new Promise<boolean>((resolve) => {
+        const socket = net.connect(port, "127.0.0.1", () => {
+          socket.destroy();
+          resolve(true);
+        });
+        socket.on("error", () => resolve(false));
+      });
+      if (connected) return;
+      await delay(100);
+    }
+    throw new Error(`port ${port} never started listening`);
+  }
+
+  it("serves sandboxes the API routes but never the frontend that carries the session key", async () => {
+    const agentServer = await startNamedBackend("agent-server");
+    const automation = await startNamedBackend("automation");
+    const frontend = await startNamedBackend("frontend");
+    const ingressPort = await freePort();
+    const proc = startSandboxBridgeIngress({
+      sandboxBridgeHost: "127.0.0.1",
+      ingressPort,
+      agentServerPort: agentServer.port,
+      autoBackendPort: automation.port,
+      vitePort: frontend.port,
+      launchAgentServer: true,
+      launchAutomation: true,
+      launchFrontend: true,
+    });
+
+    try {
+      await waitUntilListening(ingressPort);
+
+      expect(await rawGet(ingressPort, "/api/automation/v1/drafts")).toEqual({
+        status: 200,
+        backend: "automation",
+      });
+      expect(await rawGet(ingressPort, "/api/conversations")).toEqual({
+        status: 200,
+        backend: "agent-server",
+      });
+      expect(await rawGet(ingressPort, "/server_info")).toEqual({
+        status: 200,
+        backend: "agent-server",
+      });
+      for (const pathname of ["/", "/src/main.tsx", "/sockets/events/x"]) {
+        const { status, backend } = await rawGet(ingressPort, pathname);
+        expect(backend).toBeNull();
+        expect(status).toBeGreaterThanOrEqual(400);
+      }
+    } finally {
+      signalProcessTree(proc, "SIGKILL");
+      for (const { server } of [agentServer, automation, frontend]) {
+        server.close();
+      }
+    }
   });
 });

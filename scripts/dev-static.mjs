@@ -68,6 +68,7 @@ import {
   getLocalServiceRoutes,
   getNoReferrerPrefixArgs,
   getVSCodeAdvertiseArgs,
+  startSandboxBridgeIngress,
 } from "./dev-with-automation.mjs";
 import { applySessionKeyPolicy, bindHostArgs } from "./bind-host.mjs";
 
@@ -667,6 +668,9 @@ async function main() {
   await delay(2000);
 
   startIngress(config);
+  if (config.sandboxBridgeHost) {
+    startSandboxBridgeIngress(config);
+  }
 
   await delay(1000);
 

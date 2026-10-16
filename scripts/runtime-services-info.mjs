@@ -38,6 +38,9 @@ import { pathToFileURL } from "node:url";
  *   and honors an overridable `AGENT_SERVER_URL`. One of `agentServerUrl` /
  *   `agentServerPort` is required (else the URL would be `:undefined`).
  * @param {number} [options.ingressPort] - Ingress port (omit if no ingress).
+ * @param {string} [options.ingressDescription] - Overrides the default ingress
+ *   description when the agent's view of the ingress routes less than the
+ *   browser's (e.g. the API-only ingress Docker sandboxes reach).
  * @param {number} [options.frontendPort] - Frontend port (Vite dev server
  *   or static-file server). Omit if no frontend is exposed.
  * @param {number} [options.vitePort] - Deprecated alias for `frontendPort`,
@@ -64,6 +67,7 @@ export function buildRuntimeServicesInfo(options) {
     agentServerPort,
     agentServerUrl,
     ingressPort,
+    ingressDescription,
     // Accept legacy `vitePort` for one release so external callers keep working.
     vitePort,
     frontendPort = vitePort,
@@ -99,9 +103,10 @@ export function buildRuntimeServicesInfo(options) {
   if (ingressPort !== undefined) {
     services.ingress = {
       description:
+        ingressDescription ??
         "Unified entry point. Routes /api/automation/* to the automation " +
-        "backend, /api/* and /sockets to the agent-server, and /* to the " +
-        "frontend.",
+          "backend, /api/* and /sockets to the agent-server, and /* to the " +
+          "frontend.",
       url_from_agent: `http://${agentHostAlias}:${ingressPort}`,
     };
   }

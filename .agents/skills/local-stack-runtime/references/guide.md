@@ -112,6 +112,14 @@ you are running inside of — NOT the automation backend.
   - Security: the automation backend receives the same session key as the agent-server through `AUTOMATION_LOCAL_API_KEY`; the frontend does not bake a separate automation API key.
 - `scripts/ingress.mjs` is a standalone HTTP reverse proxy that can be used independently to route traffic to multiple backends based on URL path prefix.
 - `scripts/dev-safe.mjs` (now `npm run dev:minimal`) runs just agent-server + Vite without automation.
+- `OH_CONVERSATION_RUNTIME=docker` (the `dockerConversations` path in `buildConfig`):
+  - **Bridge detected:** if `detectDockerBridgeHost()` (`scripts/bind-host.mjs`) finds the Docker bridge gateway on a local interface, or `OH_SANDBOX_BRIDGE_HOST` sets an address, the browser-facing listeners stay on loopback with the key injected. `startSandboxBridgeIngress()` then runs a second `ingress.mjs` on that address with only `SANDBOX_BRIDGE_ROUTE_PREFIXES` (`/api/automation`, `/api`, `/server_info`), `MARS_WEB=0`, and no `--default`.
+  - **Why no default route:** the frontend carries the injected session key, and every container on the bridge can connect.
+  - **Runtime services:** `buildAutomationRuntimeServicesInfo()` then omits `frontend` and describes the ingress as API-only.
+  - **No local bridge (Docker Desktop):** the bind falls back to `0.0.0.0` without the key.
+  - **Explicit binds:** an explicit non-loopback `--host` or `OH_BIND_HOST` skips the bridge listener.
+  - **Other launchers:** `scripts/dev-static.mjs` calls the same starter.
+  - **Docs:** `docs/DOCKER_SANDBOXES.md`.
 - Local models (LM Studio) with `OH_CONVERSATION_RUNTIME=docker`: an LLM profile's base URL must resolve from both the host agent-server (save-time validation) and the sandboxes. Use the Docker bridge gateway (`172.17.0.1`), not `localhost` or `host.docker.internal`, and use the `lm_studio/<id>` model prefix. gpt-oss additionally needs the `tool_choice` proxy in `examples/lmstudio-shim/`. See `docs/LOCAL_MODELS.md`.
 
 - **Centralized config**: `config/defaults.json` is the single source of truth for version pins (agent-server, automation, automation SDK), port defaults, persistence paths, and package names. All consumers read from this file:

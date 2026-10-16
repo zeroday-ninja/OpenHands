@@ -5,7 +5,54 @@
  * session key injected into index.html) to every peer on the network.
  */
 
+import { spawnSync } from "node:child_process";
+import { networkInterfaces } from "node:os";
+
 export const DEFAULT_BIND_HOST = "127.0.0.1";
+
+const IPV4_RE = /^\d{1,3}(?:\.\d{1,3}){3}$/;
+
+/**
+ * Find the address Docker conversation sandboxes reach as
+ * `host.docker.internal`: the SDK starts them with
+ * `--add-host host.docker.internal:host-gateway`, and Docker resolves
+ * `host-gateway` to the default bridge's gateway.
+ *
+ * Returns the gateway only when it is assigned to an interface on this host,
+ * i.e. when a listener here can bind it (native Docker Engine on Linux or in
+ * WSL). Docker Desktop keeps the bridge inside its VM, so this returns null
+ * there, as it does when the docker CLI is missing or the daemon is down.
+ *
+ * @param {object} [deps]
+ * @param {(cmd: string, args: string[]) => {status: number | null, stdout?: string, error?: Error}} [deps.run]
+ * @param {() => Record<string, Array<{address: string}> | undefined>} [deps.interfaces]
+ * @returns {string | null}
+ */
+export function detectDockerBridgeHost({
+  run = (cmd, args) =>
+    spawnSync(cmd, args, { encoding: "utf8", timeout: 5000 }),
+  interfaces = networkInterfaces,
+} = {}) {
+  const result = run("docker", [
+    "network",
+    "inspect",
+    "bridge",
+    "--format",
+    "{{range .IPAM.Config}}{{.Gateway}} {{end}}",
+  ]);
+  if (result.error || result.status !== 0) return null;
+
+  const gateways = String(result.stdout ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter((address) => IPV4_RE.test(address));
+  const localAddresses = new Set(
+    Object.values(interfaces())
+      .flatMap((addrs) => addrs ?? [])
+      .map((addr) => addr.address),
+  );
+  return gateways.find((address) => localAddresses.has(address)) ?? null;
+}
 
 const STATIC_LOOPBACK_HOSTS = new Set(["::1", "localhost"]);
 const IPV4_LOOPBACK_RE = /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/;
