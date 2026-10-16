@@ -329,6 +329,46 @@ describe("ChatInputModel", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("offers the account's other discovered models in a live conversation", () => {
+    sessionModelsMock.mockReturnValue(CLAUDE_MODELS);
+    discoveryMock.mockReturnValue({
+      models: [
+        ...CLAUDE_MODELS,
+        { id: "claude-mythos-5-1", label: "Claude Mythos 5.1" },
+      ],
+      defaultModelId: "sonnet",
+    });
+    useActiveConversationMock.mockReturnValue({
+      data: {
+        conversation_id: "test-conversation-id",
+        agent_kind: "acp",
+        acp_server: "claude-code",
+        llm_model: "sonnet",
+      },
+    });
+
+    renderWithProviders(<ChatInputModel />);
+
+    fireEvent.click(screen.getByTestId("chat-input-llm-model"));
+    expect(
+      screen
+        .getAllByTestId(/^chat-input-acp-model-option-/)
+        .map((row) => row.dataset.testid),
+    ).toEqual([
+      "chat-input-acp-model-option-opus[1m]",
+      "chat-input-acp-model-option-sonnet",
+      "chat-input-acp-model-option-claude-mythos-5-1",
+    ]);
+    fireEvent.click(
+      screen.getByTestId("chat-input-acp-model-option-claude-mythos-5-1"),
+    );
+
+    expect(switchAcpModelMutate).toHaveBeenCalledWith({
+      conversationId: "test-conversation-id",
+      model: "claude-mythos-5-1",
+    });
+  });
+
   it("persists the choice as the default (conversationId null) in the home ACP case", () => {
     discoveryMock.mockReturnValue({
       models: CLAUDE_MODELS,
@@ -462,6 +502,104 @@ describe("ChatInputModel", () => {
     expect(
       screen.queryByTestId("chat-input-acp-model-option-agent-default"),
     ).toBeNull();
+  });
+
+  describe("effort", () => {
+    const EFFORT_MODELS = [
+      {
+        id: "opus",
+        label: "Opus 5.5",
+        efforts: ["default", "low", "high", "max"],
+      },
+      { id: "sonnet", label: "Sonnet 5.5", efforts: ["low", "high"] },
+      { id: "haiku", label: "Haiku 5.5", efforts: [] },
+    ];
+
+    function renderHomeWithSavedModel(acpModel: string) {
+      discoveryMock.mockReturnValue({
+        models: EFFORT_MODELS,
+        defaultModelId: "opus",
+      });
+      useActiveConversationMock.mockReturnValue({ data: undefined });
+      useSettingsMock.mockReturnValue({
+        data: {
+          agent_settings: {
+            agent_kind: "acp",
+            acp_server: "claude-code",
+            acp_model: acpModel,
+          },
+        },
+      });
+      renderWithProviders(<ChatInputModel />);
+      fireEvent.click(screen.getByTestId("chat-input-llm-model"));
+    }
+
+    it("offers the saved model's effort levels and saves the pick as a combined id", () => {
+      renderHomeWithSavedModel("opus/high");
+
+      expect(screen.getByTestId("chat-input-llm-model")).toHaveAttribute(
+        "title",
+        "Opus 5.5 · High",
+      );
+      // The agent's own "default" level is the Agent default row.
+      expect(
+        screen.getByTestId("chat-input-acp-effort-option-agent-default"),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("chat-input-acp-effort-option-default"),
+      ).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId("chat-input-acp-effort-option-max"));
+
+      expect(switchAcpModelMutate).toHaveBeenCalledWith({
+        conversationId: null,
+        model: "opus/max",
+      });
+    });
+
+    it("keeps the effort only when the newly picked model offers it", () => {
+      renderHomeWithSavedModel("opus/high");
+      fireEvent.click(screen.getByTestId("chat-input-acp-model-option-sonnet"));
+      fireEvent.click(screen.getByTestId("chat-input-llm-model"));
+      fireEvent.click(screen.getByTestId("chat-input-acp-model-option-haiku"));
+
+      expect(
+        switchAcpModelMutate.mock.calls.map(([call]) => call.model),
+      ).toEqual(["sonnet/high", "haiku"]);
+    });
+
+    it("hides the effort section for a model without effort levels", () => {
+      renderHomeWithSavedModel("haiku");
+
+      expect(
+        screen.queryByTestId("chat-input-acp-effort-option-agent-default"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("switches a live conversation with the levels its session reports", () => {
+      sessionModelsMock.mockReturnValue([
+        { id: "gpt-6-astra", label: "GPT-6 Astra" },
+      ]);
+      useActiveConversationMock.mockReturnValue({
+        data: {
+          conversation_id: "test-conversation-id",
+          agent_kind: "acp",
+          acp_server: "codex",
+          llm_model: "gpt-6-astra",
+          acp_current_effort: "medium",
+          acp_available_efforts: ["low", "medium", "ultra"],
+        },
+      });
+
+      renderWithProviders(<ChatInputModel />);
+      fireEvent.click(screen.getByTestId("chat-input-llm-model"));
+      fireEvent.click(screen.getByTestId("chat-input-acp-effort-option-ultra"));
+
+      expect(switchAcpModelMutate).toHaveBeenCalledWith({
+        conversationId: "test-conversation-id",
+        model: "gpt-6-astra/ultra",
+      });
+    });
   });
 
   it("offers selectable rows on a cloud backend for ACP conversations (mid-conversation model switching is supported)", () => {

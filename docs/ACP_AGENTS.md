@@ -257,15 +257,33 @@ Open **Settings → Agent** at any time:
 - **Model** — **Agent default** (the provider picks, saving no model), one of
   the provider's models, or a custom model ID. Gemini has no **Agent default**:
   Canvas preselects `gemini-2.5-pro` (see the note above).
+- **Effort** — appears when the chosen model offers reasoning-effort levels
+  (Claude Code's `effort`, Codex's `reasoning_effort`). **Agent default** keeps
+  the provider's own level. The in-chat model picker offers the same choice
+  under the model list and applies it live.
 
-Canvas keeps no list of models; the agent reports its own. On a local backend
-Canvas asks the agent-server (`POST /api/acp/models`) to start the provider with
-your saved credentials and report the models it offers and the one it uses by
-default, so account-dependent catalogues (a ChatGPT plan's Codex models, a Claude
-subscription's aliases, OpenCode's free tier versus a Zen key) show what you can
-actually run. The first lookup can take a few seconds while the provider starts;
-results are cached. If the agent rejects its login, Settings says so instead of
-showing a stale "signed in" banner.
+Canvas keeps no list of models or effort levels; the agent reports its own. On a
+local backend Canvas asks the agent-server (`POST /api/acp/models`) to start the
+provider with your saved credentials and report the models it offers, the one
+it uses by default, and each model's effort levels, so account-dependent
+catalogues (a ChatGPT plan's Codex models, a Claude subscription's aliases,
+OpenCode's free tier versus a Zen key) show what you can actually run. For
+Claude Code the list also includes the account's other models from Anthropic's
+model catalogue, such as Mythos or an older Opus, after Claude Code's own
+aliases. The in-chat picker offers those too. Claude Code can't switch a
+running session to them directly, so the agent-server resumes the session on
+the new model, which keeps the conversation. With
+[Docker sandboxes](./DOCKER_SANDBOXES.md) the agent-server runs the lookup in a
+throwaway sandbox, so the list matches the provider version conversations use.
+The first lookup can take a few seconds while the provider starts; results are
+cached. If the agent rejects its login, Settings says so instead of showing a
+stale "signed in" banner.
+
+A model and an effort are saved together as one `acp_model` value,
+`<model>/<effort>` (for example `opus/max` or `gpt-6.1-sol/ultra`); the
+agent-server applies them as the provider's separate model and effort session
+options. Effort levels need an agent-server with ACP effort support; with an
+older one the Effort choice doesn't appear.
 
 Cloud can't ask before a conversation starts, so until then the model field
 offers **Agent default** and a custom model ID. Each conversation's session

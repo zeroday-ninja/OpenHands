@@ -119,3 +119,25 @@ curl -s -o /dev/null -w '%{http_code}\n' -H "X-Session-API-Key: $OPENHANDS_AUTOM
   forwarder or another stack. Stop it, or change the port with `PORT`.
 - **Local models in sandboxes:** see [Local models with LM Studio](./LOCAL_MODELS.md).
   LLM calls go straight to the model server and do not use the sandbox ingress.
+- **Codex: `ChatGPT authentication did not complete in time`.** The stored
+  `CODEX_AUTH_JSON` login no longer works. `codex login status` doesn't detect
+  this, because it only checks that the file exists.
+  - **Why it happens:** Codex refreshes the login in each sandbox, and every
+    refresh replaces the refresh token. The Agent Server stores the refreshed
+    login again before it starts a sandbox, after model discovery, and before
+    it deletes a conversation. A login refreshed by an Agent Server older than
+    that fix is lost.
+  - **Fix:** sign in again with a login that only OpenHands uses, so its
+    refreshes never sign out your own `codex` CLI:
+
+    ```sh
+    mkdir -p ~/.openhands/codex-login
+    CODEX_HOME=~/.openhands/codex-login codex login --device-auth
+    ```
+
+    Then paste the contents of `~/.openhands/codex-login/auth.json` into the
+    `CODEX_AUTH_JSON` secret.
+
+  - **Limit:** two sandboxes that run at the same time can still race. If one
+    refreshes the login, the other cannot refresh it afterwards; start a new
+    conversation for that agent.

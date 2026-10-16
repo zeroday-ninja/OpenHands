@@ -180,6 +180,13 @@ export interface AppConversation {
    */
   acp_available_models?: ACPModelOption[] | null;
   /**
+   * Reasoning-effort level the ACP session reports for its current model.
+   * Null on servers without effort support and for models without levels.
+   */
+  acp_current_effort?: string | null;
+  /** Effort levels the ACP session offers for its current model. */
+  acp_available_efforts?: string[] | null;
+  /**
    * Server-side key-value tags from the agent-server's
    * ``ConversationInfo.tags`` (settable at creation and via
    * ``PATCH /api/conversations/{id}``). Automations and API clients use these

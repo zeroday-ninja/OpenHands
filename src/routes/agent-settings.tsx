@@ -38,6 +38,12 @@ import { useAcpModelDiscovery } from "#/hooks/query/use-acp-model-discovery";
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import { parseCommand, formatCommand } from "#/utils/acp-command";
 import {
+  acpEffortLabel,
+  composeAcpModelEffort,
+  selectableAcpEfforts,
+  splitAcpModelEffort,
+} from "#/utils/acp-model-effort";
+import {
   readProfileScope,
   sameScopeSelection,
   type ProfileScopeMode,
@@ -73,6 +79,7 @@ const SYSTEM_PROMPT_MAX_LENGTH = 65536;
 const COMMAND_PLACEHOLDER_FALLBACK = "npx -y <package-name>";
 const ACP_CUSTOM_MODEL_KEY = "__custom_model__";
 const ACP_AGENT_DEFAULT_MODEL_KEY = "__agent_default_model__";
+const ACP_AGENT_DEFAULT_EFFORT_KEY = "__agent_default_effort__";
 const EMPTY_AGENT_SETTINGS_SNAPSHOT: AgentSettingsSnapshot = {
   agentType: "openhands",
   commandText: "",
@@ -745,10 +752,20 @@ export function AgentSettingsScreen({
 
   if (isLoading) return null;
 
+  // The saved model may carry an effort (``opus/high``); the dropdowns show
+  // the model and its effort separately and save them combined.
+  const { modelId: savedBaseModel, effort: acpEffort } = isCustomAcpModel
+    ? { modelId: acpModel, effort: null }
+    : splitAcpModelEffort(acpModel);
+  const acpBaseModel = savedBaseModel ?? "";
   const modelSuggestions = buildModelSuggestions(
     liveModels.models,
-    isCustomAcpModel ? "" : acpModel,
+    isCustomAcpModel ? "" : acpBaseModel,
   );
+  const effortsFor = (modelId: string) =>
+    selectableAcpEfforts(
+      modelSuggestions.find(({ id }) => id === modelId)?.efforts,
+    );
   const agentDefaultModelLabel = labelForAcpModel(
     liveModels.defaultModelId,
     liveModels.models,
@@ -775,14 +792,19 @@ export function AgentSettingsScreen({
     return null;
   })();
   const selectedModelIsSuggestion = modelSuggestions.some(
-    ({ id }) => id === acpModel.trim(),
+    ({ id }) => id === acpBaseModel.trim(),
   );
-  let selectedModelKey = acpModel;
-  if (offersAgentDefault && !isCustomAcpModel && !acpModel.trim()) {
+  let selectedModelKey = acpBaseModel;
+  if (offersAgentDefault && !isCustomAcpModel && !acpBaseModel.trim()) {
     selectedModelKey = ACP_AGENT_DEFAULT_MODEL_KEY;
   } else if (isCustomAcpModel || !selectedModelIsSuggestion) {
     selectedModelKey = ACP_CUSTOM_MODEL_KEY;
   }
+  const selectedModelEfforts =
+    selectedModelKey === ACP_CUSTOM_MODEL_KEY ||
+    selectedModelKey === ACP_AGENT_DEFAULT_MODEL_KEY
+      ? []
+      : effortsFor(selectedModelKey);
   const commandPlaceholder =
     formatCommand(acpProviders[0]?.default_command ?? []) ||
     COMMAND_PLACEHOLDER_FALLBACK;
@@ -1327,8 +1349,46 @@ export function AgentSettingsScreen({
                   setAcpModel("");
                 } else {
                   setIsCustomAcpModel(false);
-                  setAcpModel(modelKey);
+                  // Keep the chosen effort when the new model offers it.
+                  setAcpModel(
+                    composeAcpModelEffort(
+                      modelKey,
+                      acpEffort && effortsFor(modelKey).includes(acpEffort)
+                        ? acpEffort
+                        : null,
+                    ),
+                  );
                 }
+              }}
+            />
+          )}
+          {selectedModelEfforts.length > 0 && (
+            <SettingsDropdownInput
+              testId="agent-effort-selector"
+              name="agent-effort"
+              label={t(I18nKey.MODEL$EFFORT)}
+              items={[
+                {
+                  key: ACP_AGENT_DEFAULT_EFFORT_KEY,
+                  label: t(I18nKey.SETTINGS$AGENT_MODEL_AGENT_DEFAULT),
+                },
+                ...selectedModelEfforts.map((effort) => ({
+                  key: effort,
+                  label: acpEffortLabel(effort),
+                })),
+              ]}
+              selectedKey={acpEffort ?? ACP_AGENT_DEFAULT_EFFORT_KEY}
+              onSelectionChange={(key) => {
+                if (!key) return;
+                const effortKey = String(key);
+                setAcpModel(
+                  composeAcpModelEffort(
+                    acpBaseModel,
+                    effortKey === ACP_AGENT_DEFAULT_EFFORT_KEY
+                      ? null
+                      : effortKey,
+                  ),
+                );
               }}
             />
           )}

@@ -255,7 +255,7 @@ function normalizeTags(value: unknown): Record<string, string> | null {
  * defensively so a non-conforming payload degrades to "no children" instead of
  * crashing the list.
  */
-function normalizeSubConversationIds(value: unknown): string[] | null {
+function normalizeStringList(value: unknown): string[] | null {
   if (!Array.isArray(value)) return null;
   return value.filter((entry): entry is string => typeof entry === "string");
 }
@@ -336,9 +336,7 @@ function requireDirectConversationInfo(item: unknown): DirectConversationInfo {
     launched_agent_profile: normalizeLaunchedAgentProfile(
       item.launched_agent_profile,
     ),
-    sub_conversation_ids: normalizeSubConversationIds(
-      item.sub_conversation_ids,
-    ),
+    sub_conversation_ids: normalizeStringList(item.sub_conversation_ids),
     // SDK-runtime ACP model fields (populated when the agent-server supports
     // ``ConversationInfo.current_model_*``). Consumed by the conversation
     // adapter to drive the per-card chip's model text. Older agent-servers
@@ -346,6 +344,9 @@ function requireDirectConversationInfo(item: unknown): DirectConversationInfo {
     current_model_id: stringOrNull(item.current_model_id),
     current_model_name: stringOrNull(item.current_model_name),
     available_models: normalizeAcpModels(item.available_models),
+    // ACP effort fields, from agent-servers with ACP effort support.
+    current_effort: stringOrNull(item.current_effort),
+    available_efforts: normalizeStringList(item.available_efforts),
   };
 }
 

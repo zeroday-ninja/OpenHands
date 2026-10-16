@@ -12041,6 +12041,24 @@
     "uk": "Доступні моделі",
     "id": "Model yang tersedia"
   },
+  "MODEL$EFFORT": {
+    "en": "Effort",
+    "ja": "推論レベル",
+    "zh-CN": "推理强度",
+    "zh-TW": "推理強度",
+    "ko-KR": "추론 강도",
+    "no": "Innsats",
+    "ar": "مستوى الجهد",
+    "de": "Aufwand",
+    "fr": "Effort",
+    "it": "Impegno",
+    "pt": "Esforço",
+    "es": "Esfuerzo",
+    "ca": "Esforç",
+    "tr": "Efor",
+    "uk": "Зусилля",
+    "id": "Upaya"
+  },
   "MODEL$NO_SAVED_PROFILES": {
     "en": "No saved profiles",
     "ja": "保存済みプロファイルはありません",

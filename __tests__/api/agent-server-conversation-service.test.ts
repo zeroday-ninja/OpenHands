@@ -1180,6 +1180,34 @@ describe("AgentServerConversationService", () => {
       ]);
     });
 
+    it("carries the effort an ACP session reports for its model", async () => {
+      mockHttpGet.mockResolvedValue({
+        data: [
+          {
+            id: "conv-acp-effort",
+            created_at: "2024-01-01",
+            updated_at: "2024-01-01",
+            agent: { kind: "ACPAgent", acp_server: "claude-code" },
+            current_model_id: "opus/high",
+            current_effort: "high",
+            available_efforts: ["low", "high", "max"],
+          },
+        ],
+      });
+
+      const [conversation] =
+        await AgentServerConversationService.batchGetAppConversations([
+          "conv-acp-effort",
+        ]);
+
+      expect(conversation?.acp_current_effort).toBe("high");
+      expect(conversation?.acp_available_efforts).toEqual([
+        "low",
+        "high",
+        "max",
+      ]);
+    });
+
     it("sources acp_server from the agent when the acpserver tag is absent", async () => {
       // Profile launches don't stamp the ``acpserver`` tag client-side, so the
       // provider identity must survive from ``agent.acp_server`` (SDK #3692)

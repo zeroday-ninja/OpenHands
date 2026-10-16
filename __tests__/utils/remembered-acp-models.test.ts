@@ -78,6 +78,18 @@ describe("remembered ACP models", () => {
     ]);
   });
 
+  it("remembers each model's effort levels with the list", () => {
+    const withEfforts = [
+      { id: "opus", label: "Opus", efforts: ["low", "max"] },
+      { id: "haiku", label: "Haiku", efforts: [] },
+    ];
+    rememberAcpModels("cloud-1", "claude-code", ALL, withEfforts);
+
+    expect(readRememberedAcpModels("cloud-1", "claude-code", ALL)).toEqual(
+      withEfforts,
+    );
+  });
+
   it("does not replace a list with an empty one", () => {
     rememberAcpModels("cloud-1", "claude-code", ALL, MODELS);
     rememberAcpModels("cloud-1", "claude-code", ALL, []);
