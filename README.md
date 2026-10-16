@@ -121,6 +121,8 @@ Open [http://localhost:8000](http://localhost:8000) and start a new conversation
 
 This setting isolates conversation execution; it does not move the entire Canvas or automation service into a sandbox. For Windows, see [README.windows.md](./README.windows.md#option-3-with-multiple-docker-sandboxes-wsl-2).
 
+On Linux with Docker Engine, Canvas stays on `127.0.0.1`, so the page connects without asking for an API key. Sandboxes reach Canvas's API (including automations) through a second, API-only listener on the Docker bridge. With Docker Desktop, Canvas listens on all interfaces instead and asks for the API key. See [Docker sandboxes: networking and access](./docs/DOCKER_SANDBOXES.md).
+
 ### Option 4: From Source
 
 > [!WARNING]

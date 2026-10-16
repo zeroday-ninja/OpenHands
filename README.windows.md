@@ -35,4 +35,4 @@ The quickstart restricts the published port to host loopback before explicitly e
 
 For per-conversation containers, run Canvas inside a Linux distribution under WSL 2, with Docker Desktop's WSL integration enabled for that distribution. Install Node.js 24 or later and `uv` inside WSL, and confirm that `docker info` succeeds there.
 
-Run the [multiple-sandbox quickstart](./README.md#option-3-with-multiple-docker-sandboxes) in the WSL shell, using workspace paths inside that Linux environment. The native Windows host is not supported by this runtime, which uses POSIX user/group IDs.
+Run the [multiple-sandbox quickstart](./README.md#option-3-with-multiple-docker-sandboxes) in the WSL shell, using workspace paths inside that Linux environment. With Docker Desktop's WSL integration, Canvas listens on all interfaces and asks for the API key. Docker Engine installed inside the distribution keeps Canvas on loopback instead (see [Docker sandboxes: networking and access](./docs/DOCKER_SANDBOXES.md)). The native Windows host is not supported by this runtime, which uses POSIX user/group IDs.

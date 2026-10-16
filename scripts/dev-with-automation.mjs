@@ -74,6 +74,7 @@ import { fileLog, stripAnsi } from "./logger.mjs";
 import {
   applySessionKeyPolicy,
   bindHostArgs,
+  detectDockerBridgeHost,
   isLoopbackBind,
   resolveBindHost,
 } from "./bind-host.mjs";
@@ -265,6 +266,8 @@ OPTIONS:
 ENVIRONMENT VARIABLES:
   PORT                        Alternative to --port
   OH_BIND_HOST                Alternative to --host (default: 127.0.0.1)
+  OH_SANDBOX_BRIDGE_HOST      With OH_CONVERSATION_RUNTIME=docker: address for the API-only
+                              ingress sandboxes reach (default: detected Docker bridge gateway)
   OH_AUTOMATION_GIT_REF       Git ref for automation (overrides default version)
   OH_AUTOMATION_VERSION       Specific PyPI version for automation (default: ${DEFAULT_AUTOMATION_VERSION})
   OH_AUTOMATION_LOCAL_PATH    Absolute path to a local automation checkout (overridden only by --automation-git-ref)
@@ -387,7 +390,11 @@ function buildAutomationCommand(env = process.env) {
   };
 }
 
-async function buildConfig(args, env = process.env) {
+async function buildConfig(
+  args,
+  env = process.env,
+  { detectBridgeHost = detectDockerBridgeHost } = {},
+) {
   // Apply args to env for buildAutomationCommand
   if (args.automationGitRef) {
     env.OH_AUTOMATION_GIT_REF = args.automationGitRef;
@@ -491,12 +498,47 @@ async function buildConfig(args, env = process.env) {
     );
   }
 
+  // Docker conversation sandboxes reach host services as host.docker.internal,
+  // which Docker resolves to the bridge gateway. Keep the browser-facing
+  // listeners on loopback (so the session key can still be injected) and give
+  // sandboxes an API-only ingress on the bridge address. Where the bridge is
+  // not a local address (Docker Desktop), fall back to every interface.
+  const dockerConversations =
+    env.OH_CONVERSATION_RUNTIME === "docker" && launchAgentServer;
+  const explicitBindHost = args.host || env.OH_BIND_HOST;
+  const sandboxBridgeHost =
+    dockerConversations &&
+    (!explicitBindHost || isLoopbackBind(explicitBindHost))
+      ? env.OH_SANDBOX_BRIDGE_HOST || detectBridgeHost()
+      : null;
   const bindHost = resolveBindHost({
     flag: args.host,
     env:
       env.OH_BIND_HOST ||
-      (env.OH_CONVERSATION_RUNTIME === "docker" ? "0.0.0.0" : undefined),
+      (dockerConversations && !sandboxBridgeHost ? "0.0.0.0" : undefined),
   });
+  if (sandboxBridgeHost) {
+    await assertPortsFree(
+      [
+        {
+          name: `sandbox ingress on ${sandboxBridgeHost}`,
+          port: preferredIngressPort,
+        },
+      ],
+      sandboxBridgeHost,
+    );
+    logService(
+      "sandbox",
+      `Docker sandboxes reach the API at ${sandboxBridgeHost}:${preferredIngressPort} (host.docker.internal); the UI stays on ${bindHost}`,
+      c.dim,
+    );
+  } else if (dockerConversations && !explicitBindHost) {
+    logService(
+      "sandbox",
+      "The Docker bridge gateway is not a local address (Docker Desktop?); binding 0.0.0.0 so sandboxes can reach host services. Set OH_SANDBOX_BRIDGE_HOST to bind a specific address instead.",
+      c.yellow,
+    );
+  }
   if (!isLoopbackBind(bindHost) && !isPublic) {
     logService(
       "auth",
@@ -546,6 +588,7 @@ async function buildConfig(args, env = process.env) {
 
     verbose: args.verbose,
     bindHost,
+    sandboxBridgeHost,
   };
 }
 
@@ -808,6 +851,21 @@ function getLocalServiceRoutes(config) {
   }
 
   return routes;
+}
+
+// What a Docker sandbox may reach through the bridge ingress. The frontend is
+// deliberately absent: on a loopback bind it carries the injected session key,
+// and every container on the bridge network can connect to this listener.
+const SANDBOX_BRIDGE_ROUTE_PREFIXES = new Set([
+  AUTOMATION_ROUTE_PREFIX,
+  "/api",
+  "/server_info",
+]);
+
+function getSandboxBridgeRoutes(config) {
+  return getLocalServiceRoutes(config).filter(([prefix]) =>
+    SANDBOX_BRIDGE_ROUTE_PREFIXES.has(prefix),
+  );
 }
 
 function buildRouteArgs(routes) {
@@ -1178,6 +1236,39 @@ function startIngress(config) {
 }
 
 /**
+ * Expose the API routes, and nothing else, on the Docker bridge address that
+ * sandboxes reach as host.docker.internal. The browser-facing ingress stays on
+ * loopback; see `buildConfig` for when this runs.
+ */
+export function startSandboxBridgeIngress(config) {
+  logService(
+    "sandbox-ingress",
+    `Starting API-only ingress on ${config.sandboxBridgeHost}:${config.ingressPort}...`,
+    c.yellow,
+  );
+
+  return spawnService(
+    "sandbox-ingress",
+    "node",
+    [
+      join(projectRoot, "scripts", "ingress.mjs"),
+      "--port",
+      config.ingressPort.toString(),
+      ...bindHostArgs(config.sandboxBridgeHost),
+      "--runtime-services-info",
+      JSON.stringify(buildAutomationRuntimeServicesInfo(config)),
+      ...buildRouteArgs(getSandboxBridgeRoutes(config)),
+    ],
+    {
+      cwd: projectRoot,
+      color: c.yellow,
+      // The MARS bridge serves browsers; sandboxes have no use for it.
+      env: { MARS_WEB: "0" },
+    },
+  );
+}
+
+/**
  * Build the JSON-serializable runtime services info for an automation
  * stack. Backend-serving processes append this to `/server_info` so any
  * frontend connected to the backend can populate the agent's
@@ -1186,12 +1277,21 @@ function startIngress(config) {
 export function buildAutomationRuntimeServicesInfo(config, env = process.env) {
   const dockerConversationRuntime = env.OH_CONVERSATION_RUNTIME === "docker";
   const agentHostAlias = config.agentHostAlias ?? getAgentHostAlias(env);
+  // Sandboxes reach the host through the API-only bridge ingress, so the
+  // frontend is not theirs to reach.
+  const sandboxBridge = Boolean(config.sandboxBridgeHost);
   return buildRuntimeServicesInfo({
     mode: config.mode ?? "dev:automation",
     agentHostAlias,
     agentServerPort: config.agentServerPort,
     ingressPort: config.ingressPort,
-    frontendPort: config.launchFrontend ? config.vitePort : undefined,
+    ingressDescription: sandboxBridge
+      ? "API entry point on the host. Routes /api/automation/* to the " +
+        "automation backend and /api/* to the agent-server. The Canvas " +
+        "frontend is not reachable from sandboxes."
+      : undefined,
+    frontendPort:
+      config.launchFrontend && !sandboxBridge ? config.vitePort : undefined,
     // The same port hosts Vite in dynamic mode and a static-file server
     // in static mode. The launcher records this on the config so the
     // description shown to the agent matches reality.
@@ -1422,6 +1522,14 @@ function printBanner(config) {
       ) + `${c.green}${c.bold}║${c.reset}`,
     );
   }
+  if (config.sandboxBridgeHost) {
+    console.log(
+      ansiPadEnd(
+        `${c.green}${c.bold}║${c.reset}  Sandbox API:  ${c.cyan}http://${config.sandboxBridgeHost}:${config.ingressPort}/api${c.reset}`,
+        BOX_INNER,
+      ) + `${c.green}${c.bold}║${c.reset}`,
+    );
+  }
   if (config.launchAutomation) {
     console.log(
       ansiPadEnd(
@@ -1447,6 +1555,11 @@ function printBanner(config) {
     `  Ingress:         http://localhost:${config.ingressPort}/`,
     ...(config.launchFrontend
       ? [`  Main UI:         http://localhost:${config.ingressPort}/`]
+      : []),
+    ...(config.sandboxBridgeHost
+      ? [
+          `  Sandbox API:     http://${config.sandboxBridgeHost}:${config.ingressPort}/api (Docker sandboxes only)`,
+        ]
       : []),
     ...(config.launchAutomation
       ? [
@@ -1677,6 +1790,9 @@ async function main(options = {}) {
 
   // 6. Start ingress proxy (routes traffic only to running services)
   startIngress(config);
+  if (config.sandboxBridgeHost) {
+    startSandboxBridgeIngress(config);
+  }
 
   // Wait for ingress to start
   await delay(1000);

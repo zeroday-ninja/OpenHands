@@ -4,6 +4,7 @@ import {
   DEFAULT_BIND_HOST,
   applySessionKeyPolicy,
   bindHostArgs,
+  detectDockerBridgeHost,
   isLoopbackBind,
   resolveBindHost,
 } from "../../scripts/bind-host.mjs";
@@ -73,5 +74,46 @@ describe("bind-host", () => {
 
   it("emits --host for child processes", () => {
     expect(bindHostArgs("127.0.0.1")).toEqual(["--host", "127.0.0.1"]);
+  });
+});
+
+describe("detectDockerBridgeHost", () => {
+  const dockerReports = (stdout: string) => () => ({ status: 0, stdout });
+  const hostAddresses =
+    (...addresses: string[]) =>
+    () => ({ eth0: addresses.map((address) => ({ address })) });
+
+  it("returns the bridge gateway when this host owns it (native Docker Engine)", () => {
+    expect(
+      detectDockerBridgeHost({
+        run: dockerReports("172.17.0.1 \n"),
+        interfaces: hostAddresses("192.168.4.60", "172.17.0.1"),
+      }),
+    ).toBe("172.17.0.1");
+  });
+
+  it("returns null when the gateway lives elsewhere (Docker Desktop VM)", () => {
+    expect(
+      detectDockerBridgeHost({
+        run: dockerReports("172.17.0.1"),
+        interfaces: hostAddresses("192.168.4.60"),
+      }),
+    ).toBeNull();
+  });
+
+  it("returns null when the docker CLI fails or is missing", () => {
+    const interfaces = hostAddresses("172.17.0.1");
+    expect(
+      detectDockerBridgeHost({
+        run: () => ({ status: 1, stdout: "" }),
+        interfaces,
+      }),
+    ).toBeNull();
+    expect(
+      detectDockerBridgeHost({
+        run: () => ({ status: null, error: new Error("spawn docker ENOENT") }),
+        interfaces,
+      }),
+    ).toBeNull();
   });
 });

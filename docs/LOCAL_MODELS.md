@@ -14,6 +14,11 @@ Verified on 2026-10-15 on Linux (Docker Engine 29) with:
 - LM Studio llama.cpp runtimes 2.23.1, 2.49.0 and 2.58.1;
 - the model `openai/gpt-oss-20b`.
 
+How sandboxes reach Canvas's own services is covered in
+[Docker sandboxes: networking and access](./DOCKER_SANDBOXES.md). LLM calls
+don't go through that path; they go straight to the model server, as described
+below.
+
 > [!IMPORTANT]
 > With gpt-oss, LM Studio rejects OpenHands' tool-calling requests (see
 > [gpt-oss tool calls fail](#gpt-oss-tool-calls-fail-with-peg-native-format)).
