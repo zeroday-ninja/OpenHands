@@ -246,7 +246,7 @@ How to write and prove new entries: [../mapping.md](../mapping.md).
 | F05 | [Composer, slash commands and plan mode](F05-composer.md) | send, drafts, attachments, model pill, slash commands, `/goal`, plan mode, dictation | home and conversation composer | LLM | 25 |
 | F06 | [Agent activity](F06-agent-activity.md) | messages, tool events, thinking, empty state, confirmation mode, stop/resume, errors, branching | `/conversations/<id>` | LLM | 36 |
 | F07 | [Conversation page, header and menu](F07-conversation-page.md) | title rename, status menu, ⋯ menu (skills, hooks, tools, export, download, cost, stop, delete), git bar, overview | sidebar row, URL, `/panel` | LLM; fixture repo; Cloud items blocked | 26 |
-| F08 | [Workspace drawer: files and changes](F08-workspace-files-and-changes.md) | Files tab, Commits and uncommitted changes, diff viewer, file links in chat | panel toggle, file links | LLM; fixture repo | 34 |
+| F08 | [Workspace drawer: files and changes](F08-workspace-files-and-changes.md) | Files tab, Commits and uncommitted changes, diff viewer, file links in chat | panel toggle, file links | LLM; fixture repo | 35 |
 | F09 | [Settings shell and navigation](F09-settings-shell.md) | settings navigation, phone hub, deep links, update card, backend note | gear, command menu, URLs | baseline; deep links before `llm preset` | 26 |
 | F10 | [LLM profiles](F10-llm-profiles.md) | list, add, edit, rename, duplicate, delete, default, advanced fields, validation | `/settings/llm` | fresh run; DeepSeek key | 34 |
 | F11 | [Provider connections](F11-provider-connections.md) | add, edit, rotate key, delete connections; profiles from a connection | `/settings/llm` | fresh run; DeepSeek key | 21 |
@@ -262,22 +262,23 @@ How to write and prove new entries: [../mapping.md](../mapping.md).
 | F21 | [Automations dashboard and actions](F21-automations-dashboard.md) | cards and list, filters, sort, Run now, enable, export, import, delete, pin | `/automations` | LLM; automation service | 35 |
 | F22 | [Creating automations](F22-automation-creation.md) | templates, setup dialog, custom automations, import | `/automations/templates`, `/automations/new/<id>` | LLM | 29 |
 | F23 | [Automation detail, runs and editing](F23-automation-detail.md) | detail page, runs, logs, edit dialog, triggers, debug | `/automations/<id>` | LLM; runs | 41 |
-| F24 | [Automation Git Sync](F24-git-sync.md) | configure, sync cycles, encryption, status | `/automations/git-sync` | `fixture git-repo` | 26 |
+| F24 | [Automation Git Sync (single repository)](F24-git-sync.md) | configure, sync cycles, encryption, status on a backend without the remotes API | `/automations/git-sync` | `fixture git-repo`; an automation backend without `git-sync/remotes` (the pinned release) | 26 |
 | F25 | [Backends, Cloud and sharing](F25-backends-and-cloud.md) | add, edit, remove and switch backends, per-backend consent, Cloud login, shared pages | backend selector | a second stack; Cloud account (blocked) | 33 |
 | F26 | [Launcher modes, Docker, desktop and library](F26-runtime-variants.md) | launcher flags, partial stacks, LAN bind, Docker, Electron, embeddable library | a terminal | Docker/Electron where available | 34 |
 | F27 | [Workspace tools](F27-workspace-tools.md) | terminal, browser, planner, task list, usage, `canvas_ui_control` | drawer tabs | LLM | 30 |
 | F28 | [Automation setup page](F28-automation-setup-page.md) | blank form, kind toggle, schedule presets, event fields, timeout, draft save and validation, draft Test, Create | **Add Automation → Create Automation**, `/automations/setup`, draft Resume, kebab Edit | automation service; no LLM | 13 |
+| F29 | [Git Sync repositories](F29-git-sync-repositories.md) | add, sync, configure, promote and remove repositories, per-automation assignment, empty and no-default states, fallback to F24 | `/automations/git-sync` | an automation backend with `git-sync/remotes` (`launch --automation-path`); `fixture git-remote` | 16 |
 
-28 families, 782 sub-features. `control-openhands map ids` lists every ID with its file.
+29 families, 799 sub-features. `control-openhands map ids` lists every ID with its file.
 
 ### Neighbouring families
 
 Several pages are shared. Each behavior has one owner; the others reference its ID instead of re-mapping it.
 
-- Conversation page: the composer is F05, what the agent produces is F06, the header and its menus are F07, the drawer is F08 (files, changes) and F27 (tools).
+- Conversation page: the composer is F05, what the agent produces is F06, the header and its menus are F07, the drawer is F08 (files, changes, including chat path and Markdown-link openers) and F27 (tools).
 - Starting work: Home is F03; the recommended-automation launcher is shared by F01 (onboarding), F03 (rail) and F22 (templates), and owned by F22.
 - LLM settings: profiles are F10, provider connections F11 (same page), routers F12, agent profiles F13.
-- Automations: dashboard F21, creation F22, detail and runs F23, Git Sync F24; the setup page's form, drafts and Test are F28 (F22 keeps the agent-assisted recipes, F23 owns edit mode).
+- Automations: dashboard F21, creation F22, detail and runs F23, Git Sync F24 (the single-repository page a backend without the remotes API shows; also the page's health, permission and loading gates) and F29 (the repositories page with the remotes API); the setup page's form, drafts and Test are F28 (F22 keeps the agent-assisted recipes, F23 owns edit mode).
 - Customize: MCP F17, skills F18, plugins F19, apps F20; the hub and its navigation are in F17.
 - Backends: adding and switching backends is F25; launcher flags that create them are F26.
 
