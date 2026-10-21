@@ -1223,7 +1223,9 @@ export function AutomationSetupPanel({
     if (configuredPlugins.length > 0) {
       body.plugins = configuredPlugins;
     }
-    if (model.trim()) body.model = model.trim();
+    // An agent profile owns its model; the backend refuses both at once.
+    if (agentProfileId.trim()) body.agent_profile_id = agentProfileId.trim();
+    else if (model.trim()) body.model = model.trim();
     return body;
   };
   const buildCustomBody = (tarballPath: string): SetupRequestBody =>
@@ -2018,7 +2020,11 @@ export function AutomationSetupPanel({
                         updateField("repository", value)
                       }
                       model={model}
+                      agentProfileId={agentProfileId}
                       onModelChange={(value) => updateField("model", value)}
+                      onAgentProfileChange={(value) =>
+                        updateField("agentProfileId", value)
+                      }
                     />
                   ) : hasExistingCustomBundle ? (
                     <ExistingCustomBundleSummary
