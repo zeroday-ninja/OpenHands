@@ -285,6 +285,35 @@ agent-server applies them as the provider's separate model and effort session
 options. Effort levels need an agent-server with ACP effort support; with an
 older one the Effort choice doesn't appear.
 
+### Failing over to another runtime on usage limits
+
+Subscription plans cap how much Claude Code or Codex you can use in a window.
+When the agent reports that its limit is exhausted, the conversation normally
+ends with a **Usage limit reached** error carrying the provider's own notice
+(the reset time, or a link to buy more usage). An ACP profile can instead name
+a runtime to fall back to:
+
+- **Fallback on usage limits** — another built-in runtime (for a Claude Code
+  profile, Codex; for a Codex profile, Claude Code; and so on). **None** keeps
+  the error. The runtime itself is never offered.
+- **Fallback model** — optional; `<model>` or `<model>/<effort>` for that
+  runtime. Blank lets it pick its default.
+
+When the limit hits, the agent-server replaces the conversation's ACP
+subprocess with one for the fallback runtime, in the same sandbox or
+workspace, replays the conversation so far to it as context, and asks it the
+same message again. The chat shows a note naming the limit and the switch, the
+runtime chip and model picker follow the new runtime, and later messages go to
+it. Both runtimes' credentials must reach the profile (the default secret
+scope does). Failover happens once per conversation: a limit on the fallback
+runtime ends the run with the usual error.
+
+The fields need an agent-server that advertises `acp_runtime_failover_v1` in
+`/server_info`; on an older one the picker doesn't appear and nothing is sent.
+The same agent-server also accepts a manual switch,
+`POST /api/conversations/{id}/switch_acp_server`, which Canvas doesn't expose
+yet.
+
 Cloud can't ask before a conversation starts, so until then the model field
 offers **Agent default** and a custom model ID. Each conversation's session
 reports its models, which the in-chat picker offers for switching mid-conversation;
