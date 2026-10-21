@@ -99,6 +99,48 @@ describe("assistant chat Markdown path linking", () => {
     expect(screen.getByText("profile.md").tagName).toBe("CODE");
   });
 
+  it("opens a Markdown link to a sandbox file in the Files drawer instead of navigating", async () => {
+    const user = userEvent.setup();
+    ConversationService.setCurrentConversation({
+      id: "conv-1",
+      workspace: { working_dir: "/workspace" },
+    } as never);
+
+    renderAgentMessage(
+      "The draft is in [prompt.md](/workspace/automations/hazard/prompt.md) with its [request template](/workspace/automations/hazard/request.template.json).",
+      [],
+    );
+
+    const links = screen.getAllByTestId("markdown-file-path-link");
+    expect(links).toHaveLength(2);
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+
+    await user.click(links[1]);
+
+    expect(openWorkspaceFile).toHaveBeenCalledWith(
+      "automations/hazard/request.template.json",
+      "conv-1",
+    );
+  });
+
+  it("keeps web links, app routes and anchors as ordinary links", () => {
+    renderAgentMessage(
+      "See [the docs](https://example.com/guide), [settings](/settings/app) and [below](#notes).",
+    );
+
+    expect(
+      screen.queryByTestId("markdown-file-path-link"),
+    ).not.toBeInTheDocument();
+    const hrefs = screen
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href"));
+    expect(hrefs).toEqual([
+      "https://example.com/guide",
+      "/settings/app",
+      "#notes",
+    ]);
+  });
+
   it("keeps path code nested in a Markdown link as plain code", () => {
     renderAgentMessage("See [`src/app.ts`](https://example.com)");
 
