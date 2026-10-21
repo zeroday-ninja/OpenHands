@@ -345,12 +345,16 @@ describe("runSelfUpdate", () => {
     expect(result.ok).toBe(true);
     const commands = calls.map((c) => c.slice(1).join(" "));
     expect(commands).toContain(
-      "fetch --no-tags https://example.test/upstream.git tag v1.29.0",
+      "fetch --no-tags https://example.test/upstream.git refs/tags/v1.29.0",
     );
-    expect(commands).toContain("merge --no-edit --no-ff v1.29.0");
+    expect(commands).toContain(
+      "merge --no-ff -m Merge release v1.29.0 from https://example.test/upstream.git FETCH_HEAD",
+    );
     expect(commands.at(-1)).toBe("ci --no-audit --no-fund");
     expect(commands.indexOf("pull --ff-only")).toBeLessThan(
-      commands.indexOf("merge --no-edit --no-ff v1.29.0"),
+      commands.indexOf(
+        "merge --no-ff -m Merge release v1.29.0 from https://example.test/upstream.git FETCH_HEAD",
+      ),
     );
   });
 
