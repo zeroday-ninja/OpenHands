@@ -413,10 +413,17 @@ export async function runSelfUpdate(
     if (targetVersion) {
       // After the pull and before npm ci: fetch the release tag, then merge
       // it (see the loop), unless the checkout already carries that version.
+      // The tag is fetched into FETCH_HEAD only: creating a local tag could
+      // clash with one the checkout already carries under that name.
       steps.splice(steps.length - 1, 0, {
         label: `merge release v${targetVersion}`,
         command: git,
-        args: ["fetch", "--no-tags", upstreamRepo, "tag", `v${targetVersion}`],
+        args: [
+          "fetch",
+          "--no-tags",
+          upstreamRepo,
+          `refs/tags/v${targetVersion}`,
+        ],
         cwd: projectRoot,
         mergeTag: `v${targetVersion}`,
         onlyIfOlderThan: targetVersion,
@@ -447,7 +454,13 @@ export async function runSelfUpdate(
       result = await runStep(
         {
           command: git,
-          args: ["merge", "--no-edit", "--no-ff", step.mergeTag],
+          args: [
+            "merge",
+            "--no-ff",
+            "-m",
+            `Merge release ${step.mergeTag} from ${upstreamRepo}`,
+            "FETCH_HEAD",
+          ],
           cwd: projectRoot,
         },
         options,
