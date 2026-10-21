@@ -1401,6 +1401,22 @@ describe("toAppConversation", () => {
     expect(result.acp_server).toBe("claude-code");
   });
 
+  it("prefers the agent's own acp_server over the creation-time tag", () => {
+    // A usage-limit failover (or a manual runtime switch) replaces the
+    // agent in place; the ``acpserver`` tag still names the runtime the
+    // conversation started on, so the live agent's key must win.
+    const result = toAppConversation({
+      ...baseInfo,
+      agent: {
+        kind: "ACPAgent",
+        acp_server: "codex",
+        llm: { model: "acp-managed" },
+      },
+      tags: { [ACP_SERVER_TAG_KEY]: "claude-code" },
+    });
+    expect(result.acp_server).toBe("codex");
+  });
+
   it("leaves acp_server null when an ACP conversation has no tag stamped", () => {
     // Older conversations created before the tag was added, or ACP
     // conversations created via the raw API, won't have the tag. The

@@ -21,6 +21,8 @@ import {
 } from "#/constants/acp-providers";
 import { I18nKey } from "#/i18n/declaration";
 import {
+  ACP_DEFAULT_EFFORT,
+  composeAcpModelEffort,
   selectableAcpEfforts,
   splitAcpModelEffort,
 } from "#/utils/acp-model-effort";
@@ -133,8 +135,19 @@ export function useChatInputModelState(): ChatInputModelState {
   const sessionEfforts = isActiveAcpConversation
     ? (conversation?.acp_available_efforts ?? null)
     : null;
+  // The live session reports the effort it actually runs at; the model id
+  // only carries one when the last switch asked for it, so a model switch
+  // without a level would otherwise read as the agent default while the
+  // runtime keeps the previous level.
+  const sessionEffort =
+    isActiveAcpConversation &&
+    conversation?.acp_current_effort &&
+    conversation.acp_current_effort !== ACP_DEFAULT_EFFORT
+      ? conversation.acp_current_effort
+      : null;
   const selectedValue = selectedModelId;
   const selected = splitAcpModelEffort(selectedValue, sessionEfforts ?? []);
+  const selectedEffort = selected.effort ?? sessionEffort;
   const effortModelId =
     selected.modelId ??
     (isActiveAcpConversation
@@ -150,8 +163,12 @@ export function useChatInputModelState(): ChatInputModelState {
 
   let displayModel = currentModelId;
   if (isAcpContext) {
+    const displayId =
+      currentModelId && !selected.effort && sessionEffort
+        ? composeAcpModelEffort(currentModelId, sessionEffort)
+        : currentModelId;
     displayModel =
-      labelForAcpModel(currentModelId, liveModels) ??
+      labelForAcpModel(displayId, liveModels) ??
       // The next conversation starts on a default no one has reported yet.
       (isHomeAcp ? t(I18nKey.SETTINGS$AGENT_MODEL_AGENT_DEFAULT) : null);
   }
@@ -185,7 +202,7 @@ export function useChatInputModelState(): ChatInputModelState {
     currentModelId,
     selectedModelId: selected.modelId,
     selectedValue,
-    selectedEffort: selected.effort,
+    selectedEffort,
     availableEfforts,
     effortModelId,
     availableAcpModels,

@@ -129,10 +129,13 @@ export function ChatInputModelMenuContent({
     id: string | null;
     efforts?: string[];
   }) => {
-    // Keep the chosen effort when the new model offers it.
+    // Keep the chosen effort when the new model offers it. A live session
+    // reports its levels for the current model only (no per-model list), so
+    // those stand in for a row without its own; the agent keeps the session's
+    // effort across a model switch, and the saved id should say the same.
+    const offeredEfforts = option.efforts ?? model.availableEfforts;
     const keepEffort =
-      !!model.selectedEffort &&
-      !!option.efforts?.includes(model.selectedEffort);
+      !!model.selectedEffort && offeredEfforts.includes(model.selectedEffort);
     switchTo(
       option.id &&
         composeAcpModelEffort(

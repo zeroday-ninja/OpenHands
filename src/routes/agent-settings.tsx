@@ -52,6 +52,7 @@ import { useToolCatalog } from "#/hooks/query/use-tool-catalog";
 import { flattenMcpConfig } from "#/utils/mcp-installed-servers";
 import { parseMcpConfig } from "#/utils/mcp-config";
 import {
+  agentProfileSupportsAcpFallback,
   agentProfileSupportsSecretRefs,
   agentProfileSupportsInstructions,
   agentProfileSupportsTools,
@@ -67,6 +68,9 @@ type AgentSettingsSnapshot = {
   commandText: string;
   acpModel: string;
   isCustomAcpModel: boolean;
+  /** Provider key of the usage-limit fallback runtime; "" when none. */
+  acpFallbackServer: string;
+  acpFallbackModel: string;
 };
 
 const TOOL_CONCURRENCY_FIELD_KEY = "tool_concurrency_limit";
@@ -80,11 +84,14 @@ const COMMAND_PLACEHOLDER_FALLBACK = "npx -y <package-name>";
 const ACP_CUSTOM_MODEL_KEY = "__custom_model__";
 const ACP_AGENT_DEFAULT_MODEL_KEY = "__agent_default_model__";
 const ACP_AGENT_DEFAULT_EFFORT_KEY = "__agent_default_effort__";
+const ACP_NO_FALLBACK_KEY = "__no_fallback__";
 const EMPTY_AGENT_SETTINGS_SNAPSHOT: AgentSettingsSnapshot = {
   agentType: "openhands",
   commandText: "",
   acpModel: "",
   isCustomAcpModel: false,
+  acpFallbackServer: "",
+  acpFallbackModel: "",
 };
 
 function toStringArray(value: unknown): string[] {
@@ -153,6 +160,12 @@ export type AgentProfileFieldsDraft =
       acp_model: string | null;
       acp_command: string | null;
       acp_args: string[] | null;
+      /**
+       * Runtime the conversation fails over to on an exhausted usage limit,
+       * and its model. Only written on servers that accept the fields.
+       */
+      acp_fallback_server?: string | null;
+      acp_fallback_model?: string | null;
     };
 
 /** Live form state the pure {@link buildAgentProfileFields} builder reads. */
@@ -164,6 +177,11 @@ export interface AgentProfileFieldsInput {
   isDefaultProviderCommand: boolean;
   commandTokens: string[];
   acpModel: string;
+  /** Provider key of the usage-limit fallback runtime; "" or absent = none. */
+  acpFallbackServer?: string;
+  acpFallbackModel?: string;
+  /** Whether the backend's profile model accepts the fallback fields. */
+  acpFallbackSupportedOnProfile?: boolean;
   toolConcurrencyField?: SettingsFieldSchema;
   toolConcurrency: string | boolean;
   mcpMode: ProfileScopeMode;
@@ -211,6 +229,9 @@ export function buildAgentProfileFields(
     isDefaultProviderCommand,
     commandTokens,
     acpModel,
+    acpFallbackServer = "",
+    acpFallbackModel = "",
+    acpFallbackSupportedOnProfile = false,
     toolConcurrencyField,
     toolConcurrency,
     mcpMode,
@@ -238,6 +259,20 @@ export function buildAgentProfileFields(
   if (isAcp) {
     const isBuiltinDefault =
       isDefaultProviderCommand && selectedPreset !== ACP_CUSTOM_PRESET_KEY;
+    // A fallback equal to the runtime itself is no fallback; the model only
+    // means something alongside a runtime.
+    const fallbackServer =
+      acpFallbackServer && acpFallbackServer !== selectedPreset
+        ? acpFallbackServer
+        : null;
+    const fallback = acpFallbackSupportedOnProfile
+      ? {
+          acp_fallback_server: fallbackServer,
+          acp_fallback_model: fallbackServer
+            ? acpFallbackModel.trim() || null
+            : null,
+        }
+      : {};
     return {
       agent_kind: "acp",
       ...mcpRefs,
@@ -248,6 +283,7 @@ export function buildAgentProfileFields(
         ? null
         : formatCommand(commandTokens) || null,
       acp_args: null,
+      ...fallback,
     };
   }
   const fields: Extract<AgentProfileFieldsDraft, { agent_kind: "openhands" }> =
@@ -512,6 +548,11 @@ export function AgentSettingsScreen({
   const [commandText, setCommandText] = useState("");
   const [acpModel, setAcpModel] = useState("");
   const [isCustomAcpModel, setIsCustomAcpModel] = useState(false);
+  // Usage-limit failover: the runtime a conversation switches to when this
+  // one's usage window is exhausted, and the model it runs there.
+  const acpFallbackSupportedOnProfile = agentProfileSupportsAcpFallback();
+  const [acpFallbackServer, setAcpFallbackServer] = useState("");
+  const [acpFallbackModel, setAcpFallbackModel] = useState("");
 
   // ACP credentials live alongside the agent spec, so the form owns the
   // credential form and hands it to the editor's Save. Called unconditionally
@@ -589,17 +630,29 @@ export function AgentSettingsScreen({
       const nextIsCustomAcpModel = !!normalizedSavedModel && !provider;
       setAcpModel(nextAcpModel);
       setIsCustomAcpModel(nextIsCustomAcpModel);
+      const rawFallbackServer = agentSettingsOverride?.acp_fallback_server;
+      const nextFallbackServer =
+        typeof rawFallbackServer === "string" ? rawFallbackServer : "";
+      const rawFallbackModel = agentSettingsOverride?.acp_fallback_model;
+      const nextFallbackModel =
+        typeof rawFallbackModel === "string" ? rawFallbackModel.trim() : "";
+      setAcpFallbackServer(nextFallbackServer);
+      setAcpFallbackModel(nextFallbackModel);
       setLoadedSnapshot({
         agentType: "acp",
         commandText: renderedCommandText,
         acpModel: nextAcpModel,
         isCustomAcpModel: nextIsCustomAcpModel,
+        acpFallbackServer: nextFallbackServer,
+        acpFallbackModel: nextFallbackModel,
       });
     } else {
       setAgentType("openhands");
       setCommandText("");
       setAcpModel("");
       setIsCustomAcpModel(false);
+      setAcpFallbackServer("");
+      setAcpFallbackModel("");
       setLoadedSnapshot(EMPTY_AGENT_SETTINGS_SNAPSHOT);
     }
   }, [agentSettingsOverride]);
@@ -699,7 +752,9 @@ export function AgentSettingsScreen({
     (agentType === "acp"
       ? commandText !== loadedSnapshot.commandText ||
         acpModel !== loadedSnapshot.acpModel ||
-        isCustomAcpModel !== loadedSnapshot.isCustomAcpModel
+        isCustomAcpModel !== loadedSnapshot.isCustomAcpModel ||
+        acpFallbackServer !== loadedSnapshot.acpFallbackServer ||
+        acpFallbackModel !== loadedSnapshot.acpFallbackModel
       : toolConcurrency !== initialToolConcurrency || systemPromptDirty);
   const credentialsDirty = acpCredentialForm.isDirty;
   const isAnyDirty = settingsDirty || credentialsDirty;
@@ -791,6 +846,16 @@ export function AgentSettingsScreen({
     }
     return null;
   })();
+  // Failover can only target a built-in runtime other than this one.
+  const fallbackChoices = acpProviders.filter(
+    (provider) => provider.key !== selectedPreset,
+  );
+  const selectedFallbackProvider =
+    fallbackChoices.find((provider) => provider.key === acpFallbackServer) ??
+    null;
+  const selectedFallbackKey = selectedFallbackProvider
+    ? selectedFallbackProvider.key
+    : ACP_NO_FALLBACK_KEY;
   const selectedModelIsSuggestion = modelSuggestions.some(
     ({ id }) => id === acpBaseModel.trim(),
   );
@@ -820,6 +885,9 @@ export function AgentSettingsScreen({
       isDefaultProviderCommand,
       commandTokens,
       acpModel,
+      acpFallbackServer,
+      acpFallbackModel,
+      acpFallbackSupportedOnProfile,
       toolConcurrencyField,
       toolConcurrency,
       mcpMode,
@@ -1440,6 +1508,55 @@ export function AgentSettingsScreen({
           )}
           <Typography.Text className="text-xs text-[#717888]">
             {t(I18nKey.SETTINGS$AGENT_MODEL_HINT)}
+          </Typography.Text>
+        </div>
+      )}
+
+      {isAcp && acpFallbackSupportedOnProfile && fallbackChoices.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <SettingsDropdownInput
+            testId="agent-fallback-selector"
+            name="agent-fallback"
+            label={t(I18nKey.SETTINGS$AGENT_FALLBACK_SERVER)}
+            items={[
+              {
+                key: ACP_NO_FALLBACK_KEY,
+                label: t(I18nKey.SETTINGS$AGENT_FALLBACK_NONE),
+              },
+              ...fallbackChoices.map((provider) => ({
+                key: provider.key,
+                label: provider.display_name,
+              })),
+            ]}
+            selectedKey={selectedFallbackKey}
+            onSelectionChange={(key) => {
+              if (!key) return;
+              const next = String(key);
+              setAcpFallbackServer(next === ACP_NO_FALLBACK_KEY ? "" : next);
+              setAcpFallbackModel("");
+            }}
+          />
+          {selectedFallbackProvider && (
+            <SettingsInput
+              testId="agent-fallback-model-input"
+              label={t(I18nKey.SETTINGS$AGENT_FALLBACK_MODEL)}
+              type="text"
+              className="w-full"
+              value={acpFallbackModel}
+              placeholder={
+                getAcpPreferredDefaultModel(selectedFallbackProvider.key) ??
+                t(I18nKey.SETTINGS$AGENT_MODEL_AGENT_DEFAULT)
+              }
+              showOptionalTag
+              onChange={(value) => setAcpFallbackModel(value)}
+            />
+          )}
+          <Typography.Text className="text-xs text-[#717888]">
+            {t(I18nKey.SETTINGS$AGENT_FALLBACK_HINT, {
+              agent:
+                selectedProvider?.display_name ??
+                t(I18nKey.SETTINGS$AGENT_PRESET_CUSTOM),
+            })}
           </Typography.Text>
         </div>
       )}

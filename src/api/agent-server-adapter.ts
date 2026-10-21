@@ -430,12 +430,14 @@ export function toAppConversation(
   // Only surface ``acp_server`` for ACP conversations even if the wire
   // payload accidentally carries an ``acpserver`` tag on an OpenHands
   // conversation — the chip is identity info for the ACP CLI subprocess,
-  // and showing it on a non-ACP conversation would be a lie. Fall back to the
-  // agent's own ``acp_server`` (#3692) when the tag is missing — a profile
-  // launch doesn't stamp the tag, so tag-only reads would drop the ACP model
-  // picker and degrade the chip to a generic "ACP" (#1571).
+  // and showing it on a non-ACP conversation would be a lie. The agent's own
+  // ``acp_server`` (#3692) is the live runtime and wins: a usage-limit
+  // failover or a manual runtime switch replaces the agent, while the
+  // ``acpserver`` tag still names the runtime the conversation was created
+  // with. The tag remains the fallback for older servers whose agent carries
+  // no key, so the chip never degrades to a generic "ACP" (#1571).
   const acpServer = isAcp
-    ? (info.tags?.[ACP_SERVER_TAG_KEY] ?? info.agent?.acp_server ?? null)
+    ? (info.agent?.acp_server ?? info.tags?.[ACP_SERVER_TAG_KEY] ?? null)
     : null;
   return {
     id: info.id,

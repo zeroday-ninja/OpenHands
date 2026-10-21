@@ -53,10 +53,12 @@ const CLAUDE_MODELS = [
 
 const profileSupportsSecretRefsMock = vi.hoisted(() => vi.fn(() => true));
 const profileSupportsInstructionsMock = vi.hoisted(() => vi.fn(() => false));
+const profileSupportsAcpFallbackMock = vi.hoisted(() => vi.fn(() => true));
 vi.mock("#/api/agent-profiles-service/profile-field-support", () => ({
   agentProfileSupportsSecretRefs: () => profileSupportsSecretRefsMock(),
   agentProfileSupportsInstructions: () => profileSupportsInstructionsMock(),
   agentProfileSupportsTools: () => true,
+  agentProfileSupportsAcpFallback: () => profileSupportsAcpFallbackMock(),
 }));
 
 // The secret picker lists the user's saved secrets; stub the query so these
@@ -142,6 +144,7 @@ describe("AgentSettingsScreen", () => {
     toastMocks.error.mockClear();
     toastMocks.warning.mockClear();
     profileSupportsSecretRefsMock.mockReturnValue(true);
+    profileSupportsAcpFallbackMock.mockReturnValue(true);
     savedSecretsMock.mockReturnValue([
       { name: "GITHUB_TOKEN", description: "repo access" },
       { name: "DATADOG_API_KEY" },
@@ -308,6 +311,61 @@ describe("AgentSettingsScreen", () => {
     expect(control().buildAgentProfileFields()).toMatchObject({
       acp_model: "haiku",
     });
+  });
+
+  it("loads the usage-limit fallback runtime and saves it with its model", async () => {
+    const user = userEvent.setup();
+    const { control } = renderAgentSettingsScreen({
+      agentSettingsOverride: {
+        ...CLAUDE_PROFILE,
+        acp_fallback_server: "codex",
+        acp_fallback_model: "gpt-6-astra/high",
+      },
+    });
+
+    await screen.findByTestId("agent-command-input");
+    expect(screen.getByLabelText("SETTINGS$AGENT_FALLBACK_SERVER")).toHaveValue(
+      getClientAcpProvider("codex")!.display_name,
+    );
+    expect(screen.getByTestId("agent-fallback-model-input")).toHaveValue(
+      "gpt-6-astra/high",
+    );
+    expect(control().buildAgentProfileFields()).toMatchObject({
+      acp_fallback_server: "codex",
+      acp_fallback_model: "gpt-6-astra/high",
+    });
+
+    // The runtime itself is never offered as its own fallback; choosing none
+    // clears the model with it.
+    await user.click(screen.getByLabelText("SETTINGS$AGENT_FALLBACK_SERVER"));
+    expect(
+      screen.queryByRole("option", {
+        name: getClientAcpProvider("claude-code")!.display_name,
+      }),
+    ).toBeNull();
+    await user.click(
+      await screen.findByRole("option", {
+        name: "SETTINGS$AGENT_FALLBACK_NONE",
+      }),
+    );
+    expect(screen.queryByTestId("agent-fallback-model-input")).toBeNull();
+    expect(control().buildAgentProfileFields()).toMatchObject({
+      acp_fallback_server: null,
+      acp_fallback_model: null,
+    });
+  });
+
+  it("hides the fallback on a backend whose profiles predate it and writes no such fields", async () => {
+    profileSupportsAcpFallbackMock.mockReturnValue(false);
+    const { control } = renderAgentSettingsScreen({
+      agentSettingsOverride: CLAUDE_PROFILE,
+    });
+
+    await screen.findByTestId("agent-command-input");
+    expect(screen.queryByTestId("agent-fallback-selector")).toBeNull();
+    expect(control().buildAgentProfileFields()).not.toHaveProperty(
+      "acp_fallback_server",
+    );
   });
 
   it("offers OpenCode and leaves its default command to the profile resolver", async () => {
@@ -703,6 +761,8 @@ describe("AgentSettingsScreen", () => {
       acp_command: null,
       acp_args: null,
       acp_model: null,
+      acp_fallback_server: null,
+      acp_fallback_model: null,
     });
   });
 
