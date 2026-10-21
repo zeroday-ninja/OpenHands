@@ -36,6 +36,7 @@ Source: `src/routes/conversation.tsx`, `src/components/features/conversation/`, 
 - `F07.git-control-bar-send`: the Pull, Push and Pull Request chips send their git prompt to the agent at once.
 - `F07.cloud-only`: Share publicly, Connect Repo, `task-<uuid>` start URLs, paused-sandbox resume, archived read-only state and the shared-conversation redirect exist only on a Cloud backend.
 - `F07.phone`: at 390 px the header keeps its controls and the info dialogs fit the viewport.
+- `F07.acp-failover`: in a conversation on an ACP profile with a **Fallback on usage limits** runtime (`F13.acp-fallback`), an agent reply that the runtime's usage limit is exhausted does not end the run: the chat shows an agent note `<Runtime> reached its usage limit: <notice> … Switching to <Fallback> (<model>) and continuing.`, the fallback runtime answers the same message with the history replayed to it, the conversation's `acp_server` and model picker follow the fallback runtime, and later messages go to it. Without a fallback the run ends with the **Usage limit reached** banner (`ACPUsageLimit`). Needs `acp_runtime_failover_v1` on the agent-server.
 
 ## How to get to it (user POV)
 
