@@ -16,6 +16,16 @@ export function agentProfileSupportsTools(): boolean {
   return getActiveBackend().backend.kind !== "cloud";
 }
 
+/** Local only: cloud loads skills from its own catalog. */
+export function agentProfileSupportsSkills(): boolean {
+  return getActiveBackend().backend.kind !== "cloud";
+}
+
+/** Local only: cloud backends keep routers in the organization's store. */
+export function agentProfileSupportsRouter(): boolean {
+  return getActiveBackend().backend.kind !== "cloud";
+}
+
 /**
  * Local only, and only on an agent-server whose ACP profiles accept
  * `acp_fallback_server` / `acp_fallback_model` (the profile model rejects
