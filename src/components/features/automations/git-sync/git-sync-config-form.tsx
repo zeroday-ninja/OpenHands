@@ -13,10 +13,16 @@ import {
 import { getApiErrorMessage } from "#/utils/api-error-message";
 import {
   useCheckGitSyncConfig,
+  useCheckGitSyncRemote,
+  useCreateGitSyncRemote,
   useUpdateGitSyncConfig,
+  useUpdateGitSyncRemote,
 } from "#/hooks/query/use-git-sync";
 import type {
+  GitSyncCheckResponse,
   GitSyncConfigUpdateRequest,
+  GitSyncRemoteStatus,
+  GitSyncRemoteUpdateRequest,
   GitSyncStatus,
 } from "#/types/git-sync";
 
@@ -29,6 +35,31 @@ import type {
  */
 const SAVE_AND_SYNC = "git-sync-save-and-sync";
 
+/** What a repository about to be added starts from: nothing configured. */
+export const NEW_REMOTE_STATUS: GitSyncStatus = {
+  enabled: true,
+  repo_url: "",
+  branch: "main",
+  path: "automations",
+  encryption_enabled: false,
+  interval_seconds: 0,
+  last_synced_commit: null,
+  last_synced_at: null,
+  last_error: null,
+  last_error_at: null,
+  dirty_count: 0,
+};
+
+/**
+ * Which repository the form edits. Absent, it edits the organization's single
+ * repository through the legacy config endpoint. With an `id` it edits that
+ * remote; with `id: null` it adds a new one.
+ */
+export interface GitSyncFormRemote {
+  id: string | null;
+  label: string;
+}
+
 interface GitSyncConfigFormProps {
   status: GitSyncStatus;
   canManage: boolean;
@@ -38,17 +69,33 @@ interface GitSyncConfigFormProps {
    * starting a cycle nothing on the page is watching.
    */
   onSyncNow: () => void;
+  remote?: GitSyncFormRemote;
+  /** A new remote was added; `thenSync` when "Add and sync now" was pressed. */
+  onCreated?: (remote: GitSyncRemoteStatus, thenSync: boolean) => void;
+  /** Rendered as a Cancel button when given (the add-repository form). */
+  onCancel?: () => void;
 }
 
 export function GitSyncConfigForm({
   status,
   canManage,
   onSyncNow,
+  remote,
+  onCreated,
+  onCancel,
 }: GitSyncConfigFormProps) {
   const { t } = useTranslation("openhands");
-  const { mutate: updateConfig, isPending } = useUpdateGitSyncConfig();
-  const { mutateAsync: checkConfig, isPending: isChecking } =
-    useCheckGitSyncConfig();
+  const isCreate = remote?.id === null;
+
+  const legacyUpdate = useUpdateGitSyncConfig();
+  const legacyCheck = useCheckGitSyncConfig();
+  const remoteUpdate = useUpdateGitSyncRemote();
+  const remoteCreate = useCreateGitSyncRemote();
+  const remoteCheck = useCheckGitSyncRemote();
+
+  const isPending =
+    legacyUpdate.isPending || remoteUpdate.isPending || remoteCreate.isPending;
+  const isChecking = legacyCheck.isPending || remoteCheck.isPending;
 
   // The settings that failed their reachability check, so the same submit
   // pressed a second time saves them anyway. Keyed by the values that were
@@ -59,6 +106,7 @@ export function GitSyncConfigForm({
     detail: string;
   } | null>(null);
 
+  const [labelHasChanged, setLabelHasChanged] = useState(false);
   const [intervalHasChanged, setIntervalHasChanged] = useState(false);
   const [repoUrlHasChanged, setRepoUrlHasChanged] = useState(false);
   const [branchHasChanged, setBranchHasChanged] = useState(false);
@@ -84,6 +132,7 @@ export function GitSyncConfigForm({
 
   const formIsClean =
     !enabledHasChanged &&
+    !labelHasChanged &&
     !intervalHasChanged &&
     !repoUrlHasChanged &&
     !branchHasChanged &&
@@ -95,6 +144,7 @@ export function GitSyncConfigForm({
 
   const resetChangeFlags = () => {
     setEnabledOverride(null);
+    setLabelHasChanged(false);
     setIntervalHasChanged(false);
     setRepoUrlHasChanged(false);
     setBranchHasChanged(false);
@@ -131,26 +181,54 @@ export function GitSyncConfigForm({
   const clearedFieldAsNull = (formData: FormData, name: string) =>
     formData.get(name)?.toString().trim() || null;
 
-  const save = (body: GitSyncConfigUpdateRequest, thenSync: boolean) => {
-    updateConfig(body, {
-      onSuccess: () => {
-        displaySuccessToast(t(I18nKey.AUTOMATIONS$GIT_SYNC$CONFIG_SAVED));
-        // Only on success: clearing the flags after a failure would disable
-        // Save and silently un-toggle the clear switches, leaving no way to
-        // retry the change that was just rejected.
-        resetChangeFlags();
-        // A cycle runs off the stored configuration, so it can only be
-        // triggered once the save has landed -- and a rejected save leaves
-        // nothing new to sync.
-        if (thenSync) onSyncNow();
-      },
-      onError: (error) => {
-        // The backend's detail is the message: a 409 means another
-        // organization already syncs this repository, branch and path, and
-        // it says so in words the operator can act on.
-        displayErrorToast(getApiErrorMessage(error, t(I18nKey.ERROR$GENERIC)));
-      },
-    });
+  const onSaveError = (error: unknown) => {
+    // The backend's detail is the message: a 409 means another repository
+    // configuration already syncs this repository, branch and path, and it
+    // says so in words the operator can act on.
+    displayErrorToast(getApiErrorMessage(error, t(I18nKey.ERROR$GENERIC)));
+  };
+
+  const save = (body: GitSyncRemoteUpdateRequest, thenSync: boolean) => {
+    if (isCreate) {
+      // The backend requires a URL to add a repository, so a form that
+      // never got one has nothing to send.
+      const repoUrl = body.repo_url;
+      if (!repoUrl) return;
+      remoteCreate.mutate(
+        { ...body, repo_url: repoUrl },
+        {
+          onSuccess: (created) => {
+            displaySuccessToast(
+              t(I18nKey.AUTOMATIONS$GIT_SYNC$REPOSITORY_ADDED),
+            );
+            resetChangeFlags();
+            onCreated?.(created, thenSync);
+          },
+          onError: onSaveError,
+        },
+      );
+      return;
+    }
+
+    const onSuccess = () => {
+      displaySuccessToast(t(I18nKey.AUTOMATIONS$GIT_SYNC$CONFIG_SAVED));
+      // Only on success: clearing the flags after a failure would disable
+      // Save and silently un-toggle the clear switches, leaving no way to
+      // retry the change that was just rejected.
+      resetChangeFlags();
+      // A cycle runs off the stored configuration, so it can only be
+      // triggered once the save has landed -- and a rejected save leaves
+      // nothing new to sync.
+      if (thenSync) onSyncNow();
+    };
+    if (remote?.id) {
+      remoteUpdate.mutate(
+        { remoteId: remote.id, body },
+        { onSuccess, onError: onSaveError },
+      );
+    } else {
+      legacyUpdate.mutate(body, { onSuccess, onError: onSaveError });
+    }
   };
 
   // What the reachability check actually depends on. A save that touches only
@@ -162,10 +240,15 @@ export function GitSyncConfigForm({
       .map((field) => `${field}=${body[field]}`)
       .join("&");
 
+  const check = (body: GitSyncConfigUpdateRequest) =>
+    remote === undefined
+      ? legacyCheck.mutateAsync(body)
+      : remoteCheck.mutateAsync({ remoteId: remote.id, body });
+
   /** The reason these settings can't reach their repo, or null to go ahead. */
   const reachabilityFailure = async (body: GitSyncConfigUpdateRequest) => {
     try {
-      const result = await checkConfig(body);
+      const result: GitSyncCheckResponse = await check(body);
       return result.ok
         ? null
         : (result.detail ?? t(I18nKey.AUTOMATIONS$GIT_SYNC$CHECK_FAILED_TITLE));
@@ -187,10 +270,14 @@ export function GitSyncConfigForm({
       (event.nativeEvent as SubmitEvent).submitter?.getAttribute("name") ===
       SAVE_AND_SYNC;
     const formData = new FormData(event.currentTarget);
-    const body: GitSyncConfigUpdateRequest = {};
+    const body: GitSyncRemoteUpdateRequest = {};
 
     if (enabledHasChanged) {
       body.enabled = enabled;
+    }
+    if (labelHasChanged) {
+      body.label =
+        formData.get("git-sync-label-input")?.toString().trim() ?? "";
     }
     if (intervalHasChanged) {
       // Blank reads as manual-only rather than clearing the override, so an
@@ -255,12 +342,43 @@ export function GitSyncConfigForm({
     save(body, thenSync);
   };
 
+  const saveLabel = isCreate
+    ? t(I18nKey.BUTTON$ADD)
+    : t(I18nKey.SETTINGS$SAVE_CHANGES);
+  const saveAndSyncLabel = isCreate
+    ? t(I18nKey.AUTOMATIONS$GIT_SYNC$ADD_AND_SYNC)
+    : t(I18nKey.AUTOMATIONS$GIT_SYNC$SAVE_AND_SYNC);
+
   return (
     <SectionCard
       icon={<CogIcon className="size-4" />}
-      title={t(I18nKey.AUTOMATIONS$GIT_SYNC$CONFIG_TITLE)}
+      title={t(
+        isCreate
+          ? I18nKey.AUTOMATIONS$GIT_SYNC$NEW_REPOSITORY_TITLE
+          : I18nKey.AUTOMATIONS$GIT_SYNC$CONFIG_TITLE,
+      )}
     >
-      <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+      <form
+        onSubmit={handleSubmit}
+        className="flex flex-col gap-6"
+        data-testid={isCreate ? "git-sync-new-remote-form" : undefined}
+      >
+        {remote !== undefined && (
+          <SettingsInput
+            testId="git-sync-label-input"
+            name="git-sync-label-input"
+            type="text"
+            label={t(I18nKey.AUTOMATIONS$GIT_SYNC$FIELD_LABEL)}
+            showOptionalTag
+            defaultValue={remote.label}
+            placeholder={t(I18nKey.AUTOMATIONS$GIT_SYNC$LABEL_PLACEHOLDER)}
+            isDisabled={!canManage}
+            onChange={(value) =>
+              setLabelHasChanged(value.trim() !== remote.label.trim())
+            }
+          />
+        )}
+
         <div className="flex flex-col gap-2">
           <SettingsSwitch
             testId="git-sync-enabled-switch"
@@ -303,6 +421,7 @@ export function GitSyncConfigForm({
           defaultValue={status.repo_url}
           placeholder={t(I18nKey.AUTOMATIONS$GIT_SYNC$REPO_URL_PLACEHOLDER)}
           isDisabled={!canManage}
+          required={isCreate}
           onChange={(value) =>
             setRepoUrlHasChanged(value.trim() !== status.repo_url)
           }
@@ -369,21 +488,28 @@ export function GitSyncConfigForm({
             name="git-sync-token-input"
             type="password"
             label={t(I18nKey.AUTOMATIONS$GIT_SYNC$FIELD_TOKEN)}
-            placeholder={t(I18nKey.AUTOMATIONS$GIT_SYNC$TOKEN_PLACEHOLDER)}
+            placeholder={
+              isCreate
+                ? undefined
+                : t(I18nKey.AUTOMATIONS$GIT_SYNC$TOKEN_PLACEHOLDER)
+            }
             isDisabled={!canManage || clearToken}
             onChange={setTokenText}
           />
           <p className="text-xs text-muted">
             {t(I18nKey.AUTOMATIONS$GIT_SYNC$TOKEN_HELP)}
           </p>
-          <SettingsSwitch
-            testId="git-sync-clear-token-switch"
-            isToggled={clearToken}
-            isDisabled={!canManage}
-            onToggle={toggleClearToken}
-          >
-            {t(I18nKey.AUTOMATIONS$GIT_SYNC$CLEAR_TOKEN)}
-          </SettingsSwitch>
+          {/* Nothing stored yet to clear on a repository being added. */}
+          {!isCreate && (
+            <SettingsSwitch
+              testId="git-sync-clear-token-switch"
+              isToggled={clearToken}
+              isDisabled={!canManage}
+              onToggle={toggleClearToken}
+            >
+              {t(I18nKey.AUTOMATIONS$GIT_SYNC$CLEAR_TOKEN)}
+            </SettingsSwitch>
+          )}
         </div>
 
         <div className="flex flex-col gap-2">
@@ -404,14 +530,16 @@ export function GitSyncConfigForm({
           <p className="text-xs text-muted">
             {t(I18nKey.AUTOMATIONS$GIT_SYNC$ENCRYPTION_KEY_HELP)}
           </p>
-          <SettingsSwitch
-            testId="git-sync-clear-encryption-key-switch"
-            isToggled={clearEncryptionKey}
-            isDisabled={!canManage}
-            onToggle={toggleClearEncryptionKey}
-          >
-            {t(I18nKey.AUTOMATIONS$GIT_SYNC$CLEAR_ENCRYPTION_KEY)}
-          </SettingsSwitch>
+          {!isCreate && (
+            <SettingsSwitch
+              testId="git-sync-clear-encryption-key-switch"
+              isToggled={clearEncryptionKey}
+              isDisabled={!canManage}
+              onToggle={toggleClearEncryptionKey}
+            >
+              {t(I18nKey.AUTOMATIONS$GIT_SYNC$CLEAR_ENCRYPTION_KEY)}
+            </SettingsSwitch>
+          )}
         </div>
 
         {failedCheck && (
@@ -430,14 +558,14 @@ export function GitSyncConfigForm({
           </div>
         )}
 
-        <div className="flex justify-start gap-3">
+        <div className="flex flex-wrap justify-start gap-3">
           <BrandButton
             testId="git-sync-save-button"
             variant="primary"
             type="submit"
             isDisabled={!canManage || isPending || isChecking || formIsClean}
           >
-            {!isPending && !isChecking && t(I18nKey.SETTINGS$SAVE_CHANGES)}
+            {!isPending && !isChecking && saveLabel}
             {isChecking && t(I18nKey.AUTOMATIONS$GIT_SYNC$CHECKING)}
             {isPending && t(I18nKey.SETTINGS$SAVING)}
           </BrandButton>
@@ -452,8 +580,19 @@ export function GitSyncConfigForm({
               !canManage || isPending || isChecking || formIsClean || !enabled
             }
           >
-            {t(I18nKey.AUTOMATIONS$GIT_SYNC$SAVE_AND_SYNC)}
+            {saveAndSyncLabel}
           </BrandButton>
+          {onCancel && (
+            <BrandButton
+              testId="git-sync-cancel-button"
+              variant="tertiary"
+              type="button"
+              onClick={onCancel}
+              isDisabled={isPending}
+            >
+              {t(I18nKey.BUTTON$CANCEL)}
+            </BrandButton>
+          )}
         </div>
       </form>
     </SectionCard>

@@ -37,6 +37,18 @@ export const AGENT_PROFILES_QUERY_KEYS = {
     ["agent-profiles", backendId, orgId, "detail", name] as const,
 } as const;
 
+/**
+ * Git sync, the automations backend's repository mirroring. The single-repo
+ * status (`use-git-sync.ts`'s `GIT_SYNC_STATUS_QUERY_KEY`) predates these and
+ * keeps its own root; the remotes and assignments share this one so a change
+ * to either invalidates both.
+ */
+export const GIT_SYNC_QUERY_KEYS = {
+  all: ["git-sync"] as const,
+  remotes: ["git-sync", "remotes"] as const,
+  assignments: ["git-sync", "assignments"] as const,
+} as const;
+
 export const TOOL_CATALOG_QUERY_KEYS = {
   all: ["tool-catalog"] as const,
 } as const;

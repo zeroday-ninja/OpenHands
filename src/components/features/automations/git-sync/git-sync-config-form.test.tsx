@@ -7,11 +7,20 @@ import { GitSyncConfigForm } from "./git-sync-config-form";
 const mutate = vi.fn();
 const checkConfig = vi.fn();
 const syncNow = vi.fn();
+const createRemote = vi.fn();
+const updateRemote = vi.fn();
+const checkRemote = vi.fn();
 
 vi.mock("#/hooks/query/use-git-sync", () => ({
   useUpdateGitSyncConfig: () => ({ mutate, isPending: false }),
   useCheckGitSyncConfig: () => ({
     mutateAsync: checkConfig,
+    isPending: false,
+  }),
+  useCreateGitSyncRemote: () => ({ mutate: createRemote, isPending: false }),
+  useUpdateGitSyncRemote: () => ({ mutate: updateRemote, isPending: false }),
+  useCheckGitSyncRemote: () => ({
+    mutateAsync: checkRemote,
     isPending: false,
   }),
 }));
@@ -27,6 +36,11 @@ beforeEach(() => {
   // Reachable unless a test says otherwise, so the save path stays the
   // default one under test.
   checkConfig.mockResolvedValue({
+    ok: true,
+    branch_exists: true,
+    detail: null,
+  });
+  checkRemote.mockResolvedValue({
     ok: true,
     branch_exists: true,
     detail: null,
@@ -608,5 +622,103 @@ describe("GitSyncConfigForm", () => {
 
       expect(screen.getByTestId("git-sync-save-and-sync-button")).toBeEnabled();
     });
+  });
+});
+
+describe("GitSyncConfigForm for a repository", () => {
+  const remoteStatus = {
+    ...baseStatus,
+    id: "remote-1",
+    label: "HAZARD",
+    is_default: true,
+    automation_count: 2,
+  };
+
+  it("adds a repository with its label and offers to sync it right away", async () => {
+    const onCreated = vi.fn();
+    createRemote.mockImplementation((_body, options) =>
+      options.onSuccess?.({ ...remoteStatus, id: "remote-new" }),
+    );
+    render(
+      <GitSyncConfigForm
+        status={{ ...baseStatus, repo_url: "", last_synced_commit: null }}
+        canManage
+        onSyncNow={syncNow}
+        remote={{ id: null, label: "" }}
+        onCreated={onCreated}
+        onCancel={() => {}}
+      />,
+    );
+
+    // Nothing to clear on a repository that is not stored yet.
+    expect(
+      screen.queryByTestId("git-sync-clear-token-switch"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("git-sync-save-button")).toHaveTextContent(
+      I18nKey.BUTTON$ADD,
+    );
+    expect(screen.getByTestId("git-sync-save-button")).toBeDisabled();
+
+    fireEvent.change(screen.getByTestId("git-sync-label-input"), {
+      target: { value: "pairwatch" },
+    });
+    fireEvent.change(screen.getByTestId("git-sync-repo-url-input"), {
+      target: { value: "https://github.com/zeroday-ninja/pairwatch.git" },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("git-sync-save-and-sync-button"));
+    });
+
+    // Checked as a repository about to be added, not against a stored one.
+    expect(checkRemote).toHaveBeenCalledWith({
+      remoteId: null,
+      body: expect.objectContaining({
+        repo_url: "https://github.com/zeroday-ninja/pairwatch.git",
+      }),
+    });
+    expect(createRemote).toHaveBeenCalledWith(
+      {
+        label: "pairwatch",
+        repo_url: "https://github.com/zeroday-ninja/pairwatch.git",
+      },
+      expect.anything(),
+    );
+    expect(displaySuccessToast).toHaveBeenCalledWith(
+      I18nKey.AUTOMATIONS$GIT_SYNC$REPOSITORY_ADDED,
+    );
+    expect(onCreated).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "remote-new" }),
+      true,
+    );
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it("saves an existing repository through its own endpoint", async () => {
+    updateRemote.mockImplementation((_vars, options) => options.onSuccess?.());
+    render(
+      <GitSyncConfigForm
+        status={remoteStatus}
+        canManage
+        onSyncNow={syncNow}
+        remote={{ id: "remote-1", label: "HAZARD" }}
+      />,
+    );
+
+    expect(screen.getByTestId("git-sync-label-input")).toHaveValue("HAZARD");
+    fireEvent.change(screen.getByTestId("git-sync-branch-input"), {
+      target: { value: "develop" },
+    });
+    await clickSave();
+
+    expect(checkRemote).toHaveBeenCalledWith({
+      remoteId: "remote-1",
+      body: { branch: "develop" },
+    });
+    expect(updateRemote).toHaveBeenCalledWith(
+      { remoteId: "remote-1", body: { branch: "develop" } },
+      expect.anything(),
+    );
+    expect(mutate).not.toHaveBeenCalled();
+    expect(checkConfig).not.toHaveBeenCalled();
   });
 });
