@@ -450,7 +450,25 @@ export async function runSelfUpdate(
     let result = await runStep(step, options);
     if (result.ok && step.mergeTag) {
       // The fetch brought the tag; now merge it into the current branch. A
-      // conflict is undone so the checkout is left as it was.
+      // conflict is undone so the checkout is left as it was. The merge
+      // commit needs an identity; a checkout without one gets a stand-in.
+      const identity = await runStep(
+        { command: git, args: ["config", "user.email"], cwd: projectRoot },
+        options,
+      );
+      const mergeOptions =
+        identity.ok && identity.output
+          ? options
+          : {
+              ...options,
+              env: {
+                ...options.env,
+                GIT_AUTHOR_NAME: "Agent Canvas",
+                GIT_AUTHOR_EMAIL: "agent-canvas@localhost",
+                GIT_COMMITTER_NAME: "Agent Canvas",
+                GIT_COMMITTER_EMAIL: "agent-canvas@localhost",
+              },
+            };
       result = await runStep(
         {
           command: git,
@@ -463,7 +481,7 @@ export async function runSelfUpdate(
           ],
           cwd: projectRoot,
         },
-        options,
+        mergeOptions,
       );
       if (!result.ok) {
         await runStep(
