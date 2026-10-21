@@ -129,10 +129,18 @@ export interface AgentCanvasControlTarget {
 export class AgentCanvasControlError extends Error {
   readonly status: number;
 
-  constructor(status: number, message: string) {
+  /**
+   * True when a stack answered but has no control routes: after a restart
+   * that is the replacement stack running a launcher without them (an older
+   * release, or a newer one that moved them), so the page should reload.
+   */
+  readonly noControl: boolean;
+
+  constructor(status: number, message: string, noControl = false) {
     super(message);
     this.name = "AgentCanvasControlError";
     this.status = status;
+    this.noControl = noControl;
   }
 }
 
@@ -153,6 +161,7 @@ export async function requestAgentCanvasControl(
   target: AgentCanvasControlTarget,
   action: "update" | "restart",
   signal?: AbortSignal,
+  { targetVersion = null }: { targetVersion?: string | null } = {},
 ): Promise<AgentCanvasControlStatus> {
   const path =
     action === "update"
@@ -161,7 +170,14 @@ export async function requestAgentCanvasControl(
   const response = await fetch(`${target.host}${path}`, {
     method: "POST",
     signal,
-    headers: target.apiKey ? { [CONTROL_KEY_HEADER]: target.apiKey } : {},
+    headers: {
+      "Content-Type": "application/json",
+      ...(target.apiKey ? { [CONTROL_KEY_HEADER]: target.apiKey } : {}),
+    },
+    // The release the browser saw on npm, so a checkout can merge its tag.
+    body: JSON.stringify(
+      action === "update" ? { target_version: targetVersion } : {},
+    ),
   });
   if (!response.ok) {
     throw new AgentCanvasControlError(
@@ -186,7 +202,25 @@ export async function fetchAgentCanvasControlStatus(
     throw new AgentCanvasControlError(
       response.status,
       `HTTP ${response.status}`,
+      response.status === 404,
     );
   }
-  return (await response.json()) as AgentCanvasControlStatus;
+  // A stack without the route serves the SPA shell for any path.
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    throw new AgentCanvasControlError(
+      response.status,
+      "The stack has no control routes.",
+      true,
+    );
+  }
+  const body = (await response.json()) as Partial<AgentCanvasControlStatus>;
+  if (typeof body.instance !== "string") {
+    throw new AgentCanvasControlError(
+      response.status,
+      "The stack has no control routes.",
+      true,
+    );
+  }
+  return body as AgentCanvasControlStatus;
 }

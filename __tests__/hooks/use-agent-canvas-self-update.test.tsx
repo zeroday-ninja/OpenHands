@@ -64,7 +64,11 @@ describe("useAgentCanvasSelfUpdate", () => {
       .mockResolvedValueOnce(status({ instance: "new", phase: "idle" }));
     const reload = vi.fn();
     const { result } = renderHook(() =>
-      useAgentCanvasSelfUpdate(control, { reload, pollMs: 5 }),
+      useAgentCanvasSelfUpdate(control, {
+        reload,
+        pollMs: 5,
+        targetVersion: "2.0.0",
+      }),
     );
 
     await act(async () => {
@@ -75,12 +79,70 @@ describe("useAgentCanvasSelfUpdate", () => {
       control.target,
       "update",
       expect.any(AbortSignal),
+      { targetVersion: "2.0.0" },
     );
     await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
     expect(result.current.state).toEqual({
       phase: "reloading",
       action: "update",
     });
+  });
+
+  it("reloads when the replacement stack answers without control routes", async () => {
+    // A real newer release may run a launcher without these routes: once
+    // the old stack went down, any stack that answers is the new one.
+    const { AgentCanvasControlError } =
+      await import("#/api/agent-canvas-updates");
+    statusMock
+      .mockResolvedValueOnce(status({ phase: "restarting" }))
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockRejectedValueOnce(
+        new AgentCanvasControlError(
+          200,
+          "The stack has no control routes.",
+          true,
+        ),
+      );
+    const reload = vi.fn();
+    const { result } = renderHook(() =>
+      useAgentCanvasSelfUpdate(control, { reload, pollMs: 5 }),
+    );
+
+    await act(async () => {
+      await result.current.start("update");
+    });
+
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    expect(result.current.state).toEqual({
+      phase: "reloading",
+      action: "update",
+    });
+  });
+
+  it("does not reload on a stack without control routes before the old one went down", async () => {
+    const { AgentCanvasControlError } =
+      await import("#/api/agent-canvas-updates");
+    statusMock
+      .mockRejectedValueOnce(
+        new AgentCanvasControlError(
+          200,
+          "The stack has no control routes.",
+          true,
+        ),
+      )
+      .mockResolvedValueOnce(status({ instance: "new", phase: "idle" }));
+    const reload = vi.fn();
+    const { result } = renderHook(() =>
+      useAgentCanvasSelfUpdate(control, { reload, pollMs: 5 }),
+    );
+
+    await act(async () => {
+      await result.current.start("update");
+    });
+
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+    // The first (no-control) answer only marked the stack as going down.
+    expect(statusMock).toHaveBeenCalledTimes(2);
   });
 
   it("surfaces the launcher's failure message and stops polling", async () => {

@@ -113,6 +113,7 @@ describe("AgentCanvasVersionModal", () => {
       localControl.target,
       "update",
       expect.any(AbortSignal),
+      { targetVersion: "2.0.0" },
     );
     expect(
       await screen.findByTestId("agent-canvas-self-update-status"),

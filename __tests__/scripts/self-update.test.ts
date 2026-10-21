@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { EventEmitter } from "node:events";
@@ -98,6 +98,8 @@ describe("detectSelfUpdate", () => {
       "-g",
       "--no-audit",
       "--no-fund",
+      "--prefix",
+      path.dirname(path.dirname(path.dirname(path.dirname(projectRoot)))),
       "@openhands/agent-canvas@latest",
     ]);
     expect(detection.relaunch?.command).toBe("/usr/bin/node");
@@ -220,11 +222,12 @@ describe("runSelfUpdate", () => {
       version: "1",
       ...launch,
     });
-    const { spawnImpl, calls } = fakeSpawn((_cmd, args) =>
-      args[0] === "rev-parse"
-        ? { code: 0, out: "abc\n" }
-        : { code: 0, out: "Already up to date.\n" },
-    );
+    const { spawnImpl, calls } = fakeSpawn((_cmd, args) => {
+      if (args[0] === "status") return { code: 0, out: "" };
+      if (args[0] === "rev-parse")
+        return { code: 0, out: args.includes("@{u}") ? "origin/x\n" : "abc\n" };
+      return { code: 0, out: "Already up to date.\n" };
+    });
 
     const result = await runSelfUpdate(detection, {
       projectRoot,
@@ -234,7 +237,9 @@ describe("runSelfUpdate", () => {
 
     expect(result.ok).toBe(true);
     expect(calls.map((c) => c.slice(1).join(" "))).toEqual([
+      "status --porcelain",
       "rev-parse HEAD",
+      "rev-parse --abbrev-ref @{u}",
       "pull --ff-only",
       "rev-parse HEAD",
     ]);
@@ -249,7 +254,12 @@ describe("runSelfUpdate", () => {
     });
     let head = "abc";
     const { spawnImpl, calls } = fakeSpawn((_cmd, args) => {
-      if (args[0] === "rev-parse") return { code: 0, out: `${head}\n` };
+      if (args[0] === "status") return { code: 0, out: "" };
+      if (args[0] === "rev-parse")
+        return {
+          code: 0,
+          out: args.includes("@{u}") ? "origin/x\n" : `${head}\n`,
+        };
       if (args[0] === "pull") {
         head = "def";
         return { code: 0, out: "Updating abc..def\n" };
@@ -274,11 +284,15 @@ describe("runSelfUpdate", () => {
       version: "1",
       ...launch,
     });
-    const { spawnImpl, calls } = fakeSpawn((_cmd, args) =>
-      args[0] === "pull"
-        ? { code: 128, out: "fatal: Not possible to fast-forward, aborting.\n" }
-        : { code: 0, out: "abc\n" },
-    );
+    const { spawnImpl, calls } = fakeSpawn((_cmd, args) => {
+      if (args[0] === "status") return { code: 0, out: "" };
+      if (args[0] === "pull")
+        return {
+          code: 128,
+          out: "fatal: Not possible to fast-forward, aborting.\n",
+        };
+      return { code: 0, out: "abc\n" };
+    });
 
     const result = await runSelfUpdate(detection, {
       projectRoot,
@@ -290,6 +304,159 @@ describe("runSelfUpdate", () => {
     expect(result.message).toContain("git pull failed (exit 128)");
     expect(result.message).toContain("Not possible to fast-forward");
     expect(calls.some((c) => c[1] === "ci")).toBe(false);
+  });
+
+  it("merges the release tag when the checkout is older than the release the browser saw", async () => {
+    const projectRoot = checkout();
+    writeFileSync(
+      path.join(projectRoot, "package.json"),
+      JSON.stringify({ version: "1.27.1" }),
+    );
+    const detection = detectSelfUpdate({
+      projectRoot,
+      version: "1.27.1",
+      ...launch,
+    });
+    let head = "abc";
+    const { spawnImpl, calls } = fakeSpawn((_cmd, args) => {
+      if (args[0] === "rev-parse")
+        return {
+          code: 0,
+          out: args.includes("@{u}") ? "origin/main\n" : `${head}\n`,
+        };
+      if (args[0] === "merge") {
+        head = "merged";
+        writeFileSync(
+          path.join(projectRoot, "package.json"),
+          JSON.stringify({ version: "1.29.0" }),
+        );
+      }
+      return { code: 0, out: "" };
+    });
+
+    const result = await runSelfUpdate(detection, {
+      projectRoot,
+      spawnImpl,
+      platform: "linux",
+      targetVersion: "1.29.0",
+      upstreamRepo: "https://example.test/upstream.git",
+    });
+
+    expect(result.ok).toBe(true);
+    const commands = calls.map((c) => c.slice(1).join(" "));
+    expect(commands).toContain(
+      "fetch --no-tags https://example.test/upstream.git tag v1.29.0",
+    );
+    expect(commands).toContain("merge --no-edit --no-ff v1.29.0");
+    expect(commands.at(-1)).toBe("ci --no-audit --no-fund");
+    expect(commands.indexOf("pull --ff-only")).toBeLessThan(
+      commands.indexOf("merge --no-edit --no-ff v1.29.0"),
+    );
+  });
+
+  it("skips the release merge when the pull already brought that version, and refuses a dirty checkout", async () => {
+    const projectRoot = checkout();
+    writeFileSync(
+      path.join(projectRoot, "package.json"),
+      JSON.stringify({ version: "1.29.0" }),
+    );
+    const detection = detectSelfUpdate({
+      projectRoot,
+      version: "1.29.0",
+      ...launch,
+    });
+    const clean = fakeSpawn((_cmd, args) =>
+      args[0] === "status"
+        ? { code: 0, out: "" }
+        : { code: 0, out: args[0] === "rev-parse" ? "abc\n" : "" },
+    );
+    const result = await runSelfUpdate(detection, {
+      projectRoot,
+      spawnImpl: clean.spawnImpl,
+      platform: "linux",
+      targetVersion: "1.29.0",
+    });
+    expect(result.ok).toBe(true);
+    expect(clean.calls.some((c) => c[1] === "fetch" || c[1] === "merge")).toBe(
+      false,
+    );
+
+    const dirty = fakeSpawn((_cmd, args) =>
+      args[0] === "status"
+        ? { code: 0, out: " M src/app.tsx\n" }
+        : { code: 0, out: "abc\n" },
+    );
+    const refused = await runSelfUpdate(detection, {
+      projectRoot,
+      spawnImpl: dirty.spawnImpl,
+      platform: "linux",
+      targetVersion: "1.29.0",
+    });
+    expect(refused.ok).toBe(false);
+    expect(refused.message).toContain("uncommitted changes");
+    expect(dirty.calls.some((c) => c[1] === "pull")).toBe(false);
+  });
+
+  it("aborts a conflicting release merge and leaves the checkout as it was", async () => {
+    const projectRoot = checkout();
+    writeFileSync(
+      path.join(projectRoot, "package.json"),
+      JSON.stringify({ version: "1.27.1" }),
+    );
+    const detection = detectSelfUpdate({
+      projectRoot,
+      version: "1.27.1",
+      ...launch,
+    });
+    const { spawnImpl, calls } = fakeSpawn((_cmd, args) => {
+      if (args[0] === "merge" && args[1] !== "--abort")
+        return {
+          code: 1,
+          out: "CONFLICT (content): Merge conflict in src/x.ts\n",
+        };
+      return { code: 0, out: args[0] === "rev-parse" ? "abc\n" : "" };
+    });
+
+    const result = await runSelfUpdate(detection, {
+      projectRoot,
+      spawnImpl,
+      platform: "linux",
+      targetVersion: "1.29.0",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain("merge release v1.29.0 failed");
+    expect(result.message).toContain("CONFLICT");
+    expect(calls.map((c) => c.slice(1).join(" "))).toContain("merge --abort");
+    expect(calls.some((c) => c[1] === "ci")).toBe(false);
+  });
+
+  it("installs a global npm update into the prefix the running bin came from", () => {
+    const projectRoot = tempRoot(
+      "prefix",
+      "lib",
+      "node_modules",
+      "@openhands",
+      "agent-canvas",
+    );
+    const detection = detectSelfUpdate({
+      projectRoot,
+      version: "1.27.1",
+      ...launch,
+    });
+    const [step] = buildUpdateSteps(detection, {
+      projectRoot,
+      platform: "linux",
+    });
+    expect(step.args).toEqual([
+      "install",
+      "-g",
+      "--no-audit",
+      "--no-fund",
+      "--prefix",
+      path.dirname(path.dirname(path.dirname(path.dirname(projectRoot)))),
+      "@openhands/agent-canvas@latest",
+    ]);
   });
 
   it("refuses when the detection does not support updating", async () => {

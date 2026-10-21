@@ -199,6 +199,30 @@ function buildConfig(args, env = process.env) {
 // Stack control (self-update / restart)
 // ═══════════════════════════════════════════════════════════════════════════
 
+const CONTROL_BODY_LIMIT = 4096;
+
+function readJsonBody(req, done) {
+  let raw = "";
+  let settled = false;
+  const finish = (body) => {
+    if (settled) return;
+    settled = true;
+    done(body);
+  };
+  req.on("data", (chunk) => {
+    raw += chunk.toString();
+    if (raw.length > CONTROL_BODY_LIMIT) finish(null);
+  });
+  req.on("end", () => {
+    try {
+      finish(raw.trim() ? JSON.parse(raw) : null);
+    } catch {
+      finish(null);
+    }
+  });
+  req.on("error", () => finish(null));
+}
+
 function parseControlInfo(value) {
   if (!value) return null;
   try {
@@ -310,18 +334,30 @@ export function createStackControl({ controlKey, controlInfo, ipc = process }) {
       json(res, 409, { error: "busy", status: status() });
       return true;
     }
-    state.phase = action === "update" ? "updating" : "restarting";
-    state.message = null;
-    state.updated_at = new Date().toISOString();
-    try {
-      ipc.send({ type: CONTROL_REQUEST_MESSAGE, action });
-    } catch (error) {
-      state.phase = "failed";
-      state.message = `Could not reach the launcher: ${error.message}`;
-      json(res, 500, { error: "relay_failed", status: status() });
-      return true;
-    }
-    json(res, 202, { ok: true, action, status: status() });
+    // The body may name the release the browser saw (`target_version`), so
+    // a checkout can merge that release's tag.
+    readJsonBody(req, (body) => {
+      const targetVersion =
+        typeof body?.target_version === "string"
+          ? body.target_version.trim() || null
+          : null;
+      state.phase = action === "update" ? "updating" : "restarting";
+      state.message = null;
+      state.updated_at = new Date().toISOString();
+      try {
+        ipc.send({
+          type: CONTROL_REQUEST_MESSAGE,
+          action,
+          target_version: targetVersion,
+        });
+      } catch (error) {
+        state.phase = "failed";
+        state.message = `Could not reach the launcher: ${error.message}`;
+        json(res, 500, { error: "relay_failed", status: status() });
+        return;
+      }
+      json(res, 202, { ok: true, action, status: status() });
+    });
     return true;
   };
 

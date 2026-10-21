@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  AgentCanvasControlError,
   fetchAgentCanvasControlStatus,
   requestAgentCanvasControl,
   type AgentCanvasControlInfo,
@@ -47,6 +48,8 @@ interface UseAgentCanvasSelfUpdateOptions {
   /** Replaces `window.location.reload()` (tests). */
   reload?: () => void;
   pollMs?: number;
+  /** The release the update should reach (what the npm check reported). */
+  targetVersion?: string | null;
 }
 
 /**
@@ -64,6 +67,7 @@ export function useAgentCanvasSelfUpdate(
   {
     reload,
     pollMs = SELF_UPDATE_POLL_MS,
+    targetVersion = null,
   }: UseAgentCanvasSelfUpdateOptions = {},
 ) {
   const [state, setState] = useState<AgentCanvasSelfUpdateState>({
@@ -91,6 +95,7 @@ export function useAgentCanvasSelfUpdate(
           control.target,
           action,
           signal,
+          { targetVersion },
         );
         const startedInstance = accepted.instance;
         setState(
@@ -103,6 +108,10 @@ export function useAgentCanvasSelfUpdate(
           (action === "update"
             ? SELF_UPDATE_TIMEOUT_MS
             : SELF_RESTART_TIMEOUT_MS);
+        const doReload = reload ?? (() => window.location.reload());
+        // Once the old stack has started going down, the next stack that
+        // answers is the replacement, whether or not it has control routes.
+        let wentDown = accepted.phase === "restarting";
         while (!signal.aborted) {
           await sleep(pollMs, signal);
           let status;
@@ -113,7 +122,19 @@ export function useAgentCanvasSelfUpdate(
             );
           } catch (error) {
             if (signal.aborted) throw error;
+            if (
+              wentDown &&
+              error instanceof AgentCanvasControlError &&
+              error.noControl
+            ) {
+              // The replacement runs a launcher without these routes (an
+              // older release, or one that moved them): it is up, so reload.
+              setState({ phase: "reloading", action });
+              doReload();
+              return;
+            }
             // Between stacks: the old ingress is gone, the new one not up.
+            wentDown = true;
             setState({ phase: "restarting", action });
             if (Date.now() > deadline) {
               throw new Error("The stack did not come back in time.");
@@ -122,9 +143,10 @@ export function useAgentCanvasSelfUpdate(
           }
           if (status.instance !== startedInstance) {
             setState({ phase: "reloading", action });
-            (reload ?? (() => window.location.reload()))();
+            doReload();
             return;
           }
+          if (status.phase === "restarting") wentDown = true;
           if (status.phase === "failed") {
             setState({
               phase: "failed",
@@ -151,7 +173,7 @@ export function useAgentCanvasSelfUpdate(
         });
       }
     },
-    [control, pollMs, reload],
+    [control, pollMs, reload, targetVersion],
   );
 
   const reset = useCallback(() => {
