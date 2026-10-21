@@ -35,3 +35,158 @@ export async function fetchLatestAgentCanvasVersion(
   }
   return version.trim();
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// In-place update and restart of a locally launched stack
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** How the launcher can update this install; mirrors scripts/self-update.mjs. */
+export type AgentCanvasSelfUpdateMethod = "git-checkout" | "npm-global" | "npx";
+
+export interface AgentCanvasControlInfo {
+  /** Id of the running stack; changes when the launcher relaunches. */
+  instance: string;
+  /** False when the ingress cannot relay requests to its launcher. */
+  enabled: boolean;
+  /** Version the launcher started with. */
+  version?: string;
+  self_update: {
+    supported: boolean;
+    method: AgentCanvasSelfUpdateMethod | null;
+    reason: string | null;
+  };
+  restart: { supported: boolean; reason: string | null };
+  status_path: string;
+  update_path: string;
+  restart_path: string;
+}
+
+export type AgentCanvasControlPhase =
+  | "idle"
+  | "updating"
+  | "restarting"
+  | "failed";
+
+export interface AgentCanvasControlStatus {
+  instance: string;
+  enabled: boolean;
+  phase: AgentCanvasControlPhase;
+  message: string | null;
+  updated_at: string;
+}
+
+const CONTROL_PATH_PREFIX = "/__agent-canvas";
+const CONTROL_KEY_HEADER = "X-Session-API-Key";
+
+/**
+ * The control block a local launcher's ingress adds to `/server_info`, or
+ * null when this page is not served by such a launcher (Cloud, Docker, a
+ * remote Agent Server, `--public`, or an older launcher).
+ */
+export function parseAgentCanvasControlInfo(
+  value: unknown,
+): AgentCanvasControlInfo | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Partial<AgentCanvasControlInfo>;
+  if (typeof raw.instance !== "string" || !raw.instance) return null;
+  const selfUpdate = raw.self_update;
+  const restart = raw.restart;
+  return {
+    instance: raw.instance,
+    enabled: raw.enabled !== false,
+    version: typeof raw.version === "string" ? raw.version : undefined,
+    self_update: {
+      supported: selfUpdate?.supported === true,
+      method: (selfUpdate?.method as AgentCanvasSelfUpdateMethod) ?? null,
+      reason: selfUpdate?.reason ?? null,
+    },
+    restart: {
+      supported: restart?.supported !== false,
+      reason: restart?.reason ?? null,
+    },
+    status_path:
+      typeof raw.status_path === "string"
+        ? raw.status_path
+        : `${CONTROL_PATH_PREFIX}/status`,
+    update_path:
+      typeof raw.update_path === "string"
+        ? raw.update_path
+        : `${CONTROL_PATH_PREFIX}/update`,
+    restart_path:
+      typeof raw.restart_path === "string"
+        ? raw.restart_path
+        : `${CONTROL_PATH_PREFIX}/restart`,
+  };
+}
+
+export interface AgentCanvasControlTarget {
+  /** Origin of the ingress that serves the page ("" for the page's own). */
+  host: string;
+  /** The stack's session key, which the control routes require. */
+  apiKey: string | null;
+}
+
+export class AgentCanvasControlError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "AgentCanvasControlError";
+    this.status = status;
+  }
+}
+
+async function readControlError(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as {
+      error?: string;
+      status?: { message?: string | null };
+    };
+    return body.status?.message || body.error || `HTTP ${response.status}`;
+  } catch {
+    return `HTTP ${response.status}`;
+  }
+}
+
+/** Ask the launcher to update (`"update"`) or just relaunch (`"restart"`). */
+export async function requestAgentCanvasControl(
+  target: AgentCanvasControlTarget,
+  action: "update" | "restart",
+  signal?: AbortSignal,
+): Promise<AgentCanvasControlStatus> {
+  const path =
+    action === "update"
+      ? `${CONTROL_PATH_PREFIX}/update`
+      : `${CONTROL_PATH_PREFIX}/restart`;
+  const response = await fetch(`${target.host}${path}`, {
+    method: "POST",
+    signal,
+    headers: target.apiKey ? { [CONTROL_KEY_HEADER]: target.apiKey } : {},
+  });
+  if (!response.ok) {
+    throw new AgentCanvasControlError(
+      response.status,
+      await readControlError(response),
+    );
+  }
+  const body = (await response.json()) as { status: AgentCanvasControlStatus };
+  return body.status;
+}
+
+/** The launcher's progress, from whichever stack currently answers. */
+export async function fetchAgentCanvasControlStatus(
+  target: AgentCanvasControlTarget,
+  signal?: AbortSignal,
+): Promise<AgentCanvasControlStatus> {
+  const response = await fetch(`${target.host}${CONTROL_PATH_PREFIX}/status`, {
+    signal,
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    throw new AgentCanvasControlError(
+      response.status,
+      `HTTP ${response.status}`,
+    );
+  }
+  return (await response.json()) as AgentCanvasControlStatus;
+}

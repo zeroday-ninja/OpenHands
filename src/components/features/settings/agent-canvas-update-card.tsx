@@ -24,6 +24,8 @@ import {
 } from "#/components/shared/modals/modal-body";
 import { ModalCloseButton } from "#/components/shared/modals/modal-close-button";
 import { useLatestAgentCanvasVersion } from "#/hooks/query/use-latest-agent-canvas-version";
+import { useAgentCanvasControl } from "#/hooks/query/use-agent-canvas-control";
+import { AgentCanvasSelfUpdateControls } from "#/components/features/settings/agent-canvas-self-update-controls";
 import DockerIcon from "#/icons/docker.svg?react";
 import NpmIcon from "#/icons/npm.svg?react";
 import { I18nKey } from "#/i18n/declaration";
@@ -161,6 +163,11 @@ function AgentCanvasUpdateModal({
   onCheckForUpdates,
 }: AgentCanvasUpdateModalProps) {
   const { t } = useTranslation("openhands");
+  // A local launcher that can update itself turns the command list into a
+  // fallback behind "Update manually".
+  const control = useAgentCanvasControl();
+  const selfUpdateOffered =
+    updateAvailable && control.data?.info.self_update.supported === true;
 
   return (
     <ModalBackdrop onClose={onClose}>
@@ -253,16 +260,36 @@ function AgentCanvasUpdateModal({
             )}
           </div>
 
+          <AgentCanvasSelfUpdateControls
+            updateAvailable={updateAvailable}
+            className="border-t border-border pt-3"
+          />
+
           {updateAvailable ? (
-            <div className="flex w-full flex-col border-t border-border pt-3">
-              <span className="text-sm font-medium text-contrast">
-                {t(I18nKey.SETTINGS$APP_UPDATE_HOW_TO_UPDATE)}
-              </span>
-              <span className="mt-1 mb-4 text-sm text-text-dim">
+            <details
+              className="flex w-full flex-col border-t border-border pt-3"
+              open={!selfUpdateOffered}
+              data-testid="agent-canvas-update-commands"
+            >
+              <summary
+                className={cn(
+                  "text-sm font-medium text-contrast",
+                  selfUpdateOffered
+                    ? "cursor-pointer list-none text-muted hover:text-contrast"
+                    : "pointer-events-none list-none",
+                )}
+              >
+                {t(
+                  selfUpdateOffered
+                    ? I18nKey.SETTINGS$VERSION_UPDATE_MANUAL
+                    : I18nKey.SETTINGS$APP_UPDATE_HOW_TO_UPDATE,
+                )}
+              </summary>
+              <span className="mt-1 mb-4 block text-sm text-text-dim">
                 {t(I18nKey.SETTINGS$APP_UPDATE_RUN_COMMANDS)}
               </span>
               <UpdateCommandTabs />
-            </div>
+            </details>
           ) : null}
         </div>
       </ModalBody>

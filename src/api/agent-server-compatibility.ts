@@ -37,6 +37,12 @@ export interface AgentServerInfo extends BaseServerInfo {
   runtime_services?: unknown;
   execution_runtime?: "local" | "docker";
   capabilities?: string[];
+  /**
+   * Added by a local Agent Canvas launcher's ingress (not by the agent-server):
+   * whether the browser may update and restart the stack it is served by.
+   * See `src/api/agent-canvas-updates.ts`.
+   */
+  agent_canvas_control?: unknown;
 }
 
 let cachedAgentServerInfo: AgentServerInfo | null = null;

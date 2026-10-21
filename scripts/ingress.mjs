@@ -21,12 +21,22 @@
  *   - More specific routes take precedence (e.g., /api/automation before /api)
  */
 
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
 import { DEFAULT_BIND_HOST, resolveBindHost } from "./bind-host.mjs";
 import { mountMarsWebBridge } from "./mars-web-bridge.mjs";
+import {
+  CONTROL_KEY_HEADER,
+  CONTROL_PATH_PREFIX,
+  CONTROL_REQUEST_MESSAGE,
+  CONTROL_RESTART_PATH,
+  CONTROL_STATUS_MESSAGE,
+  CONTROL_STATUS_PATH,
+  CONTROL_UPDATE_PATH,
+} from "./self-update.mjs";
 import {
   createProxyHandlers,
   createRouter,
@@ -49,6 +59,8 @@ function parseArgs() {
     defaultBackend: null,
     noReferrerPrefixes: [],
     runtimeServicesInfo: null,
+    controlKey: null,
+    controlInfo: null,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -84,6 +96,12 @@ function parseArgs() {
       case "--runtime-services-info":
         config.runtimeServicesInfo = args[++i] || null;
         break;
+      case "--control-key":
+        config.controlKey = args[++i] || null;
+        break;
+      case "--control-info":
+        config.controlInfo = args[++i] || null;
+        break;
       case "-h":
       case "--help":
         showHelp();
@@ -112,6 +130,14 @@ OPTIONS:
                               responses under <p>. For upstreams whose URL
                               carries a credential in the query string.
   --runtime-services-info     Runtime services JSON for /server_info
+  --control-key <key>         Enable the stack control routes
+                              (/__agent-canvas/update, /restart), guarded by
+                              this key in the X-Session-API-Key header. The
+                              requests are relayed to the parent launcher over
+                              IPC, so this needs an IPC channel.
+  --control-info <json>       Self-update capability JSON for
+                              /server_info.agent_canvas_control and
+                              /__agent-canvas/status
   -h, --help                  Show this help
 
 ENVIRONMENT VARIABLES:
@@ -164,7 +190,142 @@ function buildConfig(args, env = process.env) {
     noReferrerPrefixes: args.noReferrerPrefixes ?? [],
     runtimeServicesInfo:
       args.runtimeServicesInfo || env.INGRESS_RUNTIME_SERVICES_INFO || null,
+    controlKey: args.controlKey || env.INGRESS_CONTROL_KEY || null,
+    controlInfo: args.controlInfo || env.INGRESS_CONTROL_INFO || null,
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Stack control (self-update / restart)
+// ═══════════════════════════════════════════════════════════════════════════
+
+function parseControlInfo(value) {
+  if (!value) return null;
+  try {
+    return typeof value === "string" ? JSON.parse(value) : value;
+  } catch (error) {
+    console.warn(`Ignoring invalid --control-info: ${error.message}`);
+    return null;
+  }
+}
+
+/**
+ * The ingress is the one process the browser reaches and the launcher's
+ * child, so it carries the control routes: it authenticates a request with
+ * the stack's session key, relays it to the launcher over IPC, and reports
+ * the launcher's progress back on the status route. The instance id tells a
+ * polling browser when the replacement stack has taken over.
+ */
+export function createStackControl({ controlKey, controlInfo, ipc = process }) {
+  const info = parseControlInfo(controlInfo);
+  const state = {
+    instance: randomUUID(),
+    phase: "idle",
+    message: null,
+    updated_at: new Date().toISOString(),
+  };
+  const canRelay =
+    typeof ipc.send === "function" && Boolean(ipc.connected ?? true);
+  const enabled = Boolean(controlKey) && canRelay;
+
+  if (canRelay && typeof ipc.on === "function") {
+    ipc.on("message", (message) => {
+      if (!message || message.type !== CONTROL_STATUS_MESSAGE) return;
+      state.phase = message.phase ?? state.phase;
+      state.message = message.message ?? null;
+      state.updated_at = new Date().toISOString();
+    });
+  }
+
+  const serverInfoFields = () => ({
+    agent_canvas_control: {
+      instance: state.instance,
+      enabled,
+      ...(info ?? {}),
+    },
+  });
+
+  const status = () => ({
+    instance: state.instance,
+    enabled,
+    phase: state.phase,
+    message: state.message,
+    updated_at: state.updated_at,
+    ...(info ?? {}),
+  });
+
+  const json = (res, code, body) => {
+    res.writeHead(code, {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+    });
+    res.end(JSON.stringify(body));
+  };
+
+  const handle = (req, res) => {
+    const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+    if (!pathname.startsWith(`${CONTROL_PATH_PREFIX}/`)) return false;
+
+    if (pathname === CONTROL_STATUS_PATH) {
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        json(res, 405, { error: "method_not_allowed" });
+        return true;
+      }
+      json(res, 200, status());
+      return true;
+    }
+
+    const action =
+      pathname === CONTROL_UPDATE_PATH
+        ? "update"
+        : pathname === CONTROL_RESTART_PATH
+          ? "restart"
+          : null;
+    if (!action) {
+      json(res, 404, { error: "not_found" });
+      return true;
+    }
+    if (req.method !== "POST") {
+      json(res, 405, { error: "method_not_allowed" });
+      return true;
+    }
+    if (!enabled) {
+      json(res, 503, { error: "control_unavailable" });
+      return true;
+    }
+    const presented = req.headers[CONTROL_KEY_HEADER];
+    if (typeof presented !== "string" || presented !== controlKey) {
+      json(res, 401, { error: "unauthorized" });
+      return true;
+    }
+    const supported =
+      action === "update"
+        ? info?.self_update?.supported === true
+        : info?.restart?.supported !== false;
+    if (!supported) {
+      json(res, 409, { error: "unsupported", status: status() });
+      return true;
+    }
+    if (state.phase !== "idle" && state.phase !== "failed") {
+      json(res, 409, { error: "busy", status: status() });
+      return true;
+    }
+    state.phase = action === "update" ? "updating" : "restarting";
+    state.message = null;
+    state.updated_at = new Date().toISOString();
+    try {
+      ipc.send({ type: CONTROL_REQUEST_MESSAGE, action });
+    } catch (error) {
+      state.phase = "failed";
+      state.message = `Could not reach the launcher: ${error.message}`;
+      json(res, 500, { error: "relay_failed", status: status() });
+      return true;
+    }
+    json(res, 202, { ok: true, action, status: status() });
+    return true;
+  };
+
+  return { handle, serverInfoFields, status, enabled };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -179,12 +340,18 @@ export function startIngress(config) {
   // bridge and proxies to sessions' tunnel listeners, behind the session key
   // (MARS_WEB_KEY; dev-with-automation passes the stack's key).
   const marsWeb = mountMarsWebBridge({ host: config.host });
+  const control = createStackControl({
+    controlKey: config.controlKey,
+    controlInfo: config.controlInfo,
+    ipc: config.ipc ?? process,
+  });
 
   const noReferrerPrefixes = config.noReferrerPrefixes ?? [];
 
   const server = createServer((req, res) => {
     const url = req.url ?? "/";
     if (marsWeb?.handleHttp(req, res)) return;
+    if (control.handle(req, res)) return;
     const backend = route(url);
 
     if (!backend) {
@@ -201,11 +368,17 @@ export function startIngress(config) {
     }
 
     if (
-      config.runtimeServicesInfo &&
+      (config.runtimeServicesInfo || config.controlInfo) &&
       isServerInfoRequest(req) &&
       (req.method === "GET" || req.method === "HEAD")
     ) {
-      proxyServerInfoRequest(req, res, backend, config.runtimeServicesInfo);
+      proxyServerInfoRequest(
+        req,
+        res,
+        backend,
+        config.runtimeServicesInfo,
+        config.controlInfo ? control.serverInfoFields() : null,
+      );
       return;
     }
 

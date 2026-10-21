@@ -808,3 +808,163 @@ describe("ingress --no-referrer-prefix", () => {
     expect(response.headers.get("referrer-policy")).toBeNull();
   });
 });
+
+describe("ingress stack control routes", () => {
+  let backend: Server;
+  let backendPort: number;
+  let ingressProcess: ChildProcess;
+  let ingressPort: number;
+  const controlKey = "test-session-key";
+  const controlInfo = {
+    version: "1.2.3",
+    self_update: { supported: true, method: "git-checkout", reason: null },
+    restart: { supported: true, reason: null },
+    status_path: "/__agent-canvas/status",
+    update_path: "/__agent-canvas/update",
+    restart_path: "/__agent-canvas/restart",
+  };
+
+  beforeAll(async () => {
+    backend = createServer((req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ version: "9.0.0", path: req.url }));
+    });
+    backendPort = await listenOnLoopback(backend);
+    ingressPort = await getFreePort();
+    ingressProcess = spawn(
+      process.execPath,
+      [
+        ingressScript,
+        "--port",
+        ingressPort.toString(),
+        "--route",
+        `/api=${originForPort(backendPort)}`,
+        "--default",
+        originForPort(backendPort),
+        "--control-key",
+        controlKey,
+        "--control-info",
+        JSON.stringify(controlInfo),
+      ],
+      // The IPC channel is how the ingress relays requests to its launcher.
+      { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe", "ipc"] },
+    );
+    await waitForPort(ingressPort, ingressProcess);
+  });
+
+  afterAll(async () => {
+    await stopChild(ingressProcess);
+    await closeServer(backend);
+  });
+
+  it("advertises the control block on /server_info and the status route", async () => {
+    // node:http, not fetch: the jsdom project's MSW answers /server_info itself.
+    const serverInfo = (
+      await getJson(`${originForPort(ingressPort)}/server_info`)
+    ).body as Record<string, any>;
+    expect(serverInfo.version).toBe("9.0.0");
+    expect(serverInfo.agent_canvas_control).toMatchObject({
+      enabled: true,
+      version: "1.2.3",
+      self_update: { supported: true, method: "git-checkout" },
+    });
+    expect(typeof serverInfo.agent_canvas_control.instance).toBe("string");
+
+    const status = await (
+      await fetch(`${originForPort(ingressPort)}/__agent-canvas/status`)
+    ).json();
+    expect(status).toMatchObject({
+      instance: serverInfo.agent_canvas_control.instance,
+      phase: "idle",
+      enabled: true,
+    });
+  });
+
+  it("rejects an update request without the session key", async () => {
+    const missing = await fetch(
+      `${originForPort(ingressPort)}/__agent-canvas/update`,
+      { method: "POST" },
+    );
+    expect(missing.status).toBe(401);
+    const wrong = await fetch(
+      `${originForPort(ingressPort)}/__agent-canvas/update`,
+      { method: "POST", headers: { "x-session-api-key": "nope" } },
+    );
+    expect(wrong.status).toBe(401);
+    expect(
+      (await fetch(`${originForPort(ingressPort)}/__agent-canvas/update`))
+        .status,
+    ).toBe(405);
+  });
+
+  it("relays an authorised request to the launcher and reports its progress", async () => {
+    const relayed = once(ingressProcess, "message");
+    const accepted = await fetch(
+      `${originForPort(ingressPort)}/__agent-canvas/update`,
+      { method: "POST", headers: { "x-session-api-key": controlKey } },
+    );
+    expect(accepted.status).toBe(202);
+    expect((await accepted.json()).status.phase).toBe("updating");
+    expect((await relayed)[0]).toEqual({
+      type: "agent-canvas-control",
+      action: "update",
+    });
+
+    // A second request while one is in flight is refused.
+    const busy = await fetch(
+      `${originForPort(ingressPort)}/__agent-canvas/restart`,
+      { method: "POST", headers: { "x-session-api-key": controlKey } },
+    );
+    expect(busy.status).toBe(409);
+
+    ingressProcess.send({
+      type: "agent-canvas-control-status",
+      phase: "failed",
+      message: "git pull failed",
+    });
+    await delay(100);
+    const status = await (
+      await fetch(`${originForPort(ingressPort)}/__agent-canvas/status`)
+    ).json();
+    expect(status).toMatchObject({
+      phase: "failed",
+      message: "git pull failed",
+    });
+
+    // A failed attempt may be retried.
+    const retry = await fetch(
+      `${originForPort(ingressPort)}/__agent-canvas/restart`,
+      { method: "POST", headers: { "x-session-api-key": controlKey } },
+    );
+    expect(retry.status).toBe(202);
+    expect((await retry.json()).status.phase).toBe("restarting");
+  });
+
+  it("answers 503 on an ingress started without a control key", async () => {
+    const port = await getFreePort();
+    const child = spawn(
+      process.execPath,
+      [
+        ingressScript,
+        "--port",
+        port.toString(),
+        "--default",
+        originForPort(backendPort),
+      ],
+      { cwd: repoRoot, stdio: ["ignore", "pipe", "pipe"] },
+    );
+    try {
+      await waitForPort(port, child);
+      const response = await fetch(
+        `${originForPort(port)}/__agent-canvas/update`,
+        { method: "POST", headers: { "x-session-api-key": controlKey } },
+      );
+      expect(response.status).toBe(503);
+      const serverInfo = (await getJson(`${originForPort(port)}/server_info`))
+        .body as Record<string, unknown>;
+      expect(serverInfo).not.toHaveProperty("agent_canvas_control");
+    } finally {
+      await stopChild(child);
+    }
+  });
+});
