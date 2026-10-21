@@ -1,4 +1,5 @@
 import { getActiveBackend } from "#/api/backend-registry/active-store";
+import { getCachedAgentServerInfo } from "#/api/agent-server-compatibility";
 
 /** Local only: cloud launches do not enforce a profile's secret scope yet. */
 export function agentProfileSupportsSecretRefs(): boolean {
@@ -13,4 +14,21 @@ export function agentProfileSupportsInstructions(): boolean {
 /** Local only: cloud launches ignore a profile's tools for now. */
 export function agentProfileSupportsTools(): boolean {
   return getActiveBackend().backend.kind !== "cloud";
+}
+
+/**
+ * Local only, and only on an agent-server whose ACP profiles accept
+ * `acp_fallback_server` / `acp_fallback_model` (the profile model rejects
+ * unknown fields). The compatibility probe caches `/server_info` on connect,
+ * so this reads the advertised capability synchronously.
+ */
+export const ACP_RUNTIME_FAILOVER_CAPABILITY = "acp_runtime_failover_v1";
+
+export function agentProfileSupportsAcpFallback(): boolean {
+  if (getActiveBackend().backend.kind === "cloud") return false;
+  return (
+    getCachedAgentServerInfo()?.capabilities?.includes(
+      ACP_RUNTIME_FAILOVER_CAPABILITY,
+    ) ?? false
+  );
 }

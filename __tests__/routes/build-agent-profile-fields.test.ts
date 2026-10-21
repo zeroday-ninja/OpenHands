@@ -82,6 +82,42 @@ describe("buildAgentProfileFields — ACP", () => {
     }
   });
 
+  it("stores the usage-limit fallback runtime and its model when the backend accepts them", () => {
+    const fields = buildAgentProfileFields({
+      ...baseAcp,
+      acpFallbackSupportedOnProfile: true,
+      acpFallbackServer: "codex",
+      acpFallbackModel: " gpt-6-astra/high ",
+    });
+    expect(fields).toMatchObject({
+      acp_fallback_server: "codex",
+      acp_fallback_model: "gpt-6-astra/high",
+    });
+  });
+
+  it("drops a fallback equal to the runtime itself, and the model with it", () => {
+    const fields = buildAgentProfileFields({
+      ...baseAcp,
+      acpFallbackSupportedOnProfile: true,
+      acpFallbackServer: "claude-code",
+      acpFallbackModel: "opus",
+    });
+    expect(fields).toMatchObject({
+      acp_fallback_server: null,
+      acp_fallback_model: null,
+    });
+  });
+
+  it("omits the fallback fields on a backend whose profiles predate them", () => {
+    const fields = buildAgentProfileFields({
+      ...baseAcp,
+      acpFallbackSupportedOnProfile: false,
+      acpFallbackServer: "codex",
+    });
+    expect(fields).not.toHaveProperty("acp_fallback_server");
+    expect(fields).not.toHaveProperty("acp_fallback_model");
+  });
+
   it("normalizes a blank model to null", () => {
     const fields = buildAgentProfileFields({ ...baseAcp, acpModel: "   " });
     if (fields.agent_kind === "acp") {

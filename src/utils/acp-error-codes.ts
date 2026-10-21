@@ -9,6 +9,10 @@ export const ACP_AUTH_REQUIRED_CODE = "ACPAuthRequired";
 
 const ACP_ERROR_HEADER_KEYS: Record<string, I18nKey> = {
   ACPAuthRequired: I18nKey.ERROR$ACP_AUTH_REQUIRED_TITLE,
+  // The runtime's subscription usage window is exhausted; the detail carries
+  // the CLI's own notice (reset time, upgrade link).
+  ACPUsageLimit: I18nKey.ERROR$ACP_USAGE_LIMIT_TITLE,
+  ACPFailoverFailed: I18nKey.CHAT_INTERFACE$AGENT_ERROR_MESSAGE,
   // Spawn/init/prompt/usage-policy failures share the generic "Agent error"
   // header; their detail already carries the specific cause.
   ACPSpawnError: I18nKey.CHAT_INTERFACE$AGENT_ERROR_MESSAGE,

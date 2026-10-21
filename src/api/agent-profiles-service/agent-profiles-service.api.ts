@@ -49,6 +49,16 @@ function isCloud(): boolean {
  */
 export const WELL_KNOWN_DEFAULT_AGENT_PROFILE_NAME = "default";
 
+/**
+ * Usage-limit failover fields an agent-server with `acp_runtime_failover_v1`
+ * adds to ACP profiles. The pinned client types predate them, so readers
+ * intersect this with `AgentProfile` (see `agentProfileSupportsAcpFallback`).
+ */
+export type AcpProfileFailoverFields = {
+  acp_fallback_server?: string | null;
+  acp_fallback_model?: string | null;
+};
+
 // Re-export SDK types for consumers.
 export type {
   AgentProfile,

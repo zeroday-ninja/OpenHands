@@ -576,6 +576,38 @@ describe("ChatInputModel", () => {
       ).not.toBeInTheDocument();
     });
 
+    it("keeps the session's effort when switching models in a live conversation", () => {
+      // A live session reports effort levels for its current model only, and
+      // the agent keeps that effort across a model switch; the saved id must
+      // say so, or the pill would show the agent default while the runtime
+      // still runs at the old level.
+      sessionModelsMock.mockReturnValue([
+        { id: "gpt-6-astra", label: "GPT-6 Astra" },
+        { id: "gpt-6.1-sol", label: "GPT-6.1 Sol" },
+      ]);
+      useActiveConversationMock.mockReturnValue({
+        data: {
+          conversation_id: "test-conversation-id",
+          agent_kind: "acp",
+          acp_server: "codex",
+          llm_model: "gpt-6-astra",
+          acp_current_effort: "low",
+          acp_available_efforts: ["low", "medium", "ultra"],
+        },
+      });
+
+      renderWithProviders(<ChatInputModel />);
+      fireEvent.click(screen.getByTestId("chat-input-llm-model"));
+      fireEvent.click(
+        screen.getByTestId("chat-input-acp-model-option-gpt-6.1-sol"),
+      );
+
+      expect(switchAcpModelMutate).toHaveBeenCalledWith({
+        conversationId: "test-conversation-id",
+        model: "gpt-6.1-sol/low",
+      });
+    });
+
     it("switches a live conversation with the levels its session reports", () => {
       sessionModelsMock.mockReturnValue([
         { id: "gpt-6-astra", label: "GPT-6 Astra" },

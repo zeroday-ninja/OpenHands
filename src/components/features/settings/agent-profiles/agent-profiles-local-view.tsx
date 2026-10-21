@@ -12,6 +12,7 @@ import {
 } from "#/routes/agent-settings";
 import AgentProfilesService, {
   WELL_KNOWN_DEFAULT_AGENT_PROFILE_NAME,
+  type AcpProfileFailoverFields,
   type AgentProfile,
   type AgentProfileSummary,
   type AgentProfileSaveInput,
@@ -45,6 +46,7 @@ function toAgentSettingsOverride(
 ): Record<string, SettingsValue> {
   const secretRefs = profile.secret_refs ?? null;
   if (profile.agent_kind === "acp") {
+    const failover = profile as typeof profile & AcpProfileFailoverFields;
     return {
       agent_kind: "acp",
       mcp_server_refs: profile.mcp_server_refs ?? null,
@@ -53,6 +55,8 @@ function toAgentSettingsOverride(
       acp_command: profile.acp_command ? parseCommand(profile.acp_command) : [],
       acp_args: profile.acp_args ?? [],
       acp_model: profile.acp_model ?? "",
+      acp_fallback_server: failover.acp_fallback_server ?? null,
+      acp_fallback_model: failover.acp_fallback_model ?? "",
     };
   }
   return {

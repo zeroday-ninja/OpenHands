@@ -12,12 +12,19 @@ describe("acp-error-codes", () => {
     );
   });
 
+  it("maps the usage-limit code to its own header", () => {
+    expect(getAcpErrorHeaderKey("ACPUsageLimit")).toBe(
+      I18nKey.ERROR$ACP_USAGE_LIMIT_TITLE,
+    );
+  });
+
   it("maps other ACP codes to the generic agent-error header", () => {
     for (const code of [
       "ACPSpawnError",
       "ACPInitError",
       "ACPPromptError",
       "UsagePolicyRefusal",
+      "ACPFailoverFailed",
     ]) {
       expect(getAcpErrorHeaderKey(code)).toBe(
         I18nKey.CHAT_INTERFACE$AGENT_ERROR_MESSAGE,
