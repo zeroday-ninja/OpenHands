@@ -10,6 +10,7 @@ import { ModalCloseButton } from "#/components/shared/modals/modal-close-button"
 import { ContextMenuListItem } from "#/components/features/context-menu/context-menu-list-item";
 import { StyledTooltip } from "#/components/shared/buttons/styled-tooltip";
 import { useGitRepositories } from "#/hooks/query/use-git-repositories";
+import { useAgentProfiles } from "#/hooks/query/use-agent-profiles";
 import { useLlmProfiles } from "#/hooks/query/use-llm-profiles";
 import { useClickOutsideElement } from "#/hooks/use-click-outside-element";
 import { useUserProviders } from "#/hooks/use-user-providers";
@@ -47,16 +48,33 @@ function parseRepositories(value: string): string[] {
     });
 }
 
+/**
+ * What the automation runs as: an LLM profile (the default OpenHands agent
+ * around that model), or an agent profile -- Claude Code, Codex, or an
+ * OpenHands profile that already names its LLM. A profile owns its model, so
+ * choosing one clears the other.
+ */
 function SetupModelPill({
   value,
+  agentProfileId,
   onChange,
+  onAgentProfileChange,
 }: {
   value: string;
+  agentProfileId: string;
   onChange: (profileName: string) => void;
+  onAgentProfileChange: (agentProfileId: string) => void;
 }) {
   const { t } = useTranslation("openhands");
   const { data, isLoading } = useLlmProfiles();
+  const { data: agentProfilesData, isLoading: isLoadingAgentProfiles } =
+    useAgentProfiles();
   const profiles = data?.profiles ?? [];
+  // Only profiles the backend can address by id can run an automation.
+  const agentProfiles = (agentProfilesData?.profiles ?? []).filter(
+    (profile): profile is typeof profile & { id: string } =>
+      typeof profile.id === "string" && profile.id.length > 0,
+  );
   const activeProfileName = data?.active_profile ?? null;
   const [isOpen, setIsOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -64,12 +82,22 @@ function SetupModelPill({
     () => setIsOpen(false),
     triggerRef,
   );
-  const pinnedProfileName = value.trim() || null;
-  const displayName = pinnedProfileName ?? activeProfileName;
+  const pinnedAgentProfileId = agentProfileId.trim() || null;
+  const pinnedAgentProfile =
+    agentProfiles.find((profile) => profile.id === pinnedAgentProfileId) ??
+    null;
+  const pinnedProfileName = pinnedAgentProfileId ? null : value.trim() || null;
+  const displayName =
+    pinnedAgentProfile?.name ??
+    (pinnedAgentProfileId ? null : (pinnedProfileName ?? activeProfileName));
   const pillLabel =
     displayName ?? t(I18nKey.AUTOMATION_SETUP$MODEL_PLACEHOLDER);
-  const canOpen = !isLoading && profiles.length > 0;
+  const canOpen =
+    !isLoading &&
+    !isLoadingAgentProfiles &&
+    (profiles.length > 0 || agentProfiles.length > 0);
   const tooltip = t(I18nKey.LLM$MODEL);
+  const showHeadings = agentProfiles.length > 0;
 
   return (
     <div className="relative min-w-0">
@@ -108,21 +136,29 @@ function SetupModelPill({
           spacing="none"
           className="z-[60] mb-2 min-w-[200px] max-w-[320px] max-h-[60vh] overflow-y-auto"
         >
+          {showHeadings ? (
+            <li className="px-3 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-[var(--oh-muted)]">
+              {t(I18nKey.AUTOMATION_SETUP$LLM_PROFILES_HEADING)}
+            </li>
+          ) : null}
           <ContextMenuListItem
             testId="automation-setup-model-option-active"
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
               onChange("");
+              onAgentProfileChange("");
               setIsOpen(false);
             }}
             className={cn(
               "flex items-center justify-between gap-2",
-              !pinnedProfileName && "bg-[var(--oh-interactive-hover)]",
+              !pinnedProfileName &&
+                !pinnedAgentProfileId &&
+                "bg-[var(--oh-interactive-hover)]",
             )}
           >
             <span className="truncate">{t(I18nKey.COMMON$ACTIVE_PROFILE)}</span>
-            {!pinnedProfileName ? (
+            {!pinnedProfileName && !pinnedAgentProfileId ? (
               <CheckIcon className="size-4 shrink-0" aria-hidden />
             ) : null}
           </ContextMenuListItem>
@@ -137,6 +173,7 @@ function SetupModelPill({
                   event.preventDefault();
                   event.stopPropagation();
                   onChange(item.name);
+                  onAgentProfileChange("");
                   setIsOpen(false);
                 }}
                 className={cn(
@@ -153,6 +190,51 @@ function SetupModelPill({
                 {displayModel ? (
                   <span className="truncate text-xs leading-4 text-[var(--oh-muted)]">
                     {displayModel}
+                  </span>
+                ) : null}
+              </ContextMenuListItem>
+            );
+          })}
+          {showHeadings ? (
+            <>
+              <Divider className="my-1" />
+              <li className="px-3 pb-1 pt-2 text-xs font-medium uppercase tracking-wide text-[var(--oh-muted)]">
+                {t(I18nKey.AUTOMATION_SETUP$AGENT_PROFILES_HEADING)}
+              </li>
+              <li className="px-3 pb-2 text-xs leading-4 text-[var(--oh-muted)]">
+                {t(I18nKey.AUTOMATION_SETUP$AGENT_PROFILE_HELP)}
+              </li>
+            </>
+          ) : null}
+          {agentProfiles.map((profile) => {
+            const isSelected = profile.id === pinnedAgentProfileId;
+            return (
+              <ContextMenuListItem
+                key={profile.id}
+                testId={`automation-setup-agent-profile-option-${profile.id}`}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onAgentProfileChange(profile.id);
+                  onChange("");
+                  setIsOpen(false);
+                }}
+                className={cn(
+                  "flex flex-col items-stretch gap-0.5",
+                  isSelected && "bg-[var(--oh-interactive-hover)]",
+                )}
+              >
+                <div className="flex min-w-0 items-center justify-between gap-2">
+                  <span className="truncate">{profile.name}</span>
+                  {isSelected ? (
+                    <CheckIcon className="size-4 shrink-0" aria-hidden />
+                  ) : null}
+                </div>
+                {profile.agent_kind || profile.llm_profile_ref ? (
+                  <span className="truncate text-xs leading-4 text-[var(--oh-muted)]">
+                    {[profile.agent_kind, profile.llm_profile_ref]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </span>
                 ) : null}
               </ContextMenuListItem>
@@ -245,9 +327,11 @@ export function AutomationSetupPromptStack({
   titleAction,
   showTitle = true,
   model,
+  agentProfileId,
   onPromptChange,
   onRepositoryChange,
   onModelChange,
+  onAgentProfileChange,
 }: {
   prompt: string;
   repository: string;
@@ -260,9 +344,11 @@ export function AutomationSetupPromptStack({
   /** The setup form owns the title when the kind toggle stays outside the crossfade. */
   showTitle?: boolean;
   model: string;
+  agentProfileId: string;
   onPromptChange: (value: string) => void;
   onRepositoryChange: (value: string) => void;
   onModelChange: (profileName: string) => void;
+  onAgentProfileChange: (agentProfileId: string) => void;
 }) {
   const { t } = useTranslation("openhands");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -356,7 +442,12 @@ export function AutomationSetupPromptStack({
               className="min-h-[120px] w-full resize-none border-0 bg-transparent p-0 text-sm text-content outline-none placeholder:text-tertiary-alt"
             />
             <div className="flex min-w-0 items-center gap-2 pt-2">
-              <SetupModelPill value={model} onChange={onModelChange} />
+              <SetupModelPill
+                value={model}
+                agentProfileId={agentProfileId}
+                onChange={onModelChange}
+                onAgentProfileChange={onAgentProfileChange}
+              />
             </div>
             <div
               data-testid="automation-setup-prompt-grip"

@@ -499,7 +499,46 @@ describe("AutomationSetupPanel", () => {
     );
   });
 
-  it("does not offer or send an agent profile for prompt automations", async () => {
+  it("offers agent profiles next to LLM profiles and sends the chosen one for prompt automations", async () => {
+    vi.mocked(AutomationService.createServerDraft).mockRejectedValue({
+      response: { status: 404 },
+    });
+    vi.mocked(AutomationService.validateDraft).mockResolvedValue({
+      valid: true,
+      errors: [],
+    });
+
+    const user = userEvent.setup();
+    renderPanel({
+      prompt: "Review every pull request",
+      kind: "prompt",
+      form: { kind: "prompt", model: "fast" },
+    });
+
+    await user.click(screen.getByTestId("automation-setup-model"));
+    await user.click(
+      screen.getByTestId(
+        "automation-setup-agent-profile-option-agent-reviewer",
+      ),
+    );
+    // The pill names the agent, and the model pin it replaces is gone.
+    expect(screen.getByTestId("automation-setup-model")).toHaveAttribute(
+      "aria-label",
+      "reviewer",
+    );
+
+    await user.click(screen.getByTestId("automation-setup-test"));
+
+    await waitFor(() =>
+      expect(AutomationService.validateDraft).toHaveBeenCalled(),
+    );
+    const { draft } = vi.mocked(AutomationService.validateDraft).mock
+      .calls[0][0];
+    expect(draft).toMatchObject({ agent_profile_id: "agent-reviewer" });
+    expect(draft).not.toHaveProperty("model");
+  });
+
+  it("picking an LLM profile again drops the agent profile", async () => {
     vi.mocked(AutomationService.createServerDraft).mockRejectedValue({
       response: { status: 404 },
     });
@@ -514,20 +553,22 @@ describe("AutomationSetupPanel", () => {
       kind: "prompt",
       form: { kind: "prompt", agentProfileId: "agent-reviewer" },
     });
+    expect(screen.getByTestId("automation-setup-model")).toHaveAttribute(
+      "aria-label",
+      "reviewer",
+    );
 
-    expect(
-      screen.queryByTestId("automation-setup-agent-profile"),
-    ).not.toBeInTheDocument();
-    expect(screen.getByTestId("automation-setup-model")).toBeInTheDocument();
-
+    await user.click(screen.getByTestId("automation-setup-model"));
+    await user.click(screen.getByTestId("automation-setup-model-option-fast"));
     await user.click(screen.getByTestId("automation-setup-test"));
 
     await waitFor(() =>
       expect(AutomationService.validateDraft).toHaveBeenCalled(),
     );
-    expect(
-      vi.mocked(AutomationService.validateDraft).mock.calls[0][0].draft,
-    ).not.toHaveProperty("agent_profile_id");
+    const { draft } = vi.mocked(AutomationService.validateDraft).mock
+      .calls[0][0];
+    expect(draft).toMatchObject({ model: "fast" });
+    expect(draft).not.toHaveProperty("agent_profile_id");
   });
 
   it("leaves a prompt automation's stored agent profile alone on save", async () => {
