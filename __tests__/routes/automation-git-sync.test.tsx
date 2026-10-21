@@ -22,6 +22,7 @@ vi.mock("#/api/automation-service/automation-service.api", () => ({
     getGitSyncStatus: vi.fn(),
     updateGitSyncConfig: vi.fn(),
     triggerGitSync: vi.fn(),
+    listGitSyncRemotes: vi.fn(),
     checkHealth: vi.fn(),
   },
 }));
@@ -111,6 +112,13 @@ beforeEach(() => {
   __resetActiveStoreForTests();
   vi.mocked(AutomationService.checkHealth).mockReset();
   vi.mocked(AutomationService.checkHealth).mockResolvedValue({ status: "ok" });
+  // These cases cover an automation backend that syncs one repository per
+  // organization: it has no remotes API, so the page falls back to the
+  // single-repository surface.
+  vi.mocked(AutomationService.listGitSyncRemotes).mockReset();
+  vi.mocked(AutomationService.listGitSyncRemotes).mockRejectedValue(
+    new HttpError(404, "Not Found", { detail: "Not Found" }),
+  );
   vi.mocked(AutomationService.getGitSyncStatus).mockReset();
   vi.mocked(AutomationService.getGitSyncStatus).mockResolvedValue(status);
   vi.mocked(AutomationService.triggerGitSync).mockReset();
@@ -180,7 +188,7 @@ describe("AutomationGitSync — failed background refetch", () => {
     vi.useFakeTimers();
     renderGitSync();
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(50);
     });
     expect(screen.getByTestId("git-sync-repo-url-input")).toBeInTheDocument();
 
@@ -207,7 +215,7 @@ describe("AutomationGitSync — sync progress", () => {
     vi.useFakeTimers();
     renderGitSync();
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(1);
+      await vi.advanceTimersByTimeAsync(50);
     });
     return screen.getByTestId("git-sync-now-button");
   }

@@ -1,9 +1,10 @@
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { I18nKey } from "#/i18n/declaration";
 import { RefreshCw } from "lucide-react";
 import type { GitSyncStatus } from "#/types/git-sync";
 import { formatTimeDelta } from "#/utils/format-time-delta";
-import { parseGitRemoteUrl } from "#/utils/parse-git-remote-url";
+import { browseUrlFor, displayUrlFor } from "#/utils/git-sync-repo-url";
 import { cn } from "#/utils/utils";
 import GitBranchIcon from "#/icons/git-branch.svg?react";
 import GlobeIcon from "#/icons/globe.svg?react";
@@ -18,57 +19,6 @@ import {
   type GitSyncActivityState,
 } from "./git-sync-activity-row";
 
-/**
- * A browsable URL for the configured remote, or `null` when there isn't one.
- * A bare repo on disk is a valid sync target, so a local path -- and anything
- * else that doesn't parse -- stays plain text rather than becoming a dead link.
- *
- * An http(s) remote is already browsable, so it is reused as-is apart from the
- * `.git` suffix and any embedded credentials, which keeps forge-specific paths
- * (Azure's `org/project/_git/repo`) and non-default ports intact. Other schemes
- * -- `ssh://`, `git://`, `git@host:owner/repo` -- carry no browsable form, so
- * they are rebuilt over https from the parsed host and repository.
- */
-function browseUrlFor(repoUrl: string): string | null {
-  const parsed = parseGitRemoteUrl(repoUrl);
-  if (!parsed?.host || !parsed.repository) return null;
-
-  if (/^https?:\/\//i.test(parsed.url)) {
-    const url = new URL(parsed.url);
-    url.username = "";
-    url.password = "";
-    url.pathname = url.pathname.replace(/\.git$/, "");
-    return url.toString();
-  }
-
-  return `https://${parsed.host}/${parsed.repository}`;
-}
-
-// `scheme://userinfo@`; the greedy userinfo stops at the authority's last `@`,
-// where the WHATWG URL parser also ends it.
-const URL_USERINFO_PATTERN = /^([a-z][a-z\d+.-]*:\/\/)([^/?#]*)@/i;
-
-/**
- * The configured remote as shown on the card, without embedded credentials.
- * Like the href, an http(s) remote loses its whole userinfo, since a token
- * often rides in the username slot alone. Other schemes keep the user, which
- * names the account (`ssh://git@host`), and lose only a password. The rest of
- * the value is shown exactly as configured.
- */
-function displayUrlFor(repoUrl: string): string {
-  const url = repoUrl.trim();
-  const match = url.match(URL_USERINFO_PATTERN);
-  if (!match) return url;
-
-  const [userinfoPrefix, scheme, userinfo] = match;
-  const rest = url.slice(userinfoPrefix.length);
-  if (/^https?:\/\/$/i.test(scheme)) return `${scheme}${rest}`;
-
-  const passwordStart = userinfo.indexOf(":");
-  if (passwordStart === -1) return url;
-  return `${scheme}${userinfo.slice(0, passwordStart)}@${rest}`;
-}
-
 interface GitSyncOverviewSectionProps {
   status: GitSyncStatus;
   onSyncNow: () => void;
@@ -76,6 +26,14 @@ interface GitSyncOverviewSectionProps {
   syncActivity: GitSyncActivityState;
   syncStartedAt: string | null;
   canManage: boolean;
+  /** Card heading; defaults to the single-repository "Sync Status". */
+  title?: string;
+  /** Extra pills next to the enabled and encryption ones (a remote's Default). */
+  headerBadges?: ReactNode;
+  /** Shown as a field when known: the automations this remote exports. */
+  automationCount?: number;
+  /** Rendered under the fields: a remote card's own actions. */
+  children?: ReactNode;
 }
 
 export function GitSyncOverviewSection({
@@ -85,6 +43,10 @@ export function GitSyncOverviewSection({
   syncActivity,
   syncStartedAt,
   canManage,
+  title,
+  headerBadges,
+  automationCount,
+  children,
 }: GitSyncOverviewSectionProps) {
   const { t } = useTranslation("openhands");
   const repoHref = browseUrlFor(status.repo_url);
@@ -93,10 +55,11 @@ export function GitSyncOverviewSection({
   return (
     <SectionCard
       icon={<GitBranchIcon className="size-4" />}
-      title={t(I18nKey.AUTOMATIONS$GIT_SYNC$STATUS_TITLE)}
+      title={title ?? t(I18nKey.AUTOMATIONS$GIT_SYNC$STATUS_TITLE)}
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {headerBadges}
           <GitSyncStatusPill
             testId="git-sync-enabled-pill"
             tone={status.enabled ? "success" : "neutral"}
@@ -220,7 +183,20 @@ export function GitSyncOverviewSection({
             {status.dirty_count}
           </span>
         </ConfigField>
+
+        {automationCount !== undefined && (
+          <ConfigField
+            icon={<FolderIcon className="size-3.5" />}
+            label={t(I18nKey.AUTOMATIONS$GIT_SYNC$AUTOMATIONS_TITLE)}
+          >
+            <span data-testid="git-sync-automation-count">
+              {automationCount}
+            </span>
+          </ConfigField>
+        )}
       </div>
+
+      {children}
     </SectionCard>
   );
 }

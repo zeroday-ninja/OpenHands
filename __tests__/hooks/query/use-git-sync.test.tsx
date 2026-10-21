@@ -3,10 +3,14 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 import {
   GIT_SYNC_STATUS_QUERY_KEY,
+  useCreateGitSyncRemote,
+  useGitSyncRemotes,
   useGitSyncStatus,
   useTriggerGitSync,
   useUpdateGitSyncConfig,
 } from "#/hooks/query/use-git-sync";
+import { GIT_SYNC_QUERY_KEYS } from "#/hooks/query/query-keys";
+import { HttpError } from "@openhands/typescript-client";
 import AutomationService from "#/api/automation-service/automation-service.api";
 import {
   __resetActiveStoreForTests,
@@ -22,6 +26,8 @@ vi.mock("#/api/automation-service/automation-service.api", () => ({
     getGitSyncStatus: vi.fn(),
     updateGitSyncConfig: vi.fn(),
     triggerGitSync: vi.fn(),
+    listGitSyncRemotes: vi.fn(),
+    createGitSyncRemote: vi.fn(),
   },
 }));
 
@@ -247,5 +253,48 @@ describe("useGitSyncStatus", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(AutomationService.getGitSyncStatus).toHaveBeenCalledTimes(2);
     expect(result.current.data).toEqual(baseStatus);
+  });
+});
+
+describe("useGitSyncRemotes", () => {
+  it("does not retry a backend that has no remotes API", async () => {
+    const { wrapper } = createHarness();
+    vi.mocked(AutomationService.listGitSyncRemotes).mockRejectedValue(
+      new HttpError(404, "Not Found", { detail: "Not Found" }),
+    );
+
+    const { result } = renderHook(() => useGitSyncRemotes(), { wrapper });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(AutomationService.listGitSyncRemotes).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useCreateGitSyncRemote", () => {
+  it("refreshes the remotes list and the single-repository status once a repository is added", async () => {
+    const { queryClient, wrapper } = createHarness();
+    const remotes = { remotes: [], unassigned_count: 0 };
+    vi.mocked(AutomationService.createGitSyncRemote).mockResolvedValue({
+      ...baseStatus,
+      id: "remote-1",
+      label: "",
+      is_default: true,
+      automation_count: 0,
+    });
+    const remotesKey = [...GIT_SYNC_QUERY_KEYS.remotes, "test-backend", null];
+    queryClient.setQueryData(remotesKey, remotes);
+    queryClient.setQueryData(STATUS_KEY, baseStatus);
+
+    const { result } = renderHook(() => useCreateGitSyncRemote(), { wrapper });
+    await act(async () => {
+      await result.current.mutateAsync({
+        repo_url: "https://example.com/org/repo.git",
+      });
+    });
+
+    // Nothing observes either query here, so they are marked stale rather
+    // than refetched; a mounted page refetches them at once.
+    expect(queryClient.getQueryState(remotesKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(STATUS_KEY)?.isInvalidated).toBe(true);
   });
 });

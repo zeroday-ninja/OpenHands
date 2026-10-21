@@ -16,8 +16,14 @@ import type {
   AutomationRunsResponse,
 } from "#/types/automation";
 import type {
+  GitSyncAssignment,
+  GitSyncAssignmentsResponse,
   GitSyncCheckResponse,
   GitSyncConfigUpdateRequest,
+  GitSyncRemoteCreateRequest,
+  GitSyncRemoteStatus,
+  GitSyncRemoteUpdateRequest,
+  GitSyncRemotesResponse,
   GitSyncStatus,
   GitSyncTriggerResponse,
 } from "#/types/git-sync";
@@ -1138,6 +1144,121 @@ class AutomationService {
     const { data } =
       await localAutomationAxios.post<GitSyncTriggerResponse>(path);
     return data;
+  }
+
+  /**
+   * One request against the git-sync surface, on whichever backend kind is
+   * active. The remotes and assignments endpoints below all share it; the
+   * single-repo methods above predate it and keep their own branches.
+   */
+  private static async requestGitSync<T>(
+    method: "GET" | "POST" | "PUT" | "DELETE",
+    path: string,
+    body?: object,
+  ): Promise<T> {
+    const active = getActiveBackend().backend;
+    const fullPath = `${AUTOMATION_BASE_PATH}/v1/git-sync${path}`;
+
+    if (active.kind === "cloud") {
+      return callCloudProxy<T>({
+        backend: active,
+        method,
+        path: fullPath,
+        body: body as Record<string, unknown> | undefined,
+        headers: await buildAutomationRequestHeaders(),
+      });
+    }
+
+    const { data } = await localAutomationAxios.request<T>({
+      method,
+      url: fullPath,
+      data: body,
+    });
+    return data;
+  }
+
+  /** Every repository the organization syncs, default first. */
+  static listGitSyncRemotes(): Promise<GitSyncRemotesResponse> {
+    return AutomationService.requestGitSync<GitSyncRemotesResponse>(
+      "GET",
+      "/remotes",
+    );
+  }
+
+  static createGitSyncRemote(
+    body: GitSyncRemoteCreateRequest,
+  ): Promise<GitSyncRemoteStatus> {
+    return AutomationService.requestGitSync<GitSyncRemoteStatus>(
+      "POST",
+      "/remotes",
+      body,
+    );
+  }
+
+  static updateGitSyncRemote(
+    remoteId: string,
+    body: GitSyncRemoteUpdateRequest,
+  ): Promise<GitSyncRemoteStatus> {
+    return AutomationService.requestGitSync<GitSyncRemoteStatus>(
+      "PUT",
+      `/remotes/${encodeURIComponent(remoteId)}`,
+      body,
+    );
+  }
+
+  static async deleteGitSyncRemote(remoteId: string): Promise<void> {
+    await AutomationService.requestGitSync<unknown>(
+      "DELETE",
+      `/remotes/${encodeURIComponent(remoteId)}`,
+    );
+  }
+
+  /**
+   * Ask whether a remote's configuration can reach its repository, without
+   * saving it. `remoteId` null checks a repository about to be added.
+   */
+  static checkGitSyncRemote(
+    remoteId: string | null,
+    body: GitSyncConfigUpdateRequest,
+  ): Promise<GitSyncCheckResponse> {
+    const path =
+      remoteId === null
+        ? "/remotes/check"
+        : `/remotes/${encodeURIComponent(remoteId)}/check`;
+    return AutomationService.requestGitSync<GitSyncCheckResponse>(
+      "POST",
+      path,
+      body,
+    );
+  }
+
+  static triggerGitSyncRemote(
+    remoteId: string,
+  ): Promise<GitSyncTriggerResponse> {
+    return AutomationService.requestGitSync<GitSyncTriggerResponse>(
+      "POST",
+      `/remotes/${encodeURIComponent(remoteId)}/sync`,
+    );
+  }
+
+  /** Which remote each live automation syncs to. */
+  static listGitSyncAssignments(): Promise<GitSyncAssignmentsResponse> {
+    return AutomationService.requestGitSync<GitSyncAssignmentsResponse>(
+      "GET",
+      "/assignments",
+    );
+  }
+
+  /** Move an automation to `remoteId`; it leaves the previous remote's repo on that remote's next cycle. */
+  static assignGitSyncRemote(
+    automationId: string,
+    remoteId: string,
+  ): Promise<GitSyncAssignment> {
+    return AutomationService.requestGitSync<GitSyncAssignment>(
+      "PUT",
+      `/assignments/${encodeURIComponent(automationId)}`,
+      { remote_id: remoteId },
+    );
   }
 
   static async checkHealth(): Promise<AutomationHealthResponse> {
