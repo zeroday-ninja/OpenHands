@@ -151,8 +151,65 @@ export function ChatStrong(props: StrongProps) {
   return <strong>{children}</strong>;
 }
 
-/** Marks descendants so nested path tokens are not turned into a button. */
+// `scheme:` or protocol-relative `//host`: a real link, not a path.
+const EXTERNAL_HREF = /^(?:[a-z][a-z\d+.-]*:|\/\/)/i;
+
+/**
+ * The workspace file a Markdown link points at, or null for an ordinary link.
+ *
+ * Agents write `[prompt.md](/workspace/project/prompt.md)` for files they
+ * created. Rendered as a plain anchor that resolves against the app's own
+ * origin and lands on the not-found route, so a sandbox path is opened in
+ * the Files drawer instead. A link counts as one when it has no scheme and
+ * either sits under the conversation's working directory or names a file
+ * (`file://` paths included); other same-origin links, such as an app route,
+ * stay anchors.
+ */
+function workspaceLinkTarget(href: string | undefined): string | null {
+  if (!href) return null;
+  const trimmed = href.trim();
+  if (!trimmed || trimmed.startsWith("#")) return null;
+
+  const path = trimmed.replace(/^file:\/\//i, "");
+  if (EXTERNAL_HREF.test(path)) return null;
+
+  const workingDir =
+    ConversationService.getCurrentConversation()?.workspace?.working_dir;
+  const relative = toFilesTabPath(path, workingDir);
+  if (!relative) return null;
+
+  const underWorkingDir = path !== relative && path.startsWith("/");
+  if (!underWorkingDir && !looksLikeWorkspaceFilePath(path)) return null;
+  return relative;
+}
+
+/**
+ * Chat-only link: a workspace file path opens in the Files drawer; anything
+ * else is the default anchor, with its descendants marked so nested path
+ * tokens are not turned into a button of their own.
+ */
 export function ChatAnchor(props: AnchorProps) {
+  const { href, children } = props;
+  const { conversationId } = useOptionalConversationId();
+  const target = workspaceLinkTarget(href);
+
+  if (target) {
+    return (
+      <button
+        type="button"
+        data-testid="markdown-file-path-link"
+        title={target}
+        className="cursor-pointer text-link underline"
+        onClick={(event) => {
+          event.stopPropagation();
+          openWorkspaceFile(target, conversationId);
+        }}
+      >
+        {children}
+      </button>
+    );
+  }
+
   return (
     <InMarkdownLinkContext.Provider value>
       {defaultAnchor(props)}
