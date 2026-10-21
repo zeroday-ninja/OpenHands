@@ -27,13 +27,16 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join, sep } from "node:path";
 import process from "node:process";
 
 import { resolveWindowsCommand } from "./dev-process-utils.mjs";
 
 export const AGENT_CANVAS_PACKAGE = "@openhands/agent-canvas";
+/** Where a source checkout fetches release tags from (`v<version>`). */
+export const AGENT_CANVAS_UPSTREAM_REPO =
+  "https://github.com/OpenHands/OpenHands.git";
 export const CONTROL_PATH_PREFIX = "/__agent-canvas";
 export const CONTROL_STATUS_PATH = `${CONTROL_PATH_PREFIX}/status`;
 export const CONTROL_UPDATE_PATH = `${CONTROL_PATH_PREFIX}/update`;
@@ -49,6 +52,38 @@ const OUTPUT_TAIL_CHARS = 2000;
 
 function hasPathSegment(path, segment) {
   return path.split(sep).includes(segment);
+}
+
+/** Numeric semver compare: negative when `a` is older than `b`. */
+export function compareVersions(a, b) {
+  const parse = (value) =>
+    String(value ?? "")
+      .trim()
+      .replace(/^v/, "")
+      .split(/[.-]/)
+      .slice(0, 3)
+      .map((part) => Number.parseInt(part, 10) || 0);
+  const [x, y] = [parse(a), parse(b)];
+  for (let i = 0; i < 3; i++) {
+    if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0);
+  }
+  return 0;
+}
+
+/**
+ * The npm prefix a global install under `projectRoot` belongs to, so the
+ * update lands in the same tree the running bin came from (not whatever
+ * prefix the shell's npm would pick). Null when the layout is not npm's.
+ */
+export function npmPrefixOf(projectRoot, platform = process.platform) {
+  const parts = projectRoot.split(sep);
+  const tail = platform === "win32" ? 3 : 4; // [lib/]node_modules/@openhands/agent-canvas
+  const expected =
+    platform === "win32"
+      ? ["node_modules", "@openhands", "agent-canvas"]
+      : ["lib", "node_modules", "@openhands", "agent-canvas"];
+  if (parts.slice(-tail).join("/") !== expected.join("/")) return null;
+  return parts.slice(0, -tail).join(sep) || sep;
 }
 
 function unsupported(reason) {
@@ -214,6 +249,8 @@ function runStep(step, { spawnImpl = spawn, env = process.env } = {}) {
  * @property {string[]} args
  * @property {string} cwd
  * @property {boolean} [onlyIfHeadMoved]
+ * @property {string} [onlyIfOlderThan]
+ * @property {string} [mergeTag]
  */
 
 /**
@@ -223,6 +260,9 @@ function runStep(step, { spawnImpl = spawn, env = process.env } = {}) {
  * @property {SpawnLike} [spawnImpl]
  * @property {NodeJS.ProcessEnv} [env]
  * @property {NodeJS.Platform} [platform]
+ * @property {string|null} [targetVersion] The release the browser saw on npm;
+ *   a checkout older than it merges that release's tag.
+ * @property {string} [upstreamRepo] Where release tags are fetched from.
  */
 
 /**
@@ -267,7 +307,10 @@ export function buildUpdateSteps(
         },
       ];
     }
-    case "npm-global":
+    case "npm-global": {
+      // Install into the prefix the running bin lives in, not whatever the
+      // shell's npm would pick (nvm users have one per Node version).
+      const prefix = projectRoot ? npmPrefixOf(projectRoot, platform) : null;
       return [
         {
           label: "npm install -g",
@@ -277,11 +320,13 @@ export function buildUpdateSteps(
             "-g",
             "--no-audit",
             "--no-fund",
+            ...(prefix ? ["--prefix", prefix] : []),
             `${packageName}@latest`,
           ],
           cwd: projectRoot,
         },
       ];
+    }
     default:
       return [];
   }
@@ -312,7 +357,15 @@ async function gitHead(projectRoot, options) {
  */
 export async function runSelfUpdate(
   detection,
-  { projectRoot, log = () => {}, spawnImpl, env, platform } = {},
+  {
+    projectRoot,
+    log = () => {},
+    spawnImpl,
+    env,
+    platform,
+    targetVersion = null,
+    upstreamRepo = AGENT_CANVAS_UPSTREAM_REPO,
+  } = {},
 ) {
   if (!detection.self_update.supported) {
     return {
@@ -320,14 +373,65 @@ export async function runSelfUpdate(
       message: `Self-update is not available (${detection.self_update.reason}).`,
     };
   }
-  const options = { spawnImpl, env, platform };
-  const steps = buildUpdateSteps(detection, { projectRoot, platform });
-  const headBefore =
-    detection.self_update.method === "git-checkout"
-      ? await gitHead(projectRoot, options)
-      : null;
+  const options = {
+    spawnImpl,
+    // Never let git sit on a credential prompt nobody can answer.
+    env: { ...(env ?? process.env), GIT_TERMINAL_PROMPT: "0" },
+    platform,
+  };
+  const git = resolveWindowsCommand("git", platform ?? process.platform);
+  const isCheckout = detection.self_update.method === "git-checkout";
+  let steps = buildUpdateSteps(detection, { projectRoot, platform });
+  let headBefore = null;
+  if (isCheckout) {
+    const dirty = await runStep(
+      { command: git, args: ["status", "--porcelain"], cwd: projectRoot },
+      options,
+    );
+    if (dirty.ok && dirty.output) {
+      return {
+        ok: false,
+        message:
+          "The checkout has uncommitted changes. Commit or stash them, then try again.",
+      };
+    }
+    headBefore = await gitHead(projectRoot, options);
+    // A detached HEAD or a branch without an upstream has nothing to pull;
+    // the release-tag merge below still applies.
+    const tracking = await runStep(
+      {
+        command: git,
+        args: ["rev-parse", "--abbrev-ref", "@{u}"],
+        cwd: projectRoot,
+      },
+      options,
+    );
+    if (!tracking.ok) {
+      log("git pull: skipped, the branch tracks no upstream");
+      steps = steps.filter((step) => step.label !== "git pull");
+    }
+    if (targetVersion) {
+      // After the pull and before npm ci: fetch the release tag, then merge
+      // it (see the loop), unless the checkout already carries that version.
+      steps.splice(steps.length - 1, 0, {
+        label: `merge release v${targetVersion}`,
+        command: git,
+        args: ["fetch", "--no-tags", upstreamRepo, "tag", `v${targetVersion}`],
+        cwd: projectRoot,
+        mergeTag: `v${targetVersion}`,
+        onlyIfOlderThan: targetVersion,
+      });
+    }
+  }
   let lastOutput = "";
   for (const step of steps) {
+    if (step.onlyIfOlderThan) {
+      const installed = readPackageVersion(projectRoot);
+      if (installed && compareVersions(installed, step.onlyIfOlderThan) >= 0) {
+        log(`${step.label}: skipped, the checkout is already ${installed}`);
+        continue;
+      }
+    }
     if (step.onlyIfHeadMoved) {
       const headAfter = await gitHead(projectRoot, options);
       if (headBefore && headAfter && headAfter === headBefore) {
@@ -336,7 +440,25 @@ export async function runSelfUpdate(
       }
     }
     log(`${step.label}: running`);
-    const result = await runStep(step, options);
+    let result = await runStep(step, options);
+    if (result.ok && step.mergeTag) {
+      // The fetch brought the tag; now merge it into the current branch. A
+      // conflict is undone so the checkout is left as it was.
+      result = await runStep(
+        {
+          command: git,
+          args: ["merge", "--no-edit", "--no-ff", step.mergeTag],
+          cwd: projectRoot,
+        },
+        options,
+      );
+      if (!result.ok) {
+        await runStep(
+          { command: git, args: ["merge", "--abort"], cwd: projectRoot },
+          options,
+        );
+      }
+    }
     lastOutput = result.output;
     if (!result.ok) {
       log(`${step.label}: failed`);
@@ -348,6 +470,16 @@ export async function runSelfUpdate(
     log(`${step.label}: done`);
   }
   return { ok: true, message: lastOutput };
+}
+
+function readPackageVersion(projectRoot) {
+  try {
+    const raw = readFileSync(join(projectRoot, "package.json"), "utf8");
+    const version = JSON.parse(raw).version;
+    return typeof version === "string" ? version : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

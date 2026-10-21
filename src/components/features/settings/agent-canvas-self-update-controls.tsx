@@ -40,6 +40,8 @@ function progressKey(state: AgentCanvasSelfUpdateState): I18nKey | null {
 interface AgentCanvasSelfUpdateControlsProps {
   /** Offer "Update and restart"; otherwise only a restart. */
   updateAvailable: boolean;
+  /** The release the npm check reported, which the update should reach. */
+  latestVersion?: string | null;
   className?: string;
 }
 
@@ -51,11 +53,14 @@ interface AgentCanvasSelfUpdateControlsProps {
  */
 export function AgentCanvasSelfUpdateControls({
   updateAvailable,
+  latestVersion = null,
   className,
 }: AgentCanvasSelfUpdateControlsProps) {
   const { t } = useTranslation("openhands");
   const control = useAgentCanvasControl();
-  const { state, start } = useAgentCanvasSelfUpdate(control.data ?? null);
+  const { state, start } = useAgentCanvasSelfUpdate(control.data ?? null, {
+    targetVersion: latestVersion,
+  });
   const info = control.data?.info;
   if (!info?.enabled) return null;
   const canUpdate = updateAvailable && info.self_update.supported;
@@ -112,7 +117,9 @@ export function AgentCanvasSelfUpdateControls({
       </div>
       {canUpdate && !busy && state.phase !== "failed" ? (
         <p className="text-xs text-muted">
-          {t(methodHintKey(info.self_update.method))}
+          {t(methodHintKey(info.self_update.method), {
+            version: latestVersion ?? "",
+          })}
         </p>
       ) : null}
       {progress ? (

@@ -188,7 +188,10 @@ export function AgentCanvasVersionModal({
           )}
         </div>
 
-        <AgentCanvasSelfUpdateControls updateAvailable={updateAvailable} />
+        <AgentCanvasSelfUpdateControls
+          updateAvailable={updateAvailable}
+          latestVersion={latestVersion}
+        />
 
         {updateAvailable ? (
           <details

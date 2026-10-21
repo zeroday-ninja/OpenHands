@@ -901,13 +901,21 @@ describe("ingress stack control routes", () => {
     const relayed = once(ingressProcess, "message");
     const accepted = await fetch(
       `${originForPort(ingressPort)}/__agent-canvas/update`,
-      { method: "POST", headers: { "x-session-api-key": controlKey } },
+      {
+        method: "POST",
+        headers: {
+          "x-session-api-key": controlKey,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ target_version: "1.29.0" }),
+      },
     );
     expect(accepted.status).toBe(202);
     expect((await accepted.json()).status.phase).toBe("updating");
     expect((await relayed)[0]).toEqual({
       type: "agent-canvas-control",
       action: "update",
+      target_version: "1.29.0",
     });
 
     // A second request while one is in flight is refused.

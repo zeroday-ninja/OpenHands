@@ -1266,7 +1266,7 @@ async function watchAutomationStartup(config, proc, timeoutMs, onFailure) {
  */
 let controlRequestInFlight = false;
 
-async function handleControlRequest(config, ingressProc, action) {
+async function handleControlRequest(config, ingressProc, action, request = {}) {
   const detection = config.control;
   const report = (phase, message = null) => {
     try {
@@ -1287,6 +1287,8 @@ async function handleControlRequest(config, ingressProc, action) {
       report("updating", `Updating (${detection.self_update.method})...`);
       const result = await runSelfUpdate(detection, {
         projectRoot,
+        targetVersion: request.target_version ?? null,
+        upstreamRepo: process.env.OH_CANVAS_UPSTREAM_REPO || undefined,
         log: (line) => {
           logService("control", line, c.cyan);
           fileLog("info", `self-update: ${line}`);
@@ -1382,7 +1384,7 @@ function startIngress(config) {
   if (controlArgs.length > 0) {
     proc.on("message", (message) => {
       if (!message || message.type !== CONTROL_REQUEST_MESSAGE) return;
-      void handleControlRequest(config, proc, message.action);
+      void handleControlRequest(config, proc, message.action, message);
     });
   }
   return proc;

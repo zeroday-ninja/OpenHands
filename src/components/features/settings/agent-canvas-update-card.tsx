@@ -262,6 +262,7 @@ function AgentCanvasUpdateModal({
 
           <AgentCanvasSelfUpdateControls
             updateAvailable={updateAvailable}
+            latestVersion={latestVersion ?? null}
             className="border-t border-border pt-3"
           />
 
