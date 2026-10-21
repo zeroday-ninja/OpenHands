@@ -12,6 +12,11 @@ import type {
   HookConfig,
 } from "@openhands/typescript-client";
 import { ServerClient } from "@openhands/typescript-client/clients";
+import {
+  parseAgentCanvasControlInfo,
+  type AgentCanvasControlInfo,
+  type AgentCanvasControlTarget,
+} from "./agent-canvas-updates";
 import { SKILLS_CATALOG } from "@openhands/extensions/skills";
 import { DEFAULT_SETTINGS } from "#/services/settings";
 import { ExecutionStatus } from "#/types/agent-server/core";
@@ -261,6 +266,29 @@ export async function fetchBackendExecutionRuntime(): Promise<
 > {
   const serverInfo = await fetchBackendServerInfo();
   return serverInfo?.execution_runtime;
+}
+
+/**
+ * Whether the local launcher serving this backend lets the browser update and
+ * restart the stack, and how to reach it. Null outside such a launcher.
+ */
+export async function fetchAgentCanvasControl(): Promise<{
+  info: AgentCanvasControlInfo;
+  target: AgentCanvasControlTarget;
+} | null> {
+  const serverInfo = await fetchBackendServerInfo();
+  const info = parseAgentCanvasControlInfo(serverInfo?.agent_canvas_control);
+  if (!info) return null;
+  let clientOptions: ReturnType<typeof getAgentServerClientOptions>;
+  try {
+    clientOptions = getAgentServerClientOptions();
+  } catch {
+    return null;
+  }
+  return {
+    info,
+    target: { host: clientOptions.host, apiKey: clientOptions.apiKey ?? null },
+  };
 }
 
 /**

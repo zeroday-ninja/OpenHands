@@ -14,6 +14,8 @@ import {
 } from "#/api/agent-canvas-updates";
 import { ModalBackdrop } from "#/components/shared/modals/modal-backdrop";
 import { ModalCloseButton } from "#/components/shared/modals/modal-close-button";
+import { AgentCanvasSelfUpdateControls } from "#/components/features/settings/agent-canvas-self-update-controls";
+import { useAgentCanvasControl } from "#/hooks/query/use-agent-canvas-control";
 import DockerIcon from "#/icons/docker.svg?react";
 import NpmIcon from "#/icons/npm.svg?react";
 import { I18nKey } from "#/i18n/declaration";
@@ -59,6 +61,11 @@ export function AgentCanvasVersionModal({
   const [selectedTab, setSelectedTab] = React.useState<UpdateCommandTab>("npm");
   const [copied, setCopied] = React.useState(false);
   const copiedTimeoutRef = React.useRef<number | null>(null);
+  // A local launcher that can update itself turns the command list into a
+  // fallback behind "Update manually".
+  const control = useAgentCanvasControl();
+  const selfUpdateOffered =
+    updateAvailable && control.data?.info.self_update.supported === true;
   const command =
     selectedTab === "npm"
       ? AGENT_CANVAS_UPDATE_COMMANDS.npm
@@ -133,10 +140,15 @@ export function AgentCanvasVersionModal({
         <div className="flex flex-col gap-1">
           {updateAvailable && latestVersion ? (
             <p className="text-sm text-[var(--oh-text)]">
-              {t(I18nKey.SETTINGS$VERSION_UPDATE_MESSAGE, {
-                installed: installedVersion,
-                latest: latestVersion,
-              })}{" "}
+              {t(
+                selfUpdateOffered
+                  ? I18nKey.SETTINGS$VERSION_UPDATE_MESSAGE_SELF
+                  : I18nKey.SETTINGS$VERSION_UPDATE_MESSAGE,
+                {
+                  installed: installedVersion,
+                  latest: latestVersion,
+                },
+              )}{" "}
               <a
                 href={AGENT_CANVAS_RELEASE_NOTES_URL}
                 target="_blank"
@@ -176,8 +188,21 @@ export function AgentCanvasVersionModal({
           )}
         </div>
 
+        <AgentCanvasSelfUpdateControls updateAvailable={updateAvailable} />
+
         {updateAvailable ? (
-          <div>
+          <details
+            className="group"
+            open={!selfUpdateOffered}
+            data-testid="agent-canvas-update-commands"
+          >
+            {selfUpdateOffered ? (
+              <summary className="cursor-pointer list-none pb-2 text-sm font-medium text-muted hover:text-contrast">
+                {t(I18nKey.SETTINGS$VERSION_UPDATE_MANUAL)}
+              </summary>
+            ) : (
+              <summary className="hidden" aria-hidden />
+            )}
             <div className="flex justify-center">
               {UPDATE_COMMAND_TABS.map((tab) => (
                 <button
@@ -218,7 +243,7 @@ export function AgentCanvasVersionModal({
                 )}
               </button>
             </div>
-          </div>
+          </details>
         ) : null}
 
         {!updateAvailable ? (

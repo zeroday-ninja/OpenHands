@@ -127,6 +127,9 @@ export const MARS_QUERY_KEYS = {
 export const APP_UPDATE_QUERY_KEYS = {
   /** Latest published @openhands/agent-canvas version (npm `latest` dist-tag). */
   latestVersion: ["agent-canvas-latest-version"] as const,
+  /** Whether the local launcher lets the browser update/restart the stack. */
+  control: (backendId: string | null) =>
+    ["agent-canvas-control", backendId] as const,
 } as const;
 
 export const CONVERSATION_QUERY_KEYS = {

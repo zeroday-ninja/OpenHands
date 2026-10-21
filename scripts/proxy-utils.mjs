@@ -72,6 +72,7 @@ export function proxyServerInfoRequest(
   res,
   backendUrl,
   runtimeServicesInfo,
+  extraFields = null,
 ) {
   let backend;
   try {
@@ -132,7 +133,10 @@ export function proxyServerInfoRequest(
           const body = Buffer.from(
             JSON.stringify({
               ...serverInfo,
-              runtime_services: runtimeServices,
+              ...(runtimeServices != null
+                ? { runtime_services: runtimeServices }
+                : {}),
+              ...(extraFields ?? {}),
             }),
             "utf8",
           );

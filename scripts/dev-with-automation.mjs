@@ -72,6 +72,14 @@ import {
 } from "./dev-process-utils.mjs";
 import { fileLog, stripAnsi } from "./logger.mjs";
 import {
+  CONTROL_REQUEST_MESSAGE,
+  CONTROL_STATUS_MESSAGE,
+  detectSelfUpdate,
+  runSelfUpdate,
+  spawnRelaunch,
+  toControlInfo,
+} from "./self-update.mjs";
+import {
   applySessionKeyPolicy,
   bindHostArgs,
   detectDockerBridgeHost,
@@ -86,6 +94,11 @@ const projectRoot = resolve(__dirname, "..");
 const SHARED_DEFAULTS = JSON.parse(
   readFileSync(join(projectRoot, "config", "defaults.json"), "utf-8"),
 );
+// The running Agent Canvas version, advertised with the self-update routes so
+// a browser can tell when a relaunched stack carries the new one.
+const SHARED_PACKAGE_VERSION = JSON.parse(
+  readFileSync(join(projectRoot, "package.json"), "utf-8"),
+).version;
 
 const DEFAULT_AUTOMATION_REPO = "https://github.com/OpenHands/automation";
 const DEFAULT_AUTOMATION_PACKAGE = SHARED_DEFAULTS.packages.automation;
@@ -711,7 +724,11 @@ function spawnService(name, command, args, options = {}) {
     resolveWindowsCommand(command),
     args,
     getProcessTreeSpawnOptions({
-      stdio: ["ignore", "pipe", "pipe"],
+      // An IPC channel lets the ingress relay stack-control requests
+      // (self-update / restart) to this launcher; see startIngress.
+      stdio: options.ipc
+        ? ["ignore", "pipe", "pipe", "ipc"]
+        : ["ignore", "pipe", "pipe"],
       env: { ...process.env, ...options.env },
       cwd: options.cwd,
     }),
@@ -1179,16 +1196,36 @@ async function stopServices() {
   }
 }
 
-function shutdown() {
+/**
+ * Stop every service, then exit. With `relaunch` (see self-update.mjs) a
+ * replacement launcher is started first, once the listeners are gone, so the
+ * ports it asserts free really are.
+ */
+function shutdown(options = {}) {
   if (shuttingDown) return;
   shuttingDown = true;
+  const { relaunch = null } = options;
 
   console.log("");
-  console.log(`${c.yellow}Shutting down...${c.reset}`);
-  fileLog("info", "Shutting down...");
+  console.log(
+    `${c.yellow}${relaunch ? "Restarting" : "Shutting down"}...${c.reset}`,
+  );
+  fileLog("info", relaunch ? "Restarting..." : "Shutting down...");
 
   stopServices().then(() => {
     shutdownHooks.run();
+    if (relaunch) {
+      try {
+        spawnRelaunch(relaunch);
+        fileLog(
+          "info",
+          `Relaunched: ${[relaunch.command, ...relaunch.args].join(" ")}`,
+        );
+      } catch (error) {
+        logError(`Could not relaunch the stack: ${error.message}`);
+        fileLog("error", `Could not relaunch the stack: ${error.message}`);
+      }
+    }
     process.exit(0);
   });
 }
@@ -1222,6 +1259,58 @@ async function watchAutomationStartup(config, proc, timeoutMs, onFailure) {
   onFailure(new Error(message));
 }
 
+/**
+ * Serve a stack-control request the ingress relayed over IPC: update this
+ * install (per `config.control`), then stop everything and relaunch. Progress
+ * goes back to the ingress for `/__agent-canvas/status`.
+ */
+let controlRequestInFlight = false;
+
+async function handleControlRequest(config, ingressProc, action) {
+  const detection = config.control;
+  const report = (phase, message = null) => {
+    try {
+      ingressProc.send({ type: CONTROL_STATUS_MESSAGE, phase, message });
+    } catch {
+      // The ingress is gone; nothing to tell.
+    }
+  };
+  if (!detection || controlRequestInFlight || shuttingDown) {
+    report("failed", "The stack is busy or does not support control requests.");
+    return;
+  }
+  controlRequestInFlight = true;
+  try {
+    if (action === "update") {
+      logService("control", "Update requested from the browser", c.cyan);
+      fileLog("info", "Self-update requested from the browser");
+      report("updating", `Updating (${detection.self_update.method})...`);
+      const result = await runSelfUpdate(detection, {
+        projectRoot,
+        log: (line) => {
+          logService("control", line, c.cyan);
+          fileLog("info", `self-update: ${line}`);
+        },
+      });
+      if (!result.ok) {
+        logError(result.message);
+        fileLog("error", `self-update: ${result.message}`);
+        report("failed", result.message);
+        return;
+      }
+    } else {
+      logService("control", "Restart requested from the browser", c.cyan);
+      fileLog("info", "Restart requested from the browser");
+    }
+    report("restarting", null);
+    // Let the status reach any poller before the ingress goes down.
+    await delay(500);
+    shutdown({ relaunch: detection.relaunch });
+  } finally {
+    controlRequestInFlight = false;
+  }
+}
+
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 process.on("SIGHUP", shutdown);
@@ -1253,8 +1342,21 @@ function startIngress(config) {
   const runtimeServicesInfo = config.launchAgentServer
     ? JSON.stringify(buildAutomationRuntimeServicesInfo(config))
     : null;
+  // The browser-facing ingress carries the self-update / restart routes
+  // (never the sandbox bridge ingress, which containers can reach). They
+  // need the session key the page holds, so only an auto-keyed stack gets
+  // them; `config.control` is null otherwise (see main).
+  const controlArgs =
+    config.control && config.sessionApiKey
+      ? [
+          "--control-key",
+          config.sessionApiKey,
+          "--control-info",
+          JSON.stringify(toControlInfo(config.control)),
+        ]
+      : [];
 
-  spawnService(
+  const proc = spawnService(
     "ingress",
     "node",
     [
@@ -1265,6 +1367,7 @@ function startIngress(config) {
       ...(runtimeServicesInfo
         ? ["--runtime-services-info", runtimeServicesInfo]
         : []),
+      ...controlArgs,
       ...buildRouteArgs(getLocalServiceRoutes(config)),
       ...getNoReferrerPrefixArgs(config),
       ...(frontendBackend ? ["--default", frontendBackend] : []),
@@ -1273,8 +1376,16 @@ function startIngress(config) {
       cwd: projectRoot,
       color: c.yellow,
       env: buildMarsWebEnv("ingress", config),
+      ipc: controlArgs.length > 0,
     },
   );
+  if (controlArgs.length > 0) {
+    proc.on("message", (message) => {
+      if (!message || message.type !== CONTROL_REQUEST_MESSAGE) return;
+      void handleControlRequest(config, proc, message.action);
+    });
+  }
+  return proc;
 }
 
 /**
@@ -1650,6 +1761,10 @@ async function main(options = {}) {
     // When true, skip the npm prerequisite check. Used by the Electron desktop
     // launcher where npm is not needed at runtime in static mode.
     skipNpmCheck = false,
+    // Whether the browser may update and restart this stack through the
+    // ingress (see scripts/self-update.mjs). The desktop app manages its own
+    // updates and passes false.
+    selfUpdate = !skipNpmCheck,
     // How long to wait for the agent-server's `/server_info` to return 200
     // before continuing. Defaults to 60 s, which is fine for warm-cache dev
     // workflows. The Electron desktop launcher bumps this to several minutes
@@ -1760,6 +1875,24 @@ async function main(options = {}) {
   config.marsWebBridge = marsWebBridge;
   config.agentHostAlias = agentHostAlias;
   config.frontendKind = useStaticMode ? "static" : "vite";
+  // How this install can update and relaunch itself, for the ingress to
+  // advertise and act on. Null when the browser cannot be trusted with it
+  // (public mode, a non-loopback bind) or the launcher opted out.
+  config.control = selfUpdate
+    ? detectSelfUpdate({
+        projectRoot,
+        version: SHARED_PACKAGE_VERSION,
+        isPublic: config.isPublic,
+        isLoopback: isLoopbackBind(config.bindHost),
+      })
+    : null;
+  if (
+    config.control &&
+    !config.control.self_update.supported &&
+    !config.control.restart.supported
+  ) {
+    config.control = null;
+  }
   ensureDirectories(config);
   if (typeof extraPrereqs === "function") {
     extraPrereqs(config);
