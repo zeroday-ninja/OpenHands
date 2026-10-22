@@ -135,6 +135,13 @@ export function AgentProfilesLocalView() {
         : Promise.resolve(true as const),
     [backend.kind, backend.id, queryClient],
   );
+  // On cloud, `default` is an ordinary profile name.
+  const isSharedDefault = useCallback(
+    (name: string | undefined) =>
+      backend.kind === "local" &&
+      name === WELL_KNOWN_DEFAULT_AGENT_PROFILE_NAME,
+    [backend.kind],
+  );
 
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [profileName, setProfileName] = useState("");
@@ -221,8 +228,7 @@ export function AgentProfilesLocalView() {
           "encrypted",
         );
         const profile = detail.profile;
-        const isDefault =
-          profile.name === WELL_KNOWN_DEFAULT_AGENT_PROFILE_NAME;
+        const isDefault = isSharedDefault(profile.name);
         setEditingProfile(profile);
         setOverride(
           isDefault && profile.agent_kind === "openhands"
@@ -267,6 +273,7 @@ export function AgentProfilesLocalView() {
       isLlmProfilesLoading,
       defaultLlmProfileRef,
       waitForMigration,
+      isSharedDefault,
       settings,
     ],
   );
@@ -314,7 +321,7 @@ export function AgentProfilesLocalView() {
       viewMode === "edit" && originalName && originalName !== trimmedName;
     const savesDefault =
       viewMode === "edit" &&
-      originalName === WELL_KNOWN_DEFAULT_AGENT_PROFILE_NAME &&
+      isSharedDefault(originalName) &&
       trimmedName === WELL_KNOWN_DEFAULT_AGENT_PROFILE_NAME &&
       input.agent_kind === "openhands";
 
@@ -373,6 +380,7 @@ export function AgentProfilesLocalView() {
     t,
     handleBackToList,
     waitForMigration,
+    isSharedDefault,
     queryClient,
   ]);
 
@@ -397,11 +405,9 @@ export function AgentProfilesLocalView() {
       : t(I18nKey.SETTINGS$AGENT_PROFILE_SAVE_HINT);
   const isOpenHands = saveControl?.agentType !== "acp";
   const isDefaultLocked =
-    viewMode === "edit" &&
-    editingProfile?.name === WELL_KNOWN_DEFAULT_AGENT_PROFILE_NAME;
+    viewMode === "edit" && isSharedDefault(editingProfile?.name);
   const isEditingDefault =
-    viewMode === "edit" &&
-    editingProfile?.name === WELL_KNOWN_DEFAULT_AGENT_PROFILE_NAME &&
+    isDefaultLocked &&
     profileName.trim() === WELL_KNOWN_DEFAULT_AGENT_PROFILE_NAME;
   const nameDirty = viewMode === "edit" && profileName !== editingProfile?.name;
   const loadedLlmRef =
