@@ -27,9 +27,12 @@ hook. You do not need to install anything.
 ## What it checks
 
 `hooks/hooks.json` registers a `PreToolUse` hook on the terminal tool. The hook
-joins `\`-continued lines, splits the command on shell operators, looks past a
-leading reserved word (`if`, `then`, `do`, `!`, `{` and similar) and finds each
-`git` call that writes a commit object:
+splits the command into words and operators the way `sh` does. It honours
+quotes and comments, joins `\`-continued lines outside single quotes, drops
+redirections (`>/dev/null git commit` is a git call) and skips here-document
+bodies, which are data. It looks past a leading unquoted reserved word (`if`,
+`then`, `do`, `!`, `{` and similar) and finds each `git` call that writes a
+commit object:
 
 - `commit`, `commit-tree`, `merge`, `pull` and `revert`, whose author and
   committer both come from the current identity;
@@ -72,6 +75,9 @@ These commands can still record another email without being blocked:
   (`is_input`) are not parsed. Neither is git started by another command, such
   as `command`, `exec`, `time`, `timeout`, `nice`, `sudo`, `xargs` or `env`
   with options (`env -u X git commit`).
+- **Here-document bodies.** They are skipped as data, so `cat > x.sh <<'EOF'`
+  is not mistaken for a commit. That also skips a body that a shell runs
+  (`bash <<'EOF'`) and `$(...)` inside an unquoted body.
 - **Replayed authors.** `cherry-pick`, `rebase` and `am`, and a `git commit`
   that concludes one of them, keep the original author, which is not checked.
 - **Other objects and writers.** Annotated tags (the tagger), `git replace`,
