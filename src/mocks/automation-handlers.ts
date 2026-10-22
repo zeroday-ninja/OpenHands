@@ -16,10 +16,14 @@ import type {
   AutomationRunsResponse,
 } from "#/types/automation";
 import { AutomationRunStatus } from "#/types/automation";
-import { IMPROVE_PRESET_TYPE } from "#/types/improve";
+import {
+  IMPROVE_PRESET_TYPE,
+  type ImproveProgramConfig,
+} from "#/types/improve";
 import {
   MOCK_IMPROVE_ROTATION,
   mockImproveCyclePage,
+  mockImproveRotationFor,
 } from "#/fixtures/improve-program";
 import { isImprovementProgram } from "#/utils/improve-program";
 import { MOCK_AUTOMATIONS_RESPONSE } from "./automations.mock";
@@ -469,6 +473,39 @@ export const AUTOMATION_HANDLERS = [
       const limit = Number(url.searchParams.get("limit") ?? "20");
       const offset = Number(url.searchParams.get("offset") ?? "0");
       return HttpResponse.json(mockImproveCyclePage(limit, offset));
+    },
+  ),
+
+  // PUT /api/automation/v1/improve/:automationId/config — replace a
+  // program's configuration and answer with the rotation it resolves to.
+  http.put(
+    "*/api/automation/v1/improve/:automationId/config",
+    async ({ params, request }) => {
+      await delay(200);
+
+      const automation = automations.get(params.automationId as string);
+      if (!automation) {
+        return HttpResponse.json(
+          { detail: "Automation not found" },
+          { status: 404 },
+        );
+      }
+      if (!isImprovementProgram(automation)) {
+        return HttpResponse.json(
+          { detail: "Not an improvement program" },
+          { status: 409 },
+        );
+      }
+
+      const config = (await request.clone().json()) as ImproveProgramConfig;
+      automation.preset_metadata = {
+        preset_type: IMPROVE_PRESET_TYPE,
+        improve: config,
+      };
+      // The service keeps the automation's own profile on the builder.
+      automation.agent_profile_id = config.builder_profile_id;
+      automation.updated_at = new Date().toISOString();
+      return HttpResponse.json(mockImproveRotationFor(config));
     },
   ),
 
