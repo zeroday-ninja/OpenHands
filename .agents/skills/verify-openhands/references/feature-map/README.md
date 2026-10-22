@@ -259,8 +259,10 @@ How to write and prove new entries: [../mapping.md](../mapping.md).
 | F27 | [Workspace tools](F27-workspace-tools.md) | terminal, browser, planner, task list, usage, `canvas_ui_control` | drawer tabs | LLM | 30 |
 | F28 | [Automation setup page](F28-automation-setup-page.md) | blank form, kind toggle, schedule presets, event fields, timeout, draft save and validation, draft Test, Create | **Add Automation → Create Automation**, `/automations/setup`, draft Resume, kebab Edit | automation service; no LLM | 13 |
 | F29 | [Git Sync repositories](F29-git-sync-repositories.md) | add, sync, configure, promote and remove repositories, per-automation assignment, empty and no-default states, fallback to F24 | `/automations/git-sync` | an automation backend with `git-sync/remotes` (`launch --automation-path`); `fixture git-remote` | 16 |
+| F30 | [SOUL.md standing preferences](F30-soul-settings.md) | the user's `SOUL.md`: default vs own file, save, revert, limits, unsupported backends | `/settings/soul`, settings nav, command menu | an Agent Server with `GET /api/soul` (`launch --sdk-path`); no LLM | 11 |
+| F31 | [Improvement programs](F31-improvement-programs.md) | rotation and up-next, cycle history, verdicts, cited sources, adversarial reviews, SOUL.md proposals | a program's detail page, `/automations/improve/<id>` | an automation backend with the improve API and an Agent Server with `GET /api/soul` (both from checkouts); no LLM | 20 |
 
-29 families, 799 sub-features. `control-openhands map ids` lists every ID with its file.
+31 families, 830 sub-features. `control-openhands map ids` lists every ID with its file.
 
 ### Neighbouring families
 
@@ -269,7 +271,8 @@ Several pages are shared. Each behavior has one owner; the others reference its 
 - Conversation page: the composer is F05, what the agent produces is F06, the header and its menus are F07, the drawer is F08 (files, changes, including chat path and Markdown-link openers) and F27 (tools).
 - Starting work: Home is F03; the recommended-automation launcher is shared by F01 (onboarding), F03 (rail) and F22 (templates), and owned by F22.
 - LLM settings: profiles are F10, provider connections F11 (same page), routers F12, agent profiles F13.
-- Automations: dashboard F21, creation F22, detail and runs F23, Git Sync F24 (the single-repository page a backend without the remotes API shows; also the page's health, permission and loading gates) and F29 (the repositories page with the remotes API); the setup page's form, drafts and Test are F28 (F22 keeps the agent-assisted recipes, F23 owns edit mode).
+- Agent behavior settings: the condenser, agent context and verification pages are F15; the SOUL.md page is F30, which also owns its nav and command-menu entries (the nav itself is F09, the menu F02). The **Add to SOUL.md** action that writes into the same document belongs to F31.
+- Automations: dashboard F21, creation F22, detail and runs F23, Git Sync F24 (the single-repository page a backend without the remotes API shows; also the page's health, permission and loading gates) and F29 (the repositories page with the remotes API); the setup page's form, drafts and Test are F28 (F22 keeps the agent-assisted recipes, F23 owns edit mode). An improvement program's rotation and cycle history are F31, which owns the link to it from the detail page; everything else on that page stays F23.
 - Customize: MCP F17, skills F18, plugins F19, apps F20; the hub and its navigation are in F17.
 - Backends: adding and switching backends is F25; launcher flags that create them are F26.
 
