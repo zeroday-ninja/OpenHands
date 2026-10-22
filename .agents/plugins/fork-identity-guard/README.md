@@ -30,9 +30,11 @@ hook. You do not need to install anything.
 splits the command into words and operators the way `sh` does. It honours
 quotes and comments, joins `\`-continued lines outside single quotes, drops
 redirections (`>/dev/null git commit` is a git call) and skips here-document
-bodies, which are data. It looks past a leading unquoted reserved word (`if`,
-`then`, `do`, `!`, `{` and similar) and finds each `git` call that writes a
-commit object:
+bodies, which are data. Like `sh`, it keeps `$(...)`, `${...}`, `$((...))`,
+backquotes, `$'...'` and an array assignment `name=(...)` inside the word they
+appear in, and it checks the commands inside each `$(...)`. It looks past a
+leading unquoted reserved word (`if`, `then`, `do`, `!`, `{` and similar) and
+finds each `git` call that writes a commit object:
 
 - `commit`, `commit-tree`, `merge`, `pull` and `revert`, whose author and
   committer both come from the current identity;
@@ -70,7 +72,7 @@ These commands can still record another email without being blocked:
   `export GIT_AUTHOR_EMAIL` or `git config author.email`, which outrank it.
 - **Earlier commands.** The hook sees the agent-server environment, not
   variables exported in the agent's terminal session by a previous command.
-- **Hidden git calls.** Commits made inside `bash -c`, `$(...)`, scripts, git
+- **Hidden git calls.** Commits made inside `bash -c`, backquotes, scripts, git
   aliases, editors, `rebase --exec`, or text sent to a running process
   (`is_input`) are not parsed. Neither is git started by another command, such
   as `command`, `exec`, `time`, `timeout`, `nice`, `sudo`, `xargs` or `env`

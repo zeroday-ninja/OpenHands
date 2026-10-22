@@ -144,6 +144,7 @@ RESERVED_WORDS = {"!", "{", "if", "then", "elif", "else", "while", "until", "do"
 # The fd in `2>file`, or bash's `{fd}>file`, when written right before `<`/`>`.
 IO_NUMBER_RE = re.compile(r"^(?:[0-9]+|\{[A-Za-z_][A-Za-z0-9_]*\})$")
 ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+ARRAY_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\+?=$")
 EMAIL_RE = re.compile(r"<([^<>]*)>")
 
 
@@ -161,6 +162,8 @@ class Token:
     text: str
     operator: bool = False
     quoted: bool = False
+    # Bodies of the `$(...)` command substitutions inside this word.
+    substitutions: list[str] = field(default_factory=list)
 
 
 def tokenize(command: str) -> list[Token]:
@@ -169,12 +172,24 @@ def tokenize(command: str) -> list[Token]:
     It follows the token rules closely enough to place every word: quotes, a
     backslash-newline continuation (not inside single quotes or a comment),
     `#` comments, redirections with their fd numbers, and here-document
-    bodies, which are data and are skipped. It does not expand anything.
-    Raises ValueError on an unterminated quote.
+    bodies, which are data and are skipped. `$(...)`, `${...}`, `$((...))`,
+    backquotes, `$'...'` and an array assignment `name=(...)` stay inside the
+    word they appear in, as they do in sh. It does not expand anything.
+    Raises ValueError on an unterminated quote or substitution.
+    """
+    tokens, _ = scan(command, 0, nested=False)
+    return tokens
+
+
+def scan(command: str, index: int, nested: bool) -> tuple[list[Token], int]:
+    """Tokens from `index`; when `nested`, up to the `)` that closes a `$(`.
+
+    Returns the tokens and the index just past the closing `)` (or the end).
     """
     tokens: list[Token] = []
     heredocs: list[tuple[str, bool]] = []
-    index, end = 0, len(command)
+    depth = 0
+    end = len(command)
     while index < end:
         char = command[index]
         if command.startswith("\\\n", index):
@@ -187,6 +202,12 @@ def tokenize(command: str) -> list[Token]:
         elif char in OPERATOR_CHARS:
             operator = next(op for op in OPERATORS if command.startswith(op, index))
             index += len(operator)
+            if nested and operator == ")":
+                if depth == 0:
+                    return tokens, index
+                depth -= 1
+            elif operator == "(":
+                depth += 1
             tokens.append(Token(operator, operator=True))
             if operator == "\n" and heredocs:
                 index = skip_heredoc_bodies(command, index, heredocs)
@@ -199,7 +220,51 @@ def tokenize(command: str) -> list[Token]:
             tokens.append(word)
             if len(tokens) > 1 and tokens[-2].operator and tokens[-2].text in {"<<", "<<-"}:
                 heredocs.append((word.text, tokens[-2].text == "<<-"))
-    return tokens
+    if nested:
+        raise ValueError("unterminated command substitution")
+    return tokens, index
+
+
+def read_expansion(command: str, index: int, word: Token) -> int | None:
+    """Read the `$`/backquote expansion at `index` into `word`.
+
+    Returns the index past it, or None when `index` starts no expansion.
+    """
+    if command.startswith("$((", index):
+        close = matching_close(command, index + 1, "(", ")")
+    elif command.startswith("$(", index):
+        _, close = scan(command, index + 2, nested=True)
+        word.substitutions.append(command[index + 2 : close - 1])
+    elif command.startswith("${", index):
+        close = matching_close(command, index + 1, "{", "}")
+    elif command[index] == "`":
+        close = index + 1
+        while close < len(command) and command[close] != "`":
+            close += 2 if command[close] == "\\" else 1
+        if close >= len(command):
+            raise ValueError("unterminated backquote")
+        close += 1
+    else:
+        return None
+    word.text += command[index:close]
+    return close
+
+
+def matching_close(command: str, index: int, opening: str, closing: str) -> int:
+    """Index past the `closing` that balances the `opening` at `index`."""
+    depth = 0
+    while index < len(command):
+        char = command[index]
+        if char == "\\":
+            index += 1
+        elif char == opening:
+            depth += 1
+        elif char == closing:
+            depth -= 1
+            if depth == 0:
+                return index + 1
+        index += 1
+    raise ValueError(f"unterminated {opening}")
 
 
 def read_word(command: str, index: int) -> tuple[int, Token]:
@@ -213,6 +278,23 @@ def read_word(command: str, index: int) -> tuple[int, Token]:
             word.text += command[index + 1]
             word.quoted = True
             index += 2
+        elif command.startswith("$'", index):
+            # ANSI-C quoting: a backslash escapes the next character, `\'` too.
+            close = index + 2
+            while close < end and command[close] != "'":
+                close += 2 if command[close] == "\\" else 1
+            if close >= end:
+                raise ValueError("unterminated $' quote")
+            word.text += command[index + 2 : close]
+            word.quoted = True
+            index = close + 1
+        elif char in "$`" and (after := read_expansion(command, index, word)) is not None:
+            index = after
+        elif char == "(" and ARRAY_ASSIGNMENT_RE.match(word.text) and not word.quoted:
+            # `name=(a b)` is one word in bash, not a subshell.
+            _, close = scan(command, index + 1, nested=True)
+            word.text += command[index:close]
+            index = close
         elif char == "'":
             close = command.find("'", index + 1)
             if close < 0:
@@ -227,6 +309,11 @@ def read_word(command: str, index: int) -> tuple[int, Token]:
                     if command[index + 1] != "\n":
                         word.text += command[index + 1]
                     index += 2
+                elif (
+                    command[index] in "$`"
+                    and (after := read_expansion(command, index, word)) is not None
+                ):
+                    index = after
                 else:
                     word.text += command[index]
                     index += 1
@@ -255,15 +342,18 @@ def skip_heredoc_bodies(command: str, index: int, heredocs: list[tuple[str, bool
     return min(index, len(command))
 
 
-def split_segments(command: str) -> list[list[str]]:
+def split_segments(command: str) -> tuple[list[list[str]], list[str]]:
     """Split a shell command into simple commands, without their redirections.
 
     Each segment starts at its command name: leading unquoted reserved words
-    (`if`, `!`, `{` ...) are dropped.
+    (`if`, `!`, `{` ...) are dropped. Also returns the bodies of the `$(...)`
+    substitutions anywhere in the command, which are commands too.
     """
     segments: list[list[Token]] = [[]]
+    substitutions: list[str] = []
     redirecting = False
     for token in tokenize(command):
+        substitutions += token.substitutions
         if token.operator and token.text in CONTROL_OPERATORS:
             segments.append([])
             redirecting = False
@@ -280,12 +370,15 @@ def split_segments(command: str) -> list[list[str]]:
             segment = segment[1:]
         if segment:
             argvs.append([token.text for token in segment])
-    return argvs
+    return argvs, substitutions
 
 
 def find_git_calls(command: str, cwd: str) -> list[GitCall]:
     calls: list[GitCall] = []
-    for argv in split_segments(command):
+    argvs, substitutions = split_segments(command)
+    for body in substitutions:
+        calls += find_git_calls(body, cwd)
+    for argv in argvs:
         if argv[0] == "cd" and len(argv) == 2:
             cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(argv[1])))
             continue

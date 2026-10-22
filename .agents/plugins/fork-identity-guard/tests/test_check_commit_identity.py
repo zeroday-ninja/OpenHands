@@ -344,6 +344,9 @@ def test_continued_lines_reserved_words_and_global_options_are_parsed(repo, comm
         f"git 2>&1 commit -q --allow-empty -m x {BAD_AUTHOR}",
         f"true;>/dev/null git commit -q --allow-empty -m x {BAD_AUTHOR}",
         f"true;\ngit commit -q --allow-empty -m x {BAD_AUTHOR}",
+        # A substitution belongs to the redirection's target word.
+        f"2>$(mktemp -d)/err git commit -q --allow-empty -m x {BAD_AUTHOR}",
+        f">`mktemp -d`/out git commit -q --allow-empty -m x {BAD_AUTHOR}",
     ],
 )
 def test_redirections_do_not_hide_the_git_call(repo, command):
@@ -364,6 +367,11 @@ def test_redirections_do_not_hide_the_git_call(repo, command):
         "cat > s.sh <<'EOF'\nif git commit -q --allow-empty -m x; then :; fi\nEOF",
         "cat > s.sh <<EOF\ngit add -A \\\n  && git commit -q --allow-empty -m x\nEOF",
         "'if' git commit -q --allow-empty -m x > s.sh",  # runs a command named `if`
+        # Substitutions, ANSI-C quotes and arrays stay inside one word.
+        "echo $(date) git commit -q --allow-empty -m x > s.sh",
+        'echo "$(echo "it\'s") git commit -q --allow-empty -m x" > s.sh',
+        "printf $'it\\'s git commit -q --allow-empty -m x\\n' > s.sh",
+        'cmd=(git commit -q --allow-empty -m x) && echo "${cmd[@]}" > s.sh',
     ],
 )
 def test_commands_that_do_not_run_git_are_allowed(repo, command):
