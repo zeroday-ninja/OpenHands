@@ -7,20 +7,23 @@
  * feeling like magic: you can read what the agent is told before you send it,
  * and take a node out of it if it is not part of the question.
  *
- * Sending opens a conversation in this workspace with that message as its
- * first turn. It is a launcher rather than an in-place transcript because the
- * live event stream belongs to a conversation route — see the module comment
- * in `project-map-page.tsx`. The agent can edit
- * `.openhands/project-map.json` from there, so "group these three" is a thing
- * you can simply ask for, and the map's refresh picks the result up.
+ * The first send opens a conversation in this workspace with that message as
+ * its first turn, and `ProjectMapConversation` binds it to the pane; every
+ * send after that goes into that conversation over its WebSocket, the same way
+ * the conversation route's composer does. Either way the user stays on the
+ * map, which is the point: the agent can edit
+ * `.openhands/project-map.json`, so "group these three" is a thing you can
+ * simply ask for and then watch happen on the canvas in front of you.
  */
 
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { Send, X } from "lucide-react";
 import { I18nKey } from "#/i18n/declaration";
-import { useNavigation } from "#/context/navigation-context";
 import { useCreateConversation } from "#/hooks/mutation/use-create-conversation";
+import { useSendMessage } from "#/hooks/use-send-message";
+import { createChatMessage } from "#/services/chat-service";
+import { useOptimisticUserMessageStore } from "#/stores/optimistic-user-message-store";
 import { useProjectMapStore } from "#/stores/project-map-store";
 import type { PlacedProjectMapDocument } from "#/types/project-map";
 import {
@@ -33,7 +36,6 @@ import {
   PROJECT_MAP_BUTTON_CLASS,
   PROJECT_MAP_CHIP_CLASS,
   PROJECT_MAP_PRIMARY_BUTTON_CLASS,
-  PROJECT_MAP_SECTION_LABEL_CLASS,
 } from "./project-map-controls";
 
 const ICON_SIZE = 13;
@@ -49,20 +51,34 @@ export interface ProjectMapChatProps {
    * page reads: see `ProjectMapContextOptions`.
    */
   mapPath: string;
+  /**
+   * The conversation already bound to the pane, or null when the next send
+   * has to start one.
+   */
+  conversationId: string | null;
+  /** Called with the id of the conversation a send just created. */
+  onConversationStarted: (conversationId: string) => void;
 }
 
 export function ProjectMapChat({
   document: map,
   mapPath,
+  conversationId,
+  onConversationStarted,
 }: ProjectMapChatProps) {
   const { t } = useTranslation("openhands");
-  const { navigate } = useNavigation();
   const selection = useProjectMapStore((state) => state.selection);
   const removeFromSelection = useProjectMapStore(
     (state) => state.toggleInSelection,
   );
   const clearSelection = useProjectMapStore((state) => state.clearSelection);
   const createConversation = useCreateConversation();
+  // Null outside a conversation provider, which is the unbound case — where
+  // the branch below never reaches it.
+  const { send } = useSendMessage();
+  const enqueuePendingMessage = useOptimisticUserMessageStore(
+    (state) => state.enqueuePendingMessage,
+  );
   const [question, setQuestion] = React.useState("");
   const [showContext, setShowContext] = React.useState(false);
 
@@ -77,14 +93,26 @@ export function ProjectMapChat({
     selected.length > 0 &&
     selected.every((node) => REDESIGNABLE_KINDS.has(node.kind));
 
-  const launch = async (message: string) => {
+  /**
+   * Into the bound conversation when there is one, otherwise into a new one
+   * bound to the pane. Both stay on the map; neither navigates.
+   */
+  const submit = async (message: string) => {
     if (message.trim() === "") return;
+    if (conversationId !== null) {
+      // The same two steps the conversation composer takes: show the bubble
+      // immediately, then send. The echoed message event drains the bubble.
+      setQuestion("");
+      enqueuePendingMessage({ conversationId, text: message });
+      await send(createChatMessage(message, [], [], new Date().toISOString()));
+      return;
+    }
     try {
       const conversation = await createConversation.mutateAsync({
         query: message,
       });
       setQuestion("");
-      navigate(`/conversations/${conversation.conversation_id}`);
+      onConversationStarted(conversation.conversation_id);
     } catch {
       // The mutation's own toast covers the request; this keeps a thrown
       // launch from leaving an unhandled rejection behind. A launch that
@@ -93,22 +121,18 @@ export function ProjectMapChat({
     }
   };
 
-  const launchIntent = (intent: ProjectMapIntent) =>
-    launch(buildProjectMapLaunchMessage(intent, selected, contextOptions));
+  const submitIntent = (intent: ProjectMapIntent) =>
+    submit(buildProjectMapLaunchMessage(intent, selected, contextOptions));
 
   return (
     <div data-testid="project-map-chat" className="flex flex-col gap-3">
-      <span className={PROJECT_MAP_SECTION_LABEL_CLASS}>
-        {t(I18nKey.PROJECT_MAP$CHAT_TITLE)}
-      </span>
-
       <div className="flex flex-wrap gap-1.5">
         <button
           type="button"
           data-testid="project-map-ask"
           className={PROJECT_MAP_BUTTON_CLASS}
           disabled={selected.length === 0 || createConversation.isPending}
-          onClick={() => void launchIntent("ask")}
+          onClick={() => void submitIntent("ask")}
         >
           {t(I18nKey.PROJECT_MAP$ASK_ABOUT)}
         </button>
@@ -117,7 +141,7 @@ export function ProjectMapChat({
           data-testid="project-map-change"
           className={PROJECT_MAP_BUTTON_CLASS}
           disabled={selected.length === 0 || createConversation.isPending}
-          onClick={() => void launchIntent("change")}
+          onClick={() => void submitIntent("change")}
         >
           {t(I18nKey.PROJECT_MAP$CHANGE_THIS)}
         </button>
@@ -127,7 +151,7 @@ export function ProjectMapChat({
             data-testid="project-map-redesign"
             className={PROJECT_MAP_BUTTON_CLASS}
             disabled={createConversation.isPending}
-            onClick={() => void launchIntent("redesign")}
+            onClick={() => void submitIntent("redesign")}
           >
             {t(I18nKey.PROJECT_MAP$REDESIGN_THIS)}
           </button>
@@ -177,7 +201,7 @@ export function ProjectMapChat({
         onKeyDown={(event) => {
           if (event.key !== "Enter" || event.shiftKey) return;
           event.preventDefault();
-          void launch(preview);
+          void submit(preview);
         }}
       />
 
@@ -186,12 +210,17 @@ export function ProjectMapChat({
         data-testid="project-map-send"
         className={PROJECT_MAP_PRIMARY_BUTTON_CLASS}
         disabled={preview.trim() === "" || createConversation.isPending}
-        onClick={() => void launch(preview)}
+        onClick={() => void submit(preview)}
       >
         <Send size={ICON_SIZE} aria-hidden />
+        {/* The label names what the press actually does: the first one opens a
+            conversation, every one after that sends into the one already
+            beside the map. */}
         {createConversation.isPending
           ? t(I18nKey.PROJECT_MAP$STARTING_CONVERSATION)
-          : t(I18nKey.PROJECT_MAP$CHAT_SEND)}
+          : conversationId !== null
+            ? t(I18nKey.BUTTON$SEND)
+            : t(I18nKey.PROJECT_MAP$CHAT_SEND)}
       </button>
 
       <details
@@ -210,7 +239,9 @@ export function ProjectMapChat({
       </details>
 
       <p className="text-xs leading-relaxed text-muted">
-        {t(I18nKey.PROJECT_MAP$CHAT_HINT)}
+        {conversationId !== null
+          ? t(I18nKey.PROJECT_MAP$CHAT_HINT_BOUND)
+          : t(I18nKey.PROJECT_MAP$CHAT_HINT)}
       </p>
     </div>
   );

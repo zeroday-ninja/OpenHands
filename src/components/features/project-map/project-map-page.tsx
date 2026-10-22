@@ -8,12 +8,13 @@
  * whole. The conversation tabs — Files, Terminal, Changes — are all views of
  * one running agent's sandbox, which the map is not.
  *
- * The consequence is that the chat here is a launcher: a live transcript needs
- * the conversation WebSocket, which is scoped to a conversation route. Sending
- * from the map opens a conversation with the selection already in its first
- * message, which keeps the one property the feature cannot do without — the
- * agent and the user editing the same artifact — without pretending the page
- * hosts an event stream it does not.
+ * The chat beside the canvas is a real conversation, not a launcher. A live
+ * transcript needs the conversation WebSocket, which used to be reachable only
+ * from a route that names a conversation; `ProjectMapConversation` binds one to
+ * the pane explicitly instead, so the first send opens a conversation and the
+ * answer arrives here rather than on another page. Asking what something is,
+ * being told, and pointing at it on the drawing are then one activity instead
+ * of three.
  */
 
 import React from "react";
@@ -24,6 +25,7 @@ import { useNavigation } from "#/context/navigation-context";
 import { useCreateConversation } from "#/hooks/mutation/use-create-conversation";
 import { useSaveProjectMap } from "#/hooks/mutation/use-save-project-map";
 import { useProjectMap } from "#/hooks/query/use-project-map";
+import { useRefreshProjectMapOnAgentEdit } from "#/hooks/use-refresh-project-map-on-agent-edit";
 import {
   PROJECT_MAP_MAX_SCALE,
   PROJECT_MAP_MIN_SCALE,
@@ -40,7 +42,7 @@ import {
 import { displayErrorToast } from "#/utils/custom-toast-handlers";
 import { buildProjectMapAnalysisPrompt } from "./project-map-analysis-prompt";
 import { ProjectMapCanvas } from "./project-map-canvas";
-import { ProjectMapChat } from "./project-map-chat";
+import { ProjectMapConversation } from "./project-map-conversation";
 import { ProjectMapInspector } from "./project-map-inspector";
 import { ProjectMapLegend } from "./project-map-legend";
 import {
@@ -60,6 +62,9 @@ export function ProjectMapPage() {
     useProjectMap();
   const saveProjectMap = useSaveProjectMap();
   const createConversation = useCreateConversation();
+  // The pane's conversation can rewrite the file this page is reading, so the
+  // page re-reads it when that happens. Nothing polls.
+  useRefreshProjectMapOnAgentEdit();
 
   const document_ = useProjectMapStore((state) => state.document);
   const dirty = useProjectMapStore((state) => state.dirty);
@@ -71,15 +76,13 @@ export function ProjectMapPage() {
   );
   const setViewport = useProjectMapStore((state) => state.setViewport);
 
-  // Synchronisation with an external system — the file on disk. `hydrate`
-  // ignores a repeat of the same revision, so a refetch that found no change
-  // never discards unsaved work.
+  // Synchronisation with an external system — the file on disk. The revision
+  // fingerprints the bytes, so `hydrate` ignores a re-read that found no
+  // change and never discards unsaved work, while a write by the agent is a
+  // real revision even when it leaves the provenance fields alone.
   React.useEffect(() => {
     if (!data?.document) return;
-    hydrate(
-      `${data.absolutePath}@${data.document.generated_at ?? ""}@${data.document.commit ?? ""}`,
-      data.document,
-    );
+    hydrate(data.revision, data.document);
   }, [data, hydrate]);
 
   // Frame the whole map the first time a document arrives. A map that opens
@@ -290,7 +293,7 @@ export function ProjectMapPage() {
               </span>
               <ProjectMapInspector document={document_} />
             </div>
-            <ProjectMapChat document={document_} mapPath={mapPath} />
+            <ProjectMapConversation document={document_} mapPath={mapPath} />
             <ProjectMapLegend document={document_} />
           </aside>
         </div>

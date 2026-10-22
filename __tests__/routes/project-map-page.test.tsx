@@ -1,4 +1,5 @@
-import { screen, waitFor } from "@testing-library/react";
+import React from "react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "../../test-utils";
@@ -15,6 +16,8 @@ import {
 } from "#/api/backend-registry/active-store";
 import type { Backend } from "#/api/backend-registry/types";
 import { useProjectMapStore } from "#/stores/project-map-store";
+import { useEventStore } from "#/stores/use-event-store";
+import type { MessageEvent, ObservationEvent } from "#/types/agent-server/core";
 import {
   PROJECT_MAP_FILE_PATH,
   PROJECT_MAP_VERSION,
@@ -52,6 +55,20 @@ vi.mock("react-i18next", async (importOriginal) => {
 // state and its result handling in the test.
 vi.mock("#/hooks/mutation/resolve-conversation-launch", () => ({
   launchConversation: launchConversation,
+}));
+
+// The pane's conversation transport. Stubbed as a pass-through so these cases
+// exercise the page's binding, rendering and refresh rather than a WebSocket:
+// the same stubs the conversation route's own tests use.
+vi.mock("#/contexts/websocket-provider-wrapper", () => ({
+  WebSocketProviderWrapper: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
+}));
+vi.mock("#/wrapper/event-handler", () => ({
+  EventHandler: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
 }));
 
 // No `Toaster` is mounted in these renders, so the toast is observed where it
@@ -118,6 +135,41 @@ function mapFile(overrides: Record<string, unknown> = {}) {
   });
 }
 
+/** An agent answer, as it arrives in the event store. */
+function agentAnswer(text: string): MessageEvent {
+  return {
+    id: "answer-1",
+    timestamp: "2024-01-01T00:00:01Z",
+    source: "agent",
+    llm_message: { role: "assistant", content: [{ type: "text", text }] },
+    activated_skills: [],
+    extended_content: [],
+  };
+}
+
+/** The agent reporting that it just rewrote a file. */
+function fileEdit(path: string): ObservationEvent {
+  return {
+    id: "edit-1",
+    timestamp: "2024-01-01T00:00:02Z",
+    source: "environment",
+    tool_name: "file_editor",
+    tool_call_id: "call-1",
+    action_id: "action-1",
+    observation: {
+      kind: "FileEditorObservation",
+      content: [{ type: "text", text: "edited" }],
+      command: "str_replace",
+      output: "edited",
+      path,
+      prev_exist: true,
+      old_content: null,
+      new_content: null,
+      error: null,
+    },
+  };
+}
+
 const cloudBackend: Backend = {
   id: "cloud-test",
   name: "Cloud test backend",
@@ -135,12 +187,14 @@ describe("the project map page", () => {
       agent_server_url: null,
     });
     useProjectMapStore.getState().reset();
+    useEventStore.getState().clearEvents();
     setRegisteredBackends([localBackend]);
     setActiveSelection({ backendId: localBackend.id });
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    useEventStore.getState().clearEvents();
     useProjectMapStore.getState().reset();
     setActiveSelection(null);
     setRegisteredBackends([]);
@@ -502,6 +556,172 @@ describe("the project map page", () => {
     expect(screen.getByTestId("project-map-context-preview")).toHaveTextContent(
       ABSOLUTE_PATH,
     );
+  });
+
+  it("keeps the conversation it starts beside the canvas", async () => {
+    // Arrange
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    const navigate = vi.fn();
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, {
+      navigation: { currentPath: "/map", conversationId: null, navigate },
+    });
+    await screen.findByTestId("project-map-canvas");
+
+    // Act
+    await user.type(screen.getByTestId("project-map-composer"), "what is this?");
+    await user.click(screen.getByTestId("project-map-send"));
+
+    // Assert: the conversation belongs to the pane now, and the user is still
+    // looking at the map.
+    await waitFor(() => {
+      expect(screen.getByTestId("project-map-conversation")).toHaveAttribute(
+        "data-conversation-id",
+        "conversation-1",
+      );
+    });
+    expect(navigate).not.toHaveBeenCalled();
+    expect(screen.getByTestId("project-map-canvas")).toBeInTheDocument();
+    expect(screen.getByTestId("project-map-transcript")).toBeInTheDocument();
+    // Opening it full screen is offered rather than forced.
+    expect(
+      screen.getByTestId("project-map-open-conversation"),
+    ).toBeInTheDocument();
+  });
+
+  it("turns a node the answer names into a control that selects it", async () => {
+    // Arrange: a conversation bound to the pane.
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, {
+      navigation: { currentPath: "/map", conversationId: null, navigate: vi.fn() },
+    });
+    await screen.findByTestId("project-map-canvas");
+    await user.type(screen.getByTestId("project-map-composer"), "what is slow?");
+    await user.click(screen.getByTestId("project-map-send"));
+    await screen.findByTestId("project-map-transcript");
+
+    // Act: the agent answers, naming a node by its path.
+    act(() => {
+      useEventStore
+        .getState()
+        .addEvents([
+          agentAnswer(
+            "The slow part is src/stores/events.ts, which keeps every event.",
+          ),
+        ]);
+    });
+
+    // Assert: the mention is a control, and pressing it selects that node on
+    // the canvas — which is what drives the next message's context block.
+    const mention = await screen.findByTestId(
+      "project-map-mention-src/stores/events.ts",
+    );
+    await user.click(mention);
+    expect(screen.getByTestId("project-map-selection-chips")).toHaveTextContent(
+      "events",
+    );
+    expect(screen.getByTestId("project-map-context-preview")).toHaveTextContent(
+      'store "events" (src/stores/events.ts)',
+    );
+  });
+
+  it("picks up the agent's edit to the map without dropping unsaved moves", async () => {
+    // Arrange: the page is open with an unsaved edit in hand.
+    const read = vi
+      .spyOn(ProjectMapService, "readProjectMap")
+      .mockResolvedValue({ absolutePath: ABSOLUTE_PATH, raw: mapFile() });
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, {
+      navigation: { currentPath: "/map", conversationId: null, navigate: vi.fn() },
+    });
+    await screen.findByTestId("project-map-canvas");
+    await user.click(
+      screen.getByTestId("project-map-node-src/routes/home.tsx"),
+    );
+    await user.click(screen.getByTestId("project-map-toggle-hidden"));
+
+    // The agent describes a node differently and adds one it found, leaving
+    // the provenance fields alone — which is what an edit between
+    // regenerations actually looks like on disk, and what the page would miss
+    // if it recognised revisions by `commit` alone.
+    read.mockResolvedValue({
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile({
+        nodes: [
+          {
+            id: "src/routes/home.tsx",
+            kind: "route",
+            label: "home",
+            path: "src/routes/home.tsx",
+            group: "web",
+            summary: "Landing page and launcher.",
+            size: 420,
+            x: 0,
+            y: 0,
+          },
+          {
+            id: "src/stores/events.ts",
+            kind: "store",
+            label: "events",
+            path: "src/stores/events.ts",
+            group: "web",
+            summary: "Every event the agent emitted, deduped by id.",
+            size: 300,
+            x: 400,
+            y: 0,
+          },
+          {
+            id: "src/api/client.ts",
+            kind: "service",
+            label: "client",
+            path: "src/api/client.ts",
+            group: "web",
+            summary: "Talks to the agent server.",
+            size: 180,
+            x: 800,
+            y: 0,
+          },
+        ],
+      }),
+    });
+
+    // Act: the write arrives as an observation on the pane's conversation. The
+    // agent's path is longer than the page's, because its working directory is
+    // a subdirectory of the one the page reads.
+    act(() => {
+      useEventStore
+        .getState()
+        .addEvents([
+          fileEdit(
+            `/home/agent/workspace/project/sub/${PROJECT_MAP_FILE_PATH}`,
+          ),
+        ]);
+    });
+
+    // Assert: what the agent found landed, and the user's unsaved decision
+    // survived it — `mergeProjectMap` gives facts to the analysis and the
+    // arrangement to the person.
+    await waitFor(() => {
+      const open = useProjectMapStore.getState().document;
+      expect(
+        open?.nodes.find((node) => node.id === "src/api/client.ts"),
+      ).toBeDefined();
+    });
+    const open = useProjectMapStore.getState().document;
+    expect(
+      open?.nodes.find((node) => node.id === "src/stores/events.ts")?.summary,
+    ).toBe("Every event the agent emitted, deduped by id.");
+    expect(
+      open?.nodes.find((node) => node.id === "src/routes/home.tsx"),
+    ).toMatchObject({ hidden: true, x: 0, y: 0 });
+    expect(screen.getByTestId("project-map-unsaved")).toBeInTheDocument();
   });
 
   it("says which kind of backend cannot serve the map, for the harness too", async () => {

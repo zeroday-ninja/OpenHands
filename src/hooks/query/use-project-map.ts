@@ -9,6 +9,7 @@ import { PROJECT_MAP_QUERY_KEYS } from "#/hooks/query/query-keys";
 import { ensureProjectMapLayout } from "#/utils/project-map/project-map-layout";
 import {
   parseProjectMap,
+  projectMapRevision,
   type ProjectMapParseFailure,
   type ProjectMapWarning,
 } from "#/utils/project-map/parse-project-map";
@@ -21,6 +22,13 @@ import type { PlacedProjectMapDocument } from "#/types/project-map";
  */
 export interface ProjectMapView {
   absolutePath: string;
+  /**
+   * Identity of the file revision this view was read from, for the editor
+   * buffer's hydration check. It fingerprints the bytes, so a write by the
+   * agent is a new revision even when it leaves `generated_at` and `commit`
+   * alone — which the "group these three nodes" kind of edit does.
+   */
+  revision: string;
   /** True when there is no `.openhands/project-map.json` yet. */
   missing: boolean;
   document: PlacedProjectMapDocument | null;
@@ -50,9 +58,11 @@ export function useProjectMap(conversationId: string | null = null) {
     queryKey: PROJECT_MAP_QUERY_KEYS.byWorkspace(backend.id, conversationId),
     queryFn: async () => {
       const file = await ProjectMapService.readProjectMap({ conversationId });
+      const revision = projectMapRevision(file.absolutePath, file.raw);
       if (file.raw === null) {
         return {
           absolutePath: file.absolutePath,
+          revision,
           missing: true,
           document: null,
           failure: null,
@@ -63,6 +73,7 @@ export function useProjectMap(conversationId: string | null = null) {
       if (!result.ok) {
         return {
           absolutePath: file.absolutePath,
+          revision,
           missing: false,
           document: null,
           failure: result,
@@ -71,6 +82,7 @@ export function useProjectMap(conversationId: string | null = null) {
       }
       return {
         absolutePath: file.absolutePath,
+        revision,
         missing: false,
         document: ensureProjectMapLayout(result.document),
         failure: null,
