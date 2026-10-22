@@ -52,6 +52,7 @@ describe("the command menu settings group", () => {
       "verification-settings",
       "app-settings",
       "secrets-settings",
+      "soul-settings",
     ]);
   });
 

@@ -42,6 +42,7 @@ export const COMMAND_MENU_ROUTE = {
   verificationSettings: "/settings/verification",
   appSettings: "/settings/app",
   secretsSettings: "/settings/secrets",
+  soulSettings: "/settings/soul",
 } as const;
 
 export type CommandMenuGroupId = "navigation" | "settings" | "actions";
@@ -59,6 +60,7 @@ export type CommandMenuItemId =
   | "verification-settings"
   | "app-settings"
   | "secrets-settings"
+  | "soul-settings"
   | "toggle-sidebar";
 
 export interface CommandMenuItemDefinition {
@@ -240,6 +242,15 @@ export const createCommandMenuItems = ({
       keywordsKey: I18nKey.COMMAND_MENU$SECRETS_SETTINGS_KEYWORDS,
       icon: <KeyRound size={ICON_SIZE} />,
       to: COMMAND_MENU_ROUTE.secretsSettings,
+    },
+    {
+      id: "soul-settings",
+      group: "settings",
+      titleKey: I18nKey.COMMAND_MENU$SOUL_SETTINGS_TITLE,
+      descriptionKey: I18nKey.COMMAND_MENU$SOUL_SETTINGS_DESCRIPTION,
+      keywordsKey: I18nKey.COMMAND_MENU$SOUL_SETTINGS_KEYWORDS,
+      icon: <Sparkles size={ICON_SIZE} />,
+      to: COMMAND_MENU_ROUTE.soulSettings,
     },
     {
       id: "toggle-sidebar",
