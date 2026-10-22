@@ -131,9 +131,15 @@ GLOBAL_OPTS_WITH_VALUE = {
     "--namespace",
     "--exec-path",
     "--config-env",
+    "--attr-source",
 }
 
 CONTROL_OPERATORS = {"&&", "||", ";", ";;", "|", "|&", "&", "(", ")", "\n"}
+# Reserved words that can stand before a command (`if git commit ...; then`).
+RESERVED_WORDS = {"!", "{", "if", "then", "elif", "else", "while", "until", "do"}
+# A backslash-newline is a line continuation, removed before tokenizing. An
+# even run of backslashes before it escapes itself and leaves the newline.
+LINE_CONTINUATION_RE = re.compile(r"(?<!\\)((?:\\\\)*)\\\n")
 ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 EMAIL_RE = re.compile(r"<([^<>]*)>")
 
@@ -149,6 +155,7 @@ class GitCall:
 
 def split_segments(command: str) -> list[list[str]]:
     """Split a shell command into simple commands on control operators."""
+    command = LINE_CONTINUATION_RE.sub(r"\1", command)
     lexer = shlex.shlex(command, posix=True, punctuation_chars="();<>|&\n")
     lexer.whitespace = " \t\r"
     lexer.whitespace_split = True
@@ -164,6 +171,10 @@ def split_segments(command: str) -> list[list[str]]:
 def find_git_calls(command: str, cwd: str) -> list[GitCall]:
     calls: list[GitCall] = []
     for argv in split_segments(command):
+        while argv and argv[0] in RESERVED_WORDS:
+            argv = argv[1:]
+        if not argv:
+            continue
         if argv[0] == "cd" and len(argv) == 2:
             cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(argv[1])))
             continue

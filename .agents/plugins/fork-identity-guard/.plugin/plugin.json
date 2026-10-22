@@ -1,6 +1,6 @@
 {
   "name": "fork-identity-guard",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Best-effort pre-command check: blocks a terminal command when a commit-writing git call in it would record an author or committer email other than the one this fork requires, judged from the state before the command runs. It does not see what an earlier part of the same command changes, nor commits made in scripts, subshells or aliases.",
   "author": "Leander Metcalf"
 }

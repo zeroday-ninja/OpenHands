@@ -305,6 +305,34 @@ def test_notes_actions_that_write_no_commit_are_allowed(repo):
     assert run_hook(repo, "git notes && git notes --ref review show HEAD").returncode == 0
 
 
+BAD_AUTHOR = f"--author='Someone <{OTHER}>'"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        f"git commit -q --allow-empty -m x \\\n  {BAD_AUTHOR}",
+        f"git \\\n  commit -q --allow-empty -m x {BAD_AUTHOR}",
+        f"echo \\\\\ngit commit -q --allow-empty -m x {BAD_AUTHOR}",  # escaped backslash
+        f"if git commit -q --allow-empty -m x {BAD_AUTHOR}; then :; fi",
+        f"true && ! git commit -q --allow-empty -m x {BAD_AUTHOR}",
+        f"{{ git commit -q --allow-empty -m x {BAD_AUTHOR}; }}",
+        f"for i in 1; do git commit -q --allow-empty -m x {BAD_AUTHOR}; done",
+        f"git --attr-source HEAD commit -q --allow-empty -m x {BAD_AUTHOR}",
+    ],
+)
+def test_continued_lines_reserved_words_and_global_options_are_parsed(repo, command):
+    git(repo, "config", "user.name", "Required")
+    git(repo, "config", "user.email", REQUIRED)
+    commit_as(repo, REQUIRED)
+    before = recorded(repo)
+
+    result = agent_runs(repo, command)
+
+    assert_blocked(result, "author email", OTHER, "--author")
+    assert recorded(repo) == before
+
+
 @pytest.mark.parametrize(
     ("earlier_segment", "leaked"),
     [
