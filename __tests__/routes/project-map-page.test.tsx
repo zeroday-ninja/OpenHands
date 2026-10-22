@@ -262,6 +262,11 @@ describe("the project map page", () => {
     // Assert
     expect(preview.textContent?.startsWith("why is this slow?")).toBe(true);
 
+    // What the user was shown, read before sending: a successful send clears
+    // the composer, so reading it afterwards would be reading a different
+    // message than the one that went.
+    const shown = preview.textContent;
+
     // Act: sending launches a conversation carrying exactly that text.
     await user.click(screen.getByTestId("project-map-send"));
 
@@ -273,7 +278,7 @@ describe("the project map page", () => {
       unknown,
       { initialUserMsg?: string },
     ];
-    expect(options.initialUserMsg).toBe(preview.textContent);
+    expect(options.initialUserMsg).toBe(shown);
   });
 
   it("keeps unsaved moves when a regenerated file arrives under them", async () => {
