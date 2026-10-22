@@ -15,6 +15,7 @@ import {
   useDispatchAutomation,
 } from "#/hooks/query/use-automations";
 import { useAutomationHealth } from "#/hooks/query/use-automation-health";
+import { useAutomationAgentDisplay } from "#/hooks/query/use-automation-agent-display";
 import { useCloudOrgMember } from "#/hooks/query/use-cloud-org-member";
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import { useNavigation } from "#/context/navigation-context";
@@ -130,6 +131,9 @@ export default function AutomationDetail() {
   // Creator lookup for "Automation Runs As"; disabled until the automation
   // (and its user_id) has loaded, and on non-cloud backends.
   const creatorQuery = useCloudOrgMember(automation?.user_id);
+  // One automation, so the page also expands its agent profile's runtime —
+  // the extra profile-detail request a list of automations would not make.
+  const agent = useAutomationAgentDisplay(automation, { withRuntime: true });
 
   const is404 = isError && getErrorStatus(error) === 404;
 
@@ -271,7 +275,11 @@ export default function AutomationDetail() {
           {isImprovementProgram(automation) && (
             <ImproveProgramSection automationId={automation.id} />
           )}
-          <ConfigurationSection automation={automation} runsAs={runsAs} />
+          <ConfigurationSection
+            automation={automation}
+            agent={agent}
+            runsAs={runsAs}
+          />
           {automation.plugins && automation.plugins.length > 0 && (
             <PluginsSection plugins={automation.plugins} />
           )}

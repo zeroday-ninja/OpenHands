@@ -3,6 +3,8 @@ import { ExternalLink } from "lucide-react";
 import { useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { buildAutomationMetadataPills } from "#/components/features/automations/build-automation-pills";
+import { useAutomationAgentDisplay } from "#/hooks/query/use-automation-agent-display";
+import { automationAgentPillLabel } from "#/utils/automation-agent";
 import {
   RunPhase,
   shouldShowRunPhase,
@@ -88,9 +90,11 @@ export function PinnedAutomationCard({
     latestRun?.status === AutomationRunStatus.FAILED;
   const scheduleLabel =
     automation.trigger.schedule_human || automation.trigger.type;
+  const agent = useAutomationAgentDisplay(automation);
+  const agentLabel = automationAgentPillLabel(agent, t);
   const pills = useMemo(
-    () => buildAutomationMetadataPills(automation, scheduleLabel),
-    [automation, scheduleLabel],
+    () => buildAutomationMetadataPills(automation, scheduleLabel, agentLabel),
+    [automation, scheduleLabel, agentLabel],
   );
   const showPhase = shouldShowRunPhase(latestRun?.status);
   const display = latestRun ? getAutomationRunDisplay(latestRun) : null;

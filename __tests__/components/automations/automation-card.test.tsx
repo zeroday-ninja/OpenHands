@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
@@ -98,9 +99,24 @@ function createRun(overrides: Partial<AutomationRun> = {}): AutomationRun {
   };
 }
 
+/**
+ * The card resolves what its automation runs as, so it needs the query client
+ * and the active backend the resolution reads from.
+ */
+function renderCard(ui: ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <ActiveBackendProvider>{ui}</ActiveBackendProvider>
+    </QueryClientProvider>,
+  );
+}
+
 describe("AutomationCard", () => {
   it("uses the shared extension module interactive class without a resting border", () => {
-    render(
+    renderCard(
       <AutomationCard
         automation={automation}
         onToggle={vi.fn()}
@@ -117,7 +133,7 @@ describe("AutomationCard", () => {
   });
 
   it("marks draft automations without labeling them inactive", () => {
-    render(
+    renderCard(
       <AutomationCard
         automation={{ ...automation, enabled: false, state: "DRAFT" }}
         onToggle={vi.fn()}
@@ -136,7 +152,7 @@ describe("AutomationCard", () => {
   });
 
   it("renders title, description, and overflow pills", () => {
-    render(
+    renderCard(
       <AutomationCard
         automation={automation}
         onToggle={vi.fn()}
@@ -159,7 +175,7 @@ describe("AutomationCard", () => {
   it("renders a play run button and menu actions instead of a toggle switch", async () => {
     const user = userEvent.setup();
 
-    render(
+    renderCard(
       <AutomationCard
         automation={automation}
         onToggle={vi.fn()}
@@ -191,7 +207,7 @@ describe("AutomationCard", () => {
       completed_at: new Date(Date.now() - 8 * 60_000).toISOString(),
     });
 
-    render(
+    renderCard(
       <AutomationCard
         automation={automation}
         onToggle={vi.fn()}
@@ -237,7 +253,7 @@ describe("AutomationCard", () => {
     const latestRun = createRun();
 
     // Act
-    render(
+    renderCard(
       <AutomationCard
         automation={{
           ...automation,
@@ -383,5 +399,61 @@ describe("AutomationCard — run phase", () => {
     // ... and exactly one request was made — the pre-existing insights
     // fetch, not a new one just for the phase.
     expect(callCount).toBe(1);
+  });
+});
+
+describe("AutomationCard — agent", () => {
+  const localBackend: Backend = {
+    id: "local-agent",
+    name: "Local",
+    host: "http://localhost:8000",
+    apiKey: "k",
+    kind: "local",
+  };
+
+  const profileId = "96ace0a6-483e-4a39-91cc-ced1b8663056";
+
+  beforeEach(() => {
+    __resetActiveStoreForTests();
+    setRegisteredBackends([localBackend]);
+    setActiveSelection({ backendId: localBackend.id });
+    server.use(
+      http.get("*/api/agent-profiles", () =>
+        HttpResponse.json({
+          profiles: [
+            {
+              id: profileId,
+              name: "claude-code",
+              agent_kind: "acp",
+              revision: 9,
+              llm_profile_ref: null,
+              mcp_server_refs: null,
+            },
+          ],
+          active_agent_profile_id: profileId,
+        }),
+      ),
+    );
+  });
+
+  afterEach(() => {
+    __resetActiveStoreForTests();
+  });
+
+  it("names the agent profile the automation runs under", async () => {
+    // Arrange — an automation on an agent profile has no model of its own, so
+    // the card used to show nothing about what runs it.
+    renderCard(
+      <AutomationCard
+        automation={{ ...automation, model: null, agent_profile_id: profileId }}
+        onToggle={vi.fn()}
+        onRunNow={vi.fn()}
+        onExport={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    // Act / Assert
+    expect(await screen.findByText("claude-code")).toBeInTheDocument();
   });
 });
