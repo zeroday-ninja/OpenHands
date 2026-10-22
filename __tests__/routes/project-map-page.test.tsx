@@ -315,7 +315,7 @@ describe("the project map page", () => {
     expect(
       await screen.findByTestId("project-map-analysis-running"),
     ).toHaveTextContent(SANDBOX_WORKSPACE.workingDir);
-    expect(screen.getByTestId("project-map-empty-workspace")).toHaveAttribute(
+    expect(screen.getByTestId("project-map-workspace")).toHaveAttribute(
       "data-conversation-id",
       "conversation-1",
     );

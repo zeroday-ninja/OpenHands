@@ -354,7 +354,6 @@ export function ProjectMapPage() {
           pending={createConversation.isPending}
           conversationId={mapConversationId}
           workspace={workspace}
-          backendName={backend.name}
           onGenerate={() => void generate()}
           onRefresh={() => void refetch()}
           onOpenConversation={(conversationId) =>
@@ -415,18 +414,15 @@ export function ProjectMapPage() {
 function WorkspaceLabel({
   workspace,
   backendName,
-  testId = "project-map-workspace",
 }: {
   workspace: ProjectMapWorkspace | null;
   backendName: string;
-  /** Distinct per place it is rendered, so an assertion names one of them. */
-  testId?: string;
 }) {
   const { t } = useTranslation("openhands");
   if (workspace === null) return null;
   return (
     <p
-      data-testid={testId}
+      data-testid="project-map-workspace"
       data-conversation-id={workspace.conversationId ?? undefined}
       className="font-mono text-micro text-muted"
     >
@@ -504,7 +500,6 @@ function EmptyState({
   pending,
   conversationId,
   workspace,
-  backendName,
   onGenerate,
   onRefresh,
   onOpenConversation,
@@ -513,7 +508,6 @@ function EmptyState({
   /** The conversation the page is bound to, which is writing the map. */
   conversationId: string | null;
   workspace: ProjectMapWorkspace | null;
-  backendName: string;
   onGenerate: () => void;
   onRefresh: () => void;
   onOpenConversation: (conversationId: string) => void;
@@ -530,14 +524,6 @@ function EmptyState({
       <p className="text-sm leading-relaxed text-text-secondary">
         {t(I18nKey.PROJECT_MAP$EMPTY_BODY)}
       </p>
-      {/* Which empty workspace this is. The same sentence as the header's,
-          repeated here because this is the state in which it matters: nothing
-          else on screen says where the page just looked. */}
-      <WorkspaceLabel
-        workspace={workspace}
-        backendName={backendName}
-        testId="project-map-empty-workspace"
-      />
       {conversationId !== null && workspace !== null && (
         <p
           data-testid="project-map-analysis-running"
