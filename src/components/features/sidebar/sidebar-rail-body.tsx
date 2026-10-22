@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import {
   ChevronLeft,
   ChevronRight,
+  Network,
   Plus,
   Server,
   Settings,
@@ -22,6 +23,7 @@ import {
 import { SidebarCollapsedIconSlot } from "./sidebar-collapsed-icon-slot";
 import { SidebarNavLink } from "./sidebar-nav-link";
 import { I18nKey } from "#/i18n/declaration";
+import { PROJECT_MAP_ROUTE_PATH } from "#/types/project-map";
 import { cn } from "#/utils/utils";
 import { StyledTooltip } from "#/components/shared/buttons/styled-tooltip";
 import { BackendSelector } from "#/components/features/backends/backend-selector";
@@ -249,6 +251,17 @@ export function SidebarRailBody({
             </svg>
           }
         />
+        {/* The map reads a file from a local workspace, which a canvas locked
+            to a Cloud host never has. */}
+        {!isLockedToCloud && (
+          <SidebarNavLink
+            to={PROJECT_MAP_ROUTE_PATH}
+            label={t(I18nKey.PROJECT_MAP$NAV_LABEL)}
+            testId="sidebar-map-link"
+            collapsed={collapsed}
+            icon={<Network width={ICON_SIZE} height={ICON_SIZE} />}
+          />
+        )}
         {/* The interface manifest owns this entry's label, so an absent
             manifest leaves the rail without it rather than with host copy. */}
         {hasAutomationInterface() && (

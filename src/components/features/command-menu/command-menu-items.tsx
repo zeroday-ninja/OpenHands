@@ -6,6 +6,7 @@ import {
   Keyboard,
   KeyRound,
   ListTodo,
+  Network,
   PanelsTopLeft,
   Route,
   Search,
@@ -16,6 +17,7 @@ import {
   Zap,
 } from "lucide-react";
 import { I18nKey } from "#/i18n/declaration";
+import { PROJECT_MAP_ROUTE_PATH } from "#/types/project-map";
 import {
   automationListPath,
   getInterfaceCopy,
@@ -33,6 +35,7 @@ export const COMMAND_MENU_ROUTE = {
   customize: "/customize",
   automations: automationListPath(),
   mcp: "/mcp",
+  map: PROJECT_MAP_ROUTE_PATH,
   settings: "/settings",
   agentSettings: "/settings/agents",
   llmSettings: "/settings/llm",
@@ -51,6 +54,7 @@ export type CommandMenuItemId =
   | "customize"
   | "automations"
   | "mcp"
+  | "map"
   | "settings"
   | "agent-settings"
   | "llm-settings"
@@ -163,6 +167,15 @@ export const createCommandMenuItems = ({
       to: COMMAND_MENU_ROUTE.mcp,
     },
     {
+      id: "map",
+      group: "navigation",
+      titleKey: I18nKey.COMMAND_MENU$MAP_TITLE,
+      descriptionKey: I18nKey.COMMAND_MENU$MAP_DESCRIPTION,
+      keywordsKey: I18nKey.COMMAND_MENU$MAP_KEYWORDS,
+      icon: <Network size={ICON_SIZE} />,
+      to: COMMAND_MENU_ROUTE.map,
+    },
+    {
       id: "settings",
       group: "settings",
       titleKey: I18nKey.COMMAND_MENU$SETTINGS_TITLE,
@@ -272,6 +285,12 @@ export const createCommandMenuItems = ({
   return items.filter(
     (item) =>
       (isCloud || item.to !== COMMAND_MENU_ROUTE.condenserSettings) &&
+      // The project map reads a file from a local workspace, and a canvas
+      // locked to a Cloud host never has one, so the page would be a dead end
+      // there. A Cloud *backend* in a multi-backend canvas keeps the entry:
+      // the user can switch, and an item that appears and disappears with the
+      // active backend is worse than one that explains itself.
+      (!isLockedToCloud || item.to !== COMMAND_MENU_ROUTE.map) &&
       (!isLockedToCloud ||
         item.group !== "settings" ||
         item.to === COMMAND_MENU_ROUTE.settings ||

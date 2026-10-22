@@ -12,7 +12,9 @@ import {
   type ProjectMapNode,
 } from "#/types/project-map";
 
-function node(overrides: Partial<ProjectMapNode> & { id: string }): ProjectMapNode {
+function node(
+  overrides: Partial<ProjectMapNode> & { id: string },
+): ProjectMapNode {
   return {
     kind: "module",
     label: overrides.id,
@@ -35,12 +37,19 @@ const route = node({
   label: "home",
   path: "src/routes/home.tsx",
 });
-const external = node({ id: "ext:posthog", kind: "external", label: "PostHog", path: null });
+const external = node({
+  id: "ext:posthog",
+  kind: "external",
+  label: "PostHog",
+  path: null,
+});
 
 describe("buildProjectMapContextBlock", () => {
   it("names each selected node's kind, label and path so the subject is unambiguous", () => {
     // Act
-    const block = buildProjectMapContextBlock([route, external], { commit: "abc1234" });
+    const block = buildProjectMapContextBlock([route, external], {
+      commit: "abc1234",
+    });
 
     // Assert
     expect(block).toContain('- route "home" (src/routes/home.tsx)');
@@ -58,7 +67,9 @@ describe("buildProjectMapContextBlock", () => {
 describe("buildProjectMapLaunchMessage", () => {
   it("seeds a redesign with the design skill by leading with its slash command", () => {
     // Act
-    const message = buildProjectMapLaunchMessage("redesign", [route], { commit: null });
+    const message = buildProjectMapLaunchMessage("redesign", [route], {
+      commit: null,
+    });
 
     // Assert: the catalog skill loads from the first token of the message.
     expect(message.startsWith("/frontend-design ")).toBe(true);
@@ -78,21 +89,25 @@ describe("buildProjectMapLaunchMessage", () => {
 describe("buildProjectMapQuestionMessage", () => {
   it("puts the user's question first and the selection under it", () => {
     // Act
-    const message = buildProjectMapQuestionMessage("why is this slow?", [route], {
-      commit: null,
-    });
+    const message = buildProjectMapQuestionMessage(
+      "why is this slow?",
+      [route],
+      {
+        commit: null,
+      },
+    );
 
     // Assert
-    expect(message.startsWith("why is this slow?\n\nSelected on the project map")).toBe(
-      true,
-    );
+    expect(
+      message.startsWith("why is this slow?\n\nSelected on the project map"),
+    ).toBe(true);
   });
 
   it("sends only the question when nothing is selected", () => {
     // Act / Assert
-    expect(buildProjectMapQuestionMessage("  hello  ", [], { commit: null })).toBe(
-      "hello",
-    );
+    expect(
+      buildProjectMapQuestionMessage("  hello  ", [], { commit: null }),
+    ).toBe("hello");
   });
 });
 
@@ -102,7 +117,15 @@ describe("findProjectMapMentions", () => {
     generated_at: null,
     commit: null,
     groups: [],
-    nodes: [route, node({ id: "src/routes", kind: "dir", label: "routes", path: "src/routes" })],
+    nodes: [
+      route,
+      node({
+        id: "src/routes",
+        kind: "dir",
+        label: "routes",
+        path: "src/routes",
+      }),
+    ],
     edges: [],
     notes: [],
   };

@@ -31,7 +31,10 @@ export function useSaveProjectMap(conversationId: string | null = null) {
       }),
     onSuccess: () =>
       queryClient.invalidateQueries({
-        queryKey: PROJECT_MAP_QUERY_KEYS.byWorkspace(backend.id, conversationId),
+        queryKey: PROJECT_MAP_QUERY_KEYS.byWorkspace(
+          backend.id,
+          conversationId,
+        ),
       }),
   });
 }

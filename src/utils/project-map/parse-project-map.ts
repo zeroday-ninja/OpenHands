@@ -139,7 +139,8 @@ function optionalStringList(
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value)) throw new InvalidField(pointer);
   return value.map((entry, index) => {
-    if (typeof entry !== "string") throw new InvalidField(`${pointer}[${index}]`);
+    if (typeof entry !== "string")
+      throw new InvalidField(`${pointer}[${index}]`);
     return entry;
   });
 }
@@ -171,7 +172,10 @@ function readList(
   });
 }
 
-function readGroup(raw: Record<string, unknown>, pointer: string): ProjectMapGroup {
+function readGroup(
+  raw: Record<string, unknown>,
+  pointer: string,
+): ProjectMapGroup {
   const id = requiredText(raw, "id", `${pointer}.id`);
   return {
     id,
@@ -181,13 +185,20 @@ function readGroup(raw: Record<string, unknown>, pointer: string): ProjectMapGro
   };
 }
 
-function readNode(raw: Record<string, unknown>, pointer: string): ProjectMapNode {
+function readNode(
+  raw: Record<string, unknown>,
+  pointer: string,
+): ProjectMapNode {
   const labelSource = optionalString(
     raw,
     "label_source",
     `${pointer}.label_source`,
   );
-  if (labelSource !== null && labelSource !== "generated" && labelSource !== "user") {
+  if (
+    labelSource !== null &&
+    labelSource !== "generated" &&
+    labelSource !== "user"
+  ) {
     throw new InvalidField(`${pointer}.label_source`);
   }
   const id = requiredText(raw, "id", `${pointer}.id`);
@@ -216,7 +227,10 @@ function readNode(raw: Record<string, unknown>, pointer: string): ProjectMapNode
   return node;
 }
 
-function readEdge(raw: Record<string, unknown>, pointer: string): ProjectMapEdge {
+function readEdge(
+  raw: Record<string, unknown>,
+  pointer: string,
+): ProjectMapEdge {
   return {
     from: requiredText(raw, "from", `${pointer}.from`),
     to: requiredText(raw, "to", `${pointer}.to`),
@@ -230,7 +244,10 @@ function readEdge(raw: Record<string, unknown>, pointer: string): ProjectMapEdge
   };
 }
 
-function readNote(raw: Record<string, unknown>, pointer: string): ProjectMapNote {
+function readNote(
+  raw: Record<string, unknown>,
+  pointer: string,
+): ProjectMapNote {
   return {
     id: requiredText(raw, "id", `${pointer}.id`),
     text: optionalString(raw, "text", `${pointer}.text`) ?? "",

@@ -55,7 +55,8 @@ export function resolveProjectMapAccent(
   accent: string | null | undefined,
   seed: string,
 ): number {
-  const declared = accent === null || accent === undefined ? NaN : Number(accent.trim());
+  const declared =
+    accent === null || accent === undefined ? NaN : Number(accent.trim());
   if (Number.isInteger(declared) && declared > 0) {
     return ((declared - 1) % PROJECT_MAP_ACCENT_COUNT) + 1;
   }
@@ -68,7 +69,10 @@ export function resolveProjectMapAccent(
 
 /** The CSS token reference for a 1-based accent index. */
 export function projectMapAccentToken(accent: number): string {
-  const index = Math.max(1, Math.min(PROJECT_MAP_ACCENT_COUNT, Math.round(accent)));
+  const index = Math.max(
+    1,
+    Math.min(PROJECT_MAP_ACCENT_COUNT, Math.round(accent)),
+  );
   return ACCENT_TOKENS[index - 1];
 }
 
@@ -216,7 +220,9 @@ const EDGE_STYLES: Record<ProjectMapEdgeKind, ProjectMapEdgeStyle> = {
   publishes: { dash: "7 2 1 2", head: "filled", weight: 1 },
 };
 
-export function projectMapEdgeStyle(kind: ProjectMapEdgeKind): ProjectMapEdgeStyle {
+export function projectMapEdgeStyle(
+  kind: ProjectMapEdgeKind,
+): ProjectMapEdgeStyle {
   return EDGE_STYLES[kind];
 }
 
@@ -252,7 +258,10 @@ export function projectMapEdgeGeometry(
   from: Rect,
   to: Rect,
 ): ProjectMapEdgeGeometry {
-  const fromCenter = { x: from.x + from.width / 2, y: from.y + from.height / 2 };
+  const fromCenter = {
+    x: from.x + from.width / 2,
+    y: from.y + from.height / 2,
+  };
   const toCenter = { x: to.x + to.width / 2, y: to.y + to.height / 2 };
   const dx = toCenter.x - fromCenter.x;
   const dy = toCenter.y - fromCenter.y;
@@ -274,7 +283,10 @@ export function projectMapEdgeGeometry(
   }
 
   const goingDown = dy >= 0;
-  const start = { x: fromCenter.x, y: goingDown ? from.y + from.height : from.y };
+  const start = {
+    x: fromCenter.x,
+    y: goingDown ? from.y + from.height : from.y,
+  };
   const end = { x: toCenter.x, y: goingDown ? to.y : to.y + to.height };
   const middle = round((start.y + end.y) / 2);
   return {

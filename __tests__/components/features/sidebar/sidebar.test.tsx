@@ -509,6 +509,7 @@ describe("Sidebar", () => {
       "sidebar-conversations-link",
       "sidebar-automations-link",
       "sidebar-skills-link",
+      "sidebar-map-link",
     ]) {
       const link = screen.getByTestId(testId);
       expect(link.querySelector("svg")).not.toBeNull();
@@ -528,6 +529,15 @@ describe("Sidebar", () => {
     );
     expect(screen.getByTestId("sidebar-automations-link")).toHaveTextContent(
       "Automate",
+    );
+  });
+
+  it("marks the project map row as the current page on /map", () => {
+    renderSidebar("/map");
+
+    expect(screen.getByTestId("sidebar-map-link")).toHaveAttribute(
+      "aria-current",
+      "page",
     );
   });
 

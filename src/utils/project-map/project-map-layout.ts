@@ -93,7 +93,8 @@ function layoutOrder(
   });
   return keys.map((key) =>
     [...(columns.get(key) ?? [])].sort(
-      (left, right) => right.size - left.size || left.id.localeCompare(right.id),
+      (left, right) =>
+        right.size - left.size || left.id.localeCompare(right.id),
     ),
   );
 }
@@ -130,7 +131,9 @@ export function placeProjectMapNodes(
     ...placed.map((node) => node.x + projectMapNodeSize(node.size).width),
   );
   const top = Math.min(...placed.map((node) => node.y));
-  const originX = Math.ceil((right + PROJECT_MAP_NEW_NODE_GUTTER) / PROJECT_MAP_GRID) * PROJECT_MAP_GRID;
+  const originX =
+    Math.ceil((right + PROJECT_MAP_NEW_NODE_GUTTER) / PROJECT_MAP_GRID) *
+    PROJECT_MAP_GRID;
   const originY = Math.round(top / PROJECT_MAP_GRID) * PROJECT_MAP_GRID;
 
   const ordered = [...pending].sort(
@@ -140,7 +143,9 @@ export function placeProjectMapNodes(
   );
   ordered.forEach((node, index) => {
     positions.set(node.id, {
-      x: originX + Math.floor(index / PROJECT_MAP_COLUMN_ROWS) * PROJECT_MAP_COLUMN_PITCH,
+      x:
+        originX +
+        Math.floor(index / PROJECT_MAP_COLUMN_ROWS) * PROJECT_MAP_COLUMN_PITCH,
       y: originY + (index % PROJECT_MAP_COLUMN_ROWS) * PROJECT_MAP_ROW_PITCH,
     });
   });
@@ -191,4 +196,104 @@ export function projectMapBounds(nodes: PlacedProjectMapNode[]): {
     maxY = Math.max(maxY, node.y + height);
   }
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
+/** Breathing room between a group's boundary and the nodes inside it. */
+export const PROJECT_MAP_GROUP_PADDING = 26;
+
+/**
+ * The boundary drawn around a group: the bounding box of its visible members,
+ * padded.
+ *
+ * A group has no stored geometry of its own on purpose. Its outline follows
+ * whatever the user dragged into it, which is also what makes dropping a node
+ * inside the boundary a sensible way to join it — the boundary is not a
+ * container the node has to be put into, it is a description of where the
+ * members already are.
+ */
+export function projectMapGroupBounds(
+  nodes: PlacedProjectMapNode[],
+  groupId: string,
+): { x: number; y: number; width: number; height: number } | null {
+  const members = nodes.filter((node) => node.group === groupId);
+  const bounds = projectMapBounds(members);
+  if (bounds === null) return null;
+  return {
+    x: bounds.x - PROJECT_MAP_GROUP_PADDING,
+    y: bounds.y - PROJECT_MAP_GROUP_PADDING,
+    width: bounds.width + PROJECT_MAP_GROUP_PADDING * 2,
+    height: bounds.height + PROJECT_MAP_GROUP_PADDING * 2,
+  };
+}
+
+/** The group whose boundary contains a point, innermost (smallest) first. */
+export function projectMapGroupAtPoint(
+  nodes: PlacedProjectMapNode[],
+  groupIds: readonly string[],
+  point: { x: number; y: number },
+): string | null {
+  const hits = groupIds
+    .map((groupId) => ({
+      groupId,
+      bounds: projectMapGroupBounds(nodes, groupId),
+    }))
+    .filter(
+      (
+        entry,
+      ): entry is {
+        groupId: string;
+        bounds: NonNullable<ReturnType<typeof projectMapGroupBounds>>;
+      } =>
+        entry.bounds !== null &&
+        point.x >= entry.bounds.x &&
+        point.x <= entry.bounds.x + entry.bounds.width &&
+        point.y >= entry.bounds.y &&
+        point.y <= entry.bounds.y + entry.bounds.height,
+    )
+    .sort(
+      (left, right) =>
+        left.bounds.width * left.bounds.height -
+        right.bounds.width * right.bounds.height,
+    );
+  return hits[0]?.groupId ?? null;
+}
+
+/** The frame's top-left in diagram coordinates, plus its zoom. */
+export interface ProjectMapViewBox {
+  x: number;
+  y: number;
+  scale: number;
+}
+
+/** Margin left around the drawing when fitting it to the frame. */
+const FIT_PADDING = 56;
+
+/**
+ * The viewport that shows the whole drawing, centred.
+ *
+ * Pure, so the Fit button is an ordinary calculation from the drawing's extent
+ * and the frame's measured size rather than an animation with state in it.
+ */
+export function fitProjectMapViewBox(
+  bounds: { x: number; y: number; width: number; height: number },
+  frame: { width: number; height: number },
+  limits: { min: number; max: number },
+): ProjectMapViewBox {
+  const usableWidth = Math.max(1, frame.width - FIT_PADDING * 2);
+  const usableHeight = Math.max(1, frame.height - FIT_PADDING * 2);
+  const scale = Math.min(
+    limits.max,
+    Math.max(
+      limits.min,
+      Math.min(
+        usableWidth / Math.max(1, bounds.width),
+        usableHeight / Math.max(1, bounds.height),
+      ),
+    ),
+  );
+  return {
+    scale,
+    x: bounds.x + bounds.width / 2 - frame.width / (2 * scale),
+    y: bounds.y + bounds.height / 2 - frame.height / (2 * scale),
+  };
 }

@@ -41,7 +41,11 @@ const localBackend: Backend = {
   kind: "local",
 };
 
-const cloudBackend: Backend = { ...localBackend, id: "cloud-test", kind: "cloud" };
+const cloudBackend: Backend = {
+  ...localBackend,
+  id: "cloud-test",
+  kind: "cloud",
+};
 
 function httpError(status: number) {
   return Object.assign(new Error(`HTTP ${status}`), {

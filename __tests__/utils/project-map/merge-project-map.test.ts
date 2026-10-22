@@ -7,7 +7,9 @@ import {
 } from "#/types/project-map";
 import { projectMapNodeSize } from "#/utils/project-map/project-map-layout";
 
-function node(overrides: Partial<ProjectMapNode> & { id: string }): ProjectMapNode {
+function node(
+  overrides: Partial<ProjectMapNode> & { id: string },
+): ProjectMapNode {
   return {
     kind: "module",
     label: overrides.id,
@@ -24,7 +26,9 @@ function node(overrides: Partial<ProjectMapNode> & { id: string }): ProjectMapNo
   };
 }
 
-function document(overrides: Partial<ProjectMapDocument> = {}): ProjectMapDocument {
+function document(
+  overrides: Partial<ProjectMapDocument> = {},
+): ProjectMapDocument {
   return {
     version: PROJECT_MAP_VERSION,
     generated_at: null,
@@ -52,11 +56,21 @@ describe("mergeProjectMap", () => {
           group: "web",
         }),
       ],
-      notes: [{ id: "n1", text: "the hot path", anchor: "src/a.ts", x: 10, y: 20 }],
+      notes: [
+        { id: "n1", text: "the hot path", anchor: "src/a.ts", x: 10, y: 20 },
+      ],
     });
     const incoming = document({
       commit: "feed1234",
-      nodes: [node({ id: "src/a.ts", x: 0, y: 0, summary: "Now does more.", size: 480 })],
+      nodes: [
+        node({
+          id: "src/a.ts",
+          x: 0,
+          y: 0,
+          summary: "Now does more.",
+          size: 480,
+        }),
+      ],
     });
 
     // Act
@@ -81,7 +95,13 @@ describe("mergeProjectMap", () => {
     // Arrange
     const previous = document({
       nodes: [
-        node({ id: "src/renamed.ts", label: "The gateway", label_source: "user", x: 0, y: 0 }),
+        node({
+          id: "src/renamed.ts",
+          label: "The gateway",
+          label_source: "user",
+          x: 0,
+          y: 0,
+        }),
         node({ id: "src/auto.ts", label: "auto", x: 0, y: 100 }),
       ],
     });
@@ -108,15 +128,23 @@ describe("mergeProjectMap", () => {
     const existing = node({ id: "src/a.ts", x: 400, y: 200, size: 100 });
     const previous = document({ nodes: [existing] });
     const incoming = document({
-      nodes: [node({ id: "src/a.ts" }), node({ id: "src/new.ts", x: 400, y: 200 })],
+      nodes: [
+        node({ id: "src/a.ts" }),
+        node({ id: "src/new.ts", x: 400, y: 200 }),
+      ],
     });
 
     // Act
-    const { document: merged, addedNodeIds } = mergeProjectMap(previous, incoming);
+    const { document: merged, addedNodeIds } = mergeProjectMap(
+      previous,
+      incoming,
+    );
 
     // Assert
     expect(addedNodeIds).toEqual(["src/new.ts"]);
-    const placed = merged.nodes.find((candidate) => candidate.id === "src/new.ts");
+    const placed = merged.nodes.find(
+      (candidate) => candidate.id === "src/new.ts",
+    );
     expect(placed?.x).toBeGreaterThan(
       existing.x! + projectMapNodeSize(existing.size).width,
     );
@@ -130,13 +158,22 @@ describe("mergeProjectMap", () => {
         node({ id: "src/deleted.ts", x: 0, y: 100, pinned: true }),
       ],
       notes: [
-        { id: "n1", text: "about the deleted one", anchor: "src/deleted.ts", x: 5, y: 5 },
+        {
+          id: "n1",
+          text: "about the deleted one",
+          anchor: "src/deleted.ts",
+          x: 5,
+          y: 5,
+        },
       ],
     });
     const incoming = document({ nodes: [node({ id: "src/a.ts" })] });
 
     // Act
-    const { document: merged, removedNodeIds } = mergeProjectMap(previous, incoming);
+    const { document: merged, removedNodeIds } = mergeProjectMap(
+      previous,
+      incoming,
+    );
 
     // Assert: the remark survives, unanchored, rather than disappearing with it.
     expect(removedNodeIds).toEqual(["src/deleted.ts"]);
@@ -149,11 +186,15 @@ describe("mergeProjectMap", () => {
   it("keeps a group the analysis never mentions, because nodes were moved into it by hand", () => {
     // Arrange
     const previous = document({
-      groups: [{ id: "mine", label: "Rendering layer", accent: "4", collapsed: false }],
+      groups: [
+        { id: "mine", label: "Rendering layer", accent: "4", collapsed: false },
+      ],
       nodes: [node({ id: "src/a.ts", group: "mine", x: 0, y: 0 })],
     });
     const incoming = document({
-      groups: [{ id: "generated", label: "Generated", accent: "1", collapsed: false }],
+      groups: [
+        { id: "generated", label: "Generated", accent: "1", collapsed: false },
+      ],
       nodes: [node({ id: "src/a.ts", group: "generated" })],
     });
 
@@ -161,15 +202,23 @@ describe("mergeProjectMap", () => {
     const { document: merged } = mergeProjectMap(previous, incoming);
 
     // Assert
-    expect(merged.groups.map((group) => group.id)).toEqual(["mine", "generated"]);
+    expect(merged.groups.map((group) => group.id)).toEqual([
+      "mine",
+      "generated",
+    ]);
     expect(merged.nodes[0].group).toBe("mine");
   });
 
   it("takes the new analysis's edges wholesale, because relationships are its job", () => {
     // Arrange
     const previous = document({
-      nodes: [node({ id: "src/a.ts", x: 0, y: 0 }), node({ id: "src/b.ts", x: 0, y: 100 })],
-      edges: [{ from: "src/a.ts", to: "src/b.ts", kind: "imports", label: null }],
+      nodes: [
+        node({ id: "src/a.ts", x: 0, y: 0 }),
+        node({ id: "src/b.ts", x: 0, y: 100 }),
+      ],
+      edges: [
+        { from: "src/a.ts", to: "src/b.ts", kind: "imports", label: null },
+      ],
     });
     const incoming = document({
       nodes: [node({ id: "src/a.ts" }), node({ id: "src/b.ts" })],

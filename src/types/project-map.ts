@@ -21,6 +21,13 @@
 /** Where the document lives, relative to the repository root. */
 export const PROJECT_MAP_FILE_PATH = ".openhands/project-map.json";
 
+/**
+ * Where the page lives. Declared beside the document format rather than in the
+ * feature directory so the sidebar and the command menu can name the route
+ * without pulling the page's component graph into their own chunk.
+ */
+export const PROJECT_MAP_ROUTE_PATH = "/map";
+
 /** The only document version this build understands. */
 export const PROJECT_MAP_VERSION = 1;
 
