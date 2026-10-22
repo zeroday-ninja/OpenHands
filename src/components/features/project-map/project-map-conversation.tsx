@@ -7,28 +7,17 @@
  * sent there is nothing to bind, so the pane is just the composer — the state
  * the page has always had.
  *
- * How the plumbing reaches a conversation the URL does not name: every
- * conversation hook resolves its id through `useOptionalConversationId`, which
- * normally answers from the route. `ScopedConversationIdProvider` overrides
- * that for this subtree only, so `WebSocketProviderWrapper` below it opens the
- * socket for the bound conversation, the event store fills, and the shared
- * rendering works unchanged. `/conversations/:conversationId` mounts no such
- * provider and keeps resolving its id from the route exactly as before.
- *
- * Binding is page state rather than store state on purpose. It lasts as long
- * as you are looking at the map and no longer: a conversation id outliving the
- * page would mean coming back later — possibly on another backend, where the
- * id means nothing — to a pane claiming a conversation nobody asked for.
+ * The binding itself belongs to `ProjectMapPage`, which owns it because it is
+ * also the workspace the map is read from: under Docker sandboxes the file
+ * lives inside this conversation's container and nowhere else. This pane is
+ * given the id and reports a new one; it mounts no transport of its own, since
+ * the page already holds the socket open around the whole route.
  */
 
-import React from "react";
 import { useTranslation } from "react-i18next";
 import { Maximize2, MessageSquarePlus } from "lucide-react";
 import { I18nKey } from "#/i18n/declaration";
 import { useNavigation } from "#/context/navigation-context";
-import { ScopedConversationIdProvider } from "#/context/scoped-conversation-id-context";
-import { WebSocketProviderWrapper } from "#/contexts/websocket-provider-wrapper";
-import { EventHandler } from "#/wrapper/event-handler";
 import type { PlacedProjectMapDocument } from "#/types/project-map";
 import { ProjectMapChat } from "./project-map-chat";
 import { ProjectMapTranscript } from "./project-map-transcript";
@@ -43,19 +32,28 @@ export interface ProjectMapConversationProps {
   document: PlacedProjectMapDocument;
   /** Absolute path of the open map, named in the context block. */
   mapPath: string;
+  /** The conversation the page is bound to, or null when there is none. */
+  conversationId: string | null;
+  /** Passed through to the composer: see `ProjectMapChatProps`. */
+  launchWorkingDir: string | null;
+  /** Reports the conversation a first send just opened. */
+  onConversationStarted: (conversationId: string) => void;
+  /** Lets go of the bound conversation, which also releases its workspace. */
+  onDetach: () => void;
 }
 
 export function ProjectMapConversation({
   document: map,
   mapPath,
+  conversationId,
+  launchWorkingDir,
+  onConversationStarted,
+  onDetach,
 }: ProjectMapConversationProps) {
   const { t } = useTranslation("openhands");
   const { navigate } = useNavigation();
-  const [conversationId, setConversationId] = React.useState<string | null>(
-    null,
-  );
 
-  const pane = (
+  return (
     <section
       data-testid="project-map-conversation"
       data-conversation-id={conversationId ?? undefined}
@@ -80,7 +78,7 @@ export function ProjectMapConversation({
               type="button"
               data-testid="project-map-detach-conversation"
               className={PROJECT_MAP_BUTTON_CLASS}
-              onClick={() => setConversationId(null)}
+              onClick={onDetach}
             >
               <MessageSquarePlus size={ICON_SIZE} aria-hidden />
               {t(I18nKey.COMMON$NEW_CONVERSATION)}
@@ -95,18 +93,9 @@ export function ProjectMapConversation({
         document={map}
         mapPath={mapPath}
         conversationId={conversationId}
-        onConversationStarted={setConversationId}
+        launchWorkingDir={launchWorkingDir}
+        onConversationStarted={onConversationStarted}
       />
     </section>
-  );
-
-  if (conversationId === null) return pane;
-
-  return (
-    <ScopedConversationIdProvider conversationId={conversationId}>
-      <WebSocketProviderWrapper conversationId={conversationId}>
-        <EventHandler>{pane}</EventHandler>
-      </WebSocketProviderWrapper>
-    </ScopedConversationIdProvider>
   );
 }

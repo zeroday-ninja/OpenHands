@@ -4,8 +4,12 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "../../test-utils";
 import MapRoute from "#/routes/map";
+import { http, HttpResponse } from "msw";
+import { server } from "#/mocks/node";
+import { clearCachedAgentServerInfo } from "#/api/agent-server-compatibility";
 import ProjectMapService, {
   ProjectMapReadError,
+  ProjectMapRuntimeUnavailableError,
 } from "#/api/project-map-service/project-map-service.api";
 import translations from "#/i18n/translation.json";
 import { ActiveBackendProvider } from "#/contexts/active-backend-context";
@@ -100,6 +104,26 @@ const localBackend: Backend = {
 };
 
 const ABSOLUTE_PATH = `/home/agent/workspace/project/${PROJECT_MAP_FILE_PATH}`;
+
+/** The backend's own working directory: what an unbound page reads. */
+const HOST_WORKSPACE = {
+  conversationId: null,
+  workingDir: "/home/agent/workspace/project",
+};
+
+/** A conversation's sandbox, which is a different filesystem entirely. */
+const SANDBOX_WORKSPACE = {
+  conversationId: "conversation-1",
+  workingDir: "/workspace",
+};
+const SANDBOX_PATH = `/workspace/${PROJECT_MAP_FILE_PATH}`;
+
+/** A map-less read of whichever workspace the page aimed at. */
+function emptyRead(target?: { conversationId?: string | null } | undefined) {
+  return target?.conversationId
+    ? { workspace: SANDBOX_WORKSPACE, absolutePath: SANDBOX_PATH, raw: null }
+    : { workspace: HOST_WORKSPACE, absolutePath: ABSOLUTE_PATH, raw: null };
+}
 
 function mapFile(overrides: Record<string, unknown> = {}) {
   return JSON.stringify({
@@ -253,10 +277,9 @@ describe("the project map page", () => {
 
   it("offers to generate the map when the repository has none", async () => {
     // Arrange
-    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
-      absolutePath: ABSOLUTE_PATH,
-      raw: null,
-    });
+    const read = vi
+      .spyOn(ProjectMapService, "readProjectMap")
+      .mockImplementation(async (target) => emptyRead(target));
     const user = userEvent.setup();
     renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
 
@@ -271,21 +294,119 @@ describe("the project map page", () => {
     });
     const [, options] = launchConversation.mock.calls[0] as [
       unknown,
-      { initialUserMsg?: string },
+      { initialUserMsg?: string; workingDirOverride?: string },
     ];
     expect(options.initialUserMsg).toContain(PROJECT_MAP_FILE_PATH);
     expect(options.initialUserMsg).toContain(
       "Preserve everything the user decided",
     );
-    // The conversation runs in a subdirectory of the directory the page reads,
-    // so the analysis is told the absolute path or it writes a map the page
-    // will never open.
+    // On a host workspace the conversation joins the directory the page reads
+    // and is told that file's absolute path, so both ends edit one file.
     expect(options.initialUserMsg).toContain(ABSOLUTE_PATH);
+    expect(options.workingDirOverride).toBe(HOST_WORKSPACE.workingDir);
+
+    // Assert: the page keeps the conversation rather than navigating to it,
+    // and now reads the workspace that conversation is writing in.
+    await waitFor(() => {
+      expect(read).toHaveBeenCalledWith(
+        expect.objectContaining({ conversationId: "conversation-1" }),
+      );
+    });
+    expect(
+      await screen.findByTestId("project-map-analysis-running"),
+    ).toHaveTextContent(SANDBOX_WORKSPACE.workingDir);
+    expect(screen.getByTestId("project-map-empty-workspace")).toHaveAttribute(
+      "data-conversation-id",
+      "conversation-1",
+    );
+
+    // Act: a write the agent did not report — a shell redirect, say — is
+    // picked up when the user asks, without a reload that would drop the
+    // binding and send the page back to the backend's own workspace.
+    read.mockImplementation(async (target) =>
+      target?.conversationId
+        ? {
+            workspace: SANDBOX_WORKSPACE,
+            absolutePath: SANDBOX_PATH,
+            raw: mapFile(),
+          }
+        : emptyRead(target),
+    );
+    await user.click(screen.getByTestId("project-map-empty-refresh"));
+
+    // Assert: the drawing is the sandbox's, and the page says so.
+    expect(await screen.findByTestId("project-map-canvas")).toBeInTheDocument();
+    expect(screen.getByTestId("project-map-workspace")).toHaveTextContent(
+      SANDBOX_WORKSPACE.workingDir,
+    );
+  });
+
+  it("names the workspace an unbound map was read from", async () => {
+    // Arrange
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+
+    // Act
+    renderWithProviders(
+      <ActiveBackendProvider>
+        <MapRoute />
+      </ActiveBackendProvider>,
+      { navigation: { currentPath: "/map" } },
+    );
+
+    // Assert: an empty or unexpected map is only readable as such when the
+    // page says which workspace it came from.
+    const label = await screen.findByTestId("project-map-workspace");
+    expect(label).toHaveTextContent(HOST_WORKSPACE.workingDir);
+    expect(label).toHaveTextContent(localBackend.name);
+    expect(label).not.toHaveAttribute("data-conversation-id");
+  });
+
+  it("tells the analysis to use its own workspace when conversations are isolated", async () => {
+    // Arrange: a backend that gives every conversation its own container, so
+    // the directory this page reads does not exist inside it.
+    clearCachedAgentServerInfo();
+    server.use(
+      http.get(`${localBackend.host}/server_info`, () =>
+        HttpResponse.json({
+          version: "1.57.0",
+          uptime: 0,
+          idle_time: 0,
+          conversation_runtime: "docker",
+        }),
+      ),
+    );
+    vi.spyOn(ProjectMapService, "readProjectMap").mockImplementation(
+      async (target) => emptyRead(target),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+
+    // Act
+    await user.click(await screen.findByTestId("project-map-generate"));
+
+    // Assert: naming the page's absolute path would send the agent to a
+    // directory its sandbox does not have, and attaching that directory is
+    // rejected outright, so neither is sent.
+    await waitFor(() => {
+      expect(launchConversation).toHaveBeenCalledTimes(1);
+    });
+    const [, options] = launchConversation.mock.calls[0] as [
+      unknown,
+      { initialUserMsg?: string; workingDirOverride?: string },
+    ];
+    expect(options.initialUserMsg).toContain(PROJECT_MAP_FILE_PATH);
+    expect(options.initialUserMsg).not.toContain(ABSOLUTE_PATH);
+    expect(options.workingDirOverride).toBeUndefined();
   });
 
   it("explains a malformed document instead of rendering a blank canvas", async () => {
     // Arrange
     vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
       absolutePath: ABSOLUTE_PATH,
       raw: "{ this is not json",
     });
@@ -303,6 +424,7 @@ describe("the project map page", () => {
   it("draws the map and shows which commit it was generated against", async () => {
     // Arrange
     vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
       absolutePath: ABSOLUTE_PATH,
       raw: mapFile(),
     });
@@ -321,6 +443,7 @@ describe("the project map page", () => {
     // Arrange: a map placed far from the origin, so the initial viewport
     // cannot happen to contain it.
     vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
       absolutePath: ABSOLUTE_PATH,
       raw: mapFile({
         nodes: [
@@ -384,6 +507,7 @@ describe("the project map page", () => {
   it("puts the selection in removable chips and in the exact text it will send", async () => {
     // Arrange
     vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
       absolutePath: ABSOLUTE_PATH,
       raw: mapFile(),
     });
@@ -436,7 +560,11 @@ describe("the project map page", () => {
     // Arrange: the page is open with an edit in hand.
     const read = vi
       .spyOn(ProjectMapService, "readProjectMap")
-      .mockResolvedValue({ absolutePath: ABSOLUTE_PATH, raw: mapFile() });
+      .mockResolvedValue({
+        workspace: HOST_WORKSPACE,
+        absolutePath: ABSOLUTE_PATH,
+        raw: mapFile(),
+      });
     const user = userEvent.setup();
     renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
     await screen.findByTestId("project-map-canvas");
@@ -448,6 +576,7 @@ describe("the project map page", () => {
     // Act: the agent regenerates against a new commit, moving that node and
     // dropping the other one, and the user re-reads the file.
     read.mockResolvedValue({
+      workspace: HOST_WORKSPACE,
       absolutePath: ABSOLUTE_PATH,
       raw: mapFile({
         commit: "feed9999",
@@ -488,6 +617,7 @@ describe("the project map page", () => {
   it("writes the arrangement back only when the user saves it", async () => {
     // Arrange
     vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
       absolutePath: ABSOLUTE_PATH,
       raw: mapFile(),
     });
@@ -561,6 +691,7 @@ describe("the project map page", () => {
   it("tells the user a launch failed, not that a save failed", async () => {
     // Arrange
     vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
       absolutePath: ABSOLUTE_PATH,
       raw: mapFile(),
     });
@@ -590,6 +721,7 @@ describe("the project map page", () => {
   it("tells the agent the map's absolute path, not one relative to its own directory", async () => {
     // Arrange
     vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
       absolutePath: ABSOLUTE_PATH,
       raw: mapFile(),
     });
@@ -612,6 +744,7 @@ describe("the project map page", () => {
   it("keeps the conversation it starts beside the canvas", async () => {
     // Arrange
     vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
       absolutePath: ABSOLUTE_PATH,
       raw: mapFile(),
     });
@@ -646,9 +779,47 @@ describe("the project map page", () => {
     ).toBeInTheDocument();
   });
 
+  it("reports an unreachable sandbox instead of an empty map of somewhere else", async () => {
+    // Arrange: the map is open on the backend's own workspace, and the
+    // conversation the next send binds has lost its container.
+    vi.spyOn(ProjectMapService, "readProjectMap").mockImplementation(
+      async (target) => {
+        if (target?.conversationId) {
+          throw new ProjectMapRuntimeUnavailableError(target.conversationId);
+        }
+        return {
+          workspace: HOST_WORKSPACE,
+          absolutePath: ABSOLUTE_PATH,
+          raw: mapFile(),
+        };
+      },
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, {
+      navigation: {
+        currentPath: "/map",
+        conversationId: null,
+        navigate: vi.fn(),
+      },
+    });
+    await screen.findByTestId("project-map-canvas");
+
+    // Act
+    await user.type(screen.getByTestId("project-map-composer"), "what is it?");
+    await user.click(screen.getByTestId("project-map-send"));
+
+    // Assert: the page says the workspace cannot be reached. Drawing the
+    // empty state instead would claim the repository has no map.
+    const notice = await screen.findByTestId("project-map-runtime-unavailable");
+    expect(notice).toHaveTextContent("conversation-1");
+    expect(screen.queryByTestId("project-map-canvas")).toBeNull();
+    expect(screen.queryByTestId("project-map-empty")).toBeNull();
+  });
+
   it("turns a node the answer names into a control that selects it", async () => {
     // Arrange: a conversation bound to the pane.
     vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
       absolutePath: ABSOLUTE_PATH,
       raw: mapFile(),
     });
@@ -698,6 +869,7 @@ describe("the project map page", () => {
     // Codex — are how the map is most often driven, and they never emit an
     // assistant message event.
     vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
       absolutePath: ABSOLUTE_PATH,
       raw: mapFile(),
     });
@@ -743,7 +915,11 @@ describe("the project map page", () => {
       // Arrange: the page is open with an unsaved edit in hand.
       const read = vi
         .spyOn(ProjectMapService, "readProjectMap")
-        .mockResolvedValue({ absolutePath: ABSOLUTE_PATH, raw: mapFile() });
+        .mockResolvedValue({
+          workspace: HOST_WORKSPACE,
+          absolutePath: ABSOLUTE_PATH,
+          raw: mapFile(),
+        });
       const user = userEvent.setup();
       renderWithProviders(<MapRoute />, {
         navigation: {
@@ -763,6 +939,7 @@ describe("the project map page", () => {
       // regenerations actually looks like on disk, and what the page would miss
       // if it recognised revisions by `commit` alone.
       read.mockResolvedValue({
+        workspace: HOST_WORKSPACE,
         absolutePath: ABSOLUTE_PATH,
         raw: mapFile({
           nodes: [
