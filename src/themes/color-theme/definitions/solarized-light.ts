@@ -73,6 +73,15 @@ const SOLARIZED_LIGHT_TOKENS: Partial<
   "--oh-markdown-alert-important": "#6C3CA6",
   "--oh-markdown-alert-warning": "#735400",
   "--oh-markdown-alert-caution": "#A5201C",
+  // Project map accents: the same six hues, darkened to hold a hairline
+  // stroke and small mono type on paper.
+  "--oh-map-accent-1": "#1E62A8",
+  "--oh-map-accent-2": "#4E6E00",
+  "--oh-map-accent-3": "#8A5000",
+  "--oh-map-accent-4": "#6A3FA0",
+  "--oh-map-accent-5": "#A52521",
+  "--oh-map-accent-6": "#146C78",
+  "--oh-map-grid": "#E6DFC8",
   // @spec WN-001 — Darker warning text preserves contrast on Solarized surfaces
   "--oh-feedback-warning": "#735400",
   "--oh-color-basic": "#839496",

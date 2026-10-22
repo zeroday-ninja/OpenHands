@@ -83,6 +83,17 @@ export const SOUL_QUERY_KEYS = {
   byBackend: (backendId: string) => ["soul", backendId] as const,
 } as const;
 
+/**
+ * The project map document in a workspace. Keyed by backend and by the
+ * conversation whose working directory it was resolved from, so switching
+ * either never shows another repository's map.
+ */
+export const PROJECT_MAP_QUERY_KEYS = {
+  all: ["project-map"] as const,
+  byWorkspace: (backendId: string, conversationId: string | null) =>
+    ["project-map", backendId, conversationId] as const,
+} as const;
+
 export const TOOL_CATALOG_QUERY_KEYS = {
   all: ["tool-catalog"] as const,
 } as const;
