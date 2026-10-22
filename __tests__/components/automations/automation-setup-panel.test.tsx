@@ -2405,6 +2405,52 @@ describe("AutomationSetupPanel", () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
+  it("points an improvement program at its own page, and still edits its name here", async () => {
+    // Arrange — the generic editor opened on a live improvement program. This
+    // form has no field for a builder, a reviewer, a rotation or a focus.
+    const draft = setupDraftFromAutomation({
+      id: "auto-improve-1",
+      name: "Rotating repository improvements",
+      prompt: null,
+      enabled: true,
+      created_at: "2026-10-01T00:00:00.000Z",
+      updated_at: "2026-10-22T00:00:00.000Z",
+      trigger: { type: "cron", schedule: "0 6 * * *" },
+      preset_metadata: { preset_type: "improve", improve: {} },
+    });
+
+    // Act
+    renderPanel(draft);
+
+    // Assert — the name this form does own is still editable, and the
+    // settings it does not own are one link away.
+    expect(screen.getByTestId("automation-setup-name")).toHaveValue(
+      "Rotating repository improvements",
+    );
+    const notice = screen.getByTestId("automation-setup-improve-notice");
+    expect(
+      within(notice).getByTestId("automation-setup-improve-link"),
+    ).toHaveAttribute("href", "/automations/improve/auto-improve-1");
+  });
+
+  it("leaves an ordinary automation's editor without a program notice", async () => {
+    renderPanel(
+      setupDraftFromAutomation({
+        id: "auto-1",
+        name: "Daily digest",
+        prompt: "Review pull requests",
+        enabled: true,
+        created_at: "2026-01-01T00:00:00.000Z",
+        updated_at: "2026-01-01T00:00:00.000Z",
+        trigger: { type: "cron", schedule: "0 9 * * *" },
+      }),
+    );
+
+    expect(
+      screen.queryByTestId("automation-setup-improve-notice"),
+    ).not.toBeInTheDocument();
+  });
+
   it("preserves multi-event trigger keys when saving an existing automation", async () => {
     vi.mocked(AutomationService.updateAutomation).mockResolvedValue({
       id: "auto-1",
