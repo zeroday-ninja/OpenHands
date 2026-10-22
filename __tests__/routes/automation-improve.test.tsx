@@ -311,6 +311,29 @@ describe("AutomationImprove cycle history", () => {
     ).toHaveAttribute("href", "/conversations/conv-review-1");
   });
 
+  it("does not repeat the runtime as the profile name", async () => {
+    // Arrange: a profile named after its own runtime, which is the common
+    // case on a local stack ("codex", "claude-code").
+    const sameName = structuredClone(reviewedCycle);
+    sameName.reviews[0].profile_name = "codex";
+    vi.mocked(AutomationService.listImproveCycles).mockResolvedValue({
+      cycles: [sameName],
+      total: 1,
+    });
+
+    // Act
+    renderPage();
+    const [card] = await cycleCards();
+    const review = within(card).getByTestId("improve-cycle-review");
+
+    // Assert: the runtime is named once, not printed twice as if the review
+    // came from two places.
+    expect(within(review).getByTestId("improve-review-runtime")).toHaveTextContent(
+      "codex",
+    );
+    expect(within(review).getAllByText("codex")).toHaveLength(1);
+  });
+
   it("reads SINGLE_RUNTIME as nobody else having reviewed it, not as a pass", async () => {
     renderPage();
 

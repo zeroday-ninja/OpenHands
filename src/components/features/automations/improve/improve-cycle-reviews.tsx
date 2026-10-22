@@ -38,7 +38,10 @@ function ReviewEntry({ review }: { review: ImproveCycleReview }) {
               {runtime}
             </span>
           </span>
-          {review.profile_name ? (
+          {/* The profile name only earns a line when it says something the
+              runtime did not. Profiles are commonly named after their runtime,
+              and repeating "codex" under "Reviewed by codex" reads as a bug. */}
+          {review.profile_name && review.profile_name.trim() !== runtime ? (
             <span className="truncate text-xs text-muted">
               {review.profile_name}
             </span>
