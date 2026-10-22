@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AutomationSetupNew from "#/routes/automation-setup-new";
@@ -101,6 +101,24 @@ describe("AutomationSetupNew", () => {
     );
     expect(draft.editingAutomationId).toBe("auto-1");
     expect(draft.form.name).toBe("Daily digest");
+  });
+
+  it("keeps the loaded editor when the form drops its session", async () => {
+    // Arrange — the form owns the session and clears it whenever it unmounts
+    // (a StrictMode remount does exactly this), which used to strand the page
+    // on its loading state with no way back to the automation.
+    vi.mocked(AutomationService.getAutomation).mockResolvedValue(automation);
+    renderRoute("/automations/setup?automationId=auto-1");
+    await screen.findByTestId("setup-panel-draft");
+
+    // Act
+    act(() => clearAutomationFormSession(PENDING_AUTOMATION_SETUP_ID));
+
+    // Assert
+    const draft = JSON.parse(
+      screen.getByTestId("setup-panel-draft").textContent ?? "{}",
+    );
+    expect(draft.editingAutomationId).toBe("auto-1");
   });
 
   it("reloads a saved draft from the draftId query", async () => {

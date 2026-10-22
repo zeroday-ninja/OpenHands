@@ -48,7 +48,15 @@ export default function AutomationSetupNew() {
   useEffect(
     () =>
       subscribeAutomationFormSession(PENDING_AUTOMATION_SETUP_ID, (next) => {
-        setDraft(next ?? (automationId || draftId ? null : BLANK_DRAFT));
+        // The form owns the session and drops it when it unmounts, so a
+        // cleared session is not a reason to throw away a draft this page
+        // already loaded — doing that strands the editor of an existing
+        // automation on "Loading saved draft…" after any remount. A fresh
+        // form has nothing to keep and goes back to blank.
+        setDraft((current) => {
+          if (next) return next;
+          return automationId || draftId ? current : BLANK_DRAFT;
+        });
       }),
     [automationId, draftId],
   );
