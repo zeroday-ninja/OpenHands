@@ -464,7 +464,12 @@ describe("CommandMenu", () => {
       name: SEARCH_LABEL_KEY,
     });
 
+    // The claim is that reopening clears the filter, so compare against the
+    // unfiltered list rather than a count that every new command breaks.
+    const unfilteredCount = screen.getAllByRole("option").length;
+
     await user.type(searchInput, "secrets");
+    expect(screen.getAllByRole("option").length).toBeLessThan(unfilteredCount);
     await user.keyboard("{Escape}");
     await waitFor(() =>
       expect(screen.queryByTestId("command-menu")).not.toBeInTheDocument(),
@@ -476,7 +481,7 @@ describe("CommandMenu", () => {
       name: SEARCH_LABEL_KEY,
     });
     expect(reopenedInput).toHaveValue("");
-    expect(screen.getAllByRole("option")).toHaveLength(13);
+    expect(screen.getAllByRole("option")).toHaveLength(unfilteredCount);
     expect(screen.getAllByRole("option")[0]).toHaveAttribute(
       "aria-selected",
       "true",
