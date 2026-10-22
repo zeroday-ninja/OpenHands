@@ -21,18 +21,43 @@ import { useTranslation } from "react-i18next";
 import { I18nKey } from "#/i18n/declaration";
 import { Messages } from "#/components/conversation-events/chat/messages";
 import { parseMessageFromEvent } from "#/components/conversation-events/chat/event-content-helpers/parse-message-from-event";
+import { getActionContent } from "#/components/conversation-events/chat/event-content-helpers/get-action-content";
 import { PendingUserMessages } from "#/components/features/chat/pending-user-messages";
 import { ScrollProvider, useScrollContext } from "#/context/scroll-context";
 import { useFilteredEvents } from "#/hooks/use-filtered-events";
 import { useProjectMapStore } from "#/stores/project-map-store";
 import type { OpenHandsEvent } from "#/types/agent-server/core";
-import { isMessageEvent } from "#/types/agent-server/type-guards";
+import {
+  isActionEvent,
+  isMessageEvent,
+} from "#/types/agent-server/type-guards";
 import type { PlacedProjectMapDocument } from "#/types/project-map";
 import { findProjectMapMentions } from "#/utils/project-map/project-map-context";
 import {
   PROJECT_MAP_BUTTON_CLASS,
   PROJECT_MAP_SECTION_LABEL_CLASS,
 } from "./project-map-controls";
+
+/**
+ * The text of one event, if it is the agent talking to the user.
+ *
+ * Both shapes are here because both are how an answer actually arrives: the
+ * OpenHands agent finishes a turn with an assistant `MessageEvent`, while an
+ * ACP agent (Claude Code, Codex, …) ends it with a `FinishAction` carrying the
+ * reply. Reading only the first would leave the mentions row permanently empty
+ * on every ACP profile, which is what the map is most often driven by.
+ */
+function agentAnswerIn(event: OpenHandsEvent): string | null {
+  if (isMessageEvent(event) && event.llm_message.role === "assistant") {
+    const text = parseMessageFromEvent(event);
+    return text.trim() === "" ? null : text;
+  }
+  if (isActionEvent(event) && event.action.kind === "FinishAction") {
+    const text = getActionContent(event);
+    return text.trim() === "" ? null : text;
+  }
+  return null;
+}
 
 /**
  * The most recent thing the agent said, which is the text the mentions are
@@ -42,11 +67,8 @@ import {
  */
 function latestAgentAnswer(events: OpenHandsEvent[]): string | null {
   for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index];
-    if (isMessageEvent(event) && event.llm_message.role === "assistant") {
-      const text = parseMessageFromEvent(event);
-      if (text.trim() !== "") return text;
-    }
+    const text = agentAnswerIn(events[index]);
+    if (text !== null) return text;
   }
   return null;
 }

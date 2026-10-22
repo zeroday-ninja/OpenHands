@@ -17,7 +17,12 @@ import {
 import type { Backend } from "#/api/backend-registry/types";
 import { useProjectMapStore } from "#/stores/project-map-store";
 import { useEventStore } from "#/stores/use-event-store";
-import type { MessageEvent, ObservationEvent } from "#/types/agent-server/core";
+import {
+  SecurityRisk,
+  type ActionEvent,
+  type MessageEvent,
+  type ObservationEvent,
+} from "#/types/agent-server/core";
 import {
   PROJECT_MAP_FILE_PATH,
   PROJECT_MAP_VERSION,
@@ -144,6 +149,30 @@ function agentAnswer(text: string): MessageEvent {
     llm_message: { role: "assistant", content: [{ type: "text", text }] },
     activated_skills: [],
     extended_content: [],
+  };
+}
+
+/**
+ * An ACP agent's answer: Claude Code, Codex and the rest end a turn with a
+ * finish action carrying the reply rather than with an assistant message.
+ */
+function finishAction(text: string): ActionEvent {
+  return {
+    id: "finish-1",
+    timestamp: "2024-01-01T00:00:03Z",
+    source: "agent",
+    thought: [],
+    thinking_blocks: [],
+    action: { kind: "FinishAction", message: text },
+    tool_name: "finish",
+    tool_call_id: "call-finish",
+    tool_call: {
+      id: "call-finish",
+      type: "function",
+      function: { name: "finish", arguments: "{}" },
+    },
+    llm_response_id: "response-1",
+    security_risk: SecurityRisk.UNKNOWN,
   };
 }
 
@@ -630,6 +659,42 @@ describe("the project map page", () => {
     expect(screen.getByTestId("project-map-context-preview")).toHaveTextContent(
       'store "events" (src/stores/events.ts)',
     );
+  });
+
+  it("reads an ACP agent's answer, which ends in a finish action", async () => {
+    // Arrange: a conversation bound to the pane. ACP profiles — Claude Code,
+    // Codex — are how the map is most often driven, and they never emit an
+    // assistant message event.
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, {
+      navigation: {
+        currentPath: "/map",
+        conversationId: null,
+        navigate: vi.fn(),
+      },
+    });
+    await screen.findByTestId("project-map-canvas");
+    await user.type(screen.getByTestId("project-map-composer"), "who reads it?");
+    await user.click(screen.getByTestId("project-map-send"));
+    await screen.findByTestId("project-map-transcript");
+
+    // Act
+    act(() => {
+      useEventStore
+        .getState()
+        .addEvents([
+          finishAction("src/routes/home.tsx reads it on every render."),
+        ]);
+    });
+
+    // Assert
+    expect(
+      await screen.findByTestId("project-map-mention-src/routes/home.tsx"),
+    ).toBeInTheDocument();
   });
 
   it("picks up the agent's edit to the map without dropping unsaved moves", async () => {
