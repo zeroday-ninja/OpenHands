@@ -43,9 +43,18 @@ const REDESIGNABLE_KINDS = new Set(["component", "route"]);
 
 export interface ProjectMapChatProps {
   document: PlacedProjectMapDocument;
+  /**
+   * Absolute path of the open map, named in the context block so the
+   * conversation this starts can find the file. It does not run where the
+   * page reads: see `ProjectMapContextOptions`.
+   */
+  mapPath: string;
 }
 
-export function ProjectMapChat({ document: map }: ProjectMapChatProps) {
+export function ProjectMapChat({
+  document: map,
+  mapPath,
+}: ProjectMapChatProps) {
   const { t } = useTranslation("openhands");
   const { navigate } = useNavigation();
   const selection = useProjectMapStore((state) => state.selection);
@@ -58,7 +67,7 @@ export function ProjectMapChat({ document: map }: ProjectMapChatProps) {
   const [showContext, setShowContext] = React.useState(false);
 
   const selected = map.nodes.filter((node) => selection.includes(node.id));
-  const contextOptions = { commit: map.commit };
+  const contextOptions = { commit: map.commit, mapPath };
   const preview = buildProjectMapQuestionMessage(
     question,
     selected,
@@ -78,8 +87,9 @@ export function ProjectMapChat({ document: map }: ProjectMapChatProps) {
       navigate(`/conversations/${conversation.conversation_id}`);
     } catch {
       // The mutation's own toast covers the request; this keeps a thrown
-      // launch from leaving an unhandled rejection behind.
-      displayErrorToast(t(I18nKey.PROJECT_MAP$SAVE_FAILED));
+      // launch from leaving an unhandled rejection behind. A launch that
+      // failed is not a save that failed — nothing was being written.
+      displayErrorToast(t(I18nKey.PROJECT_MAP$LAUNCH_FAILED));
     }
   };
 

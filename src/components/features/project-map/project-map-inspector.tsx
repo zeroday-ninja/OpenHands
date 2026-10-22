@@ -11,10 +11,7 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import { Eye, EyeOff, MapPin, Pencil, StickyNote } from "lucide-react";
 import { I18nKey } from "#/i18n/declaration";
-import type {
-  PlacedProjectMapDocument,
-  PlacedProjectMapNode,
-} from "#/types/project-map";
+import type { PlacedProjectMapDocument } from "#/types/project-map";
 import { projectMapNeighbors } from "#/utils/project-map/project-map-graph";
 import { useProjectMapStore } from "#/stores/project-map-store";
 import {
@@ -34,12 +31,10 @@ const NOTE_OFFSET = { x: 40, y: -56 };
 
 export interface ProjectMapInspectorProps {
   document: PlacedProjectMapDocument;
-  onOpenInFiles: (node: PlacedProjectMapNode) => void;
 }
 
 export function ProjectMapInspector({
   document: map,
-  onOpenInFiles,
 }: ProjectMapInspectorProps) {
   const { t } = useTranslation("openhands");
   const selection = useProjectMapStore((state) => state.selection);
@@ -192,15 +187,13 @@ export function ProjectMapInspector({
           <StickyNote size={ICON_SIZE} aria-hidden />
           {t(I18nKey.PROJECT_MAP$ADD_NOTE)}
         </button>
-        {node.path !== null && (
-          <button
-            type="button"
-            className={PROJECT_MAP_BUTTON_CLASS}
-            onClick={() => onOpenInFiles(node)}
-          >
-            {t(I18nKey.PROJECT_MAP$OPEN_IN_FILES)}
-          </button>
-        )}
+        {/* There is no "Open in Files" here on purpose. The Files browser is a
+            view of one conversation's sandbox, mounted on the conversation
+            route and keyed by its id; this page has no conversation, and the
+            paths it holds are relative to the backend's working directory,
+            which is the *parent* of every conversation's. Nothing reachable
+            from `/map` can reveal the file, so the panel shows the path
+            instead of offering a button that goes to the wrong place. */}
       </div>
 
       <label className="flex flex-col gap-1">

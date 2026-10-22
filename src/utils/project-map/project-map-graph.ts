@@ -61,6 +61,16 @@ export function projectMapFocusIds(
   return focus;
 }
 
+/**
+ * Separator in a render edge's key.
+ *
+ * A node id is a repository-relative path or an `ext:` name, so a vertical bar
+ * does not appear in one. It used to be a NUL, which no id can hold either —
+ * but the key is also the edge's `data-testid`, and a DOM attribute carrying
+ * control characters is one nothing can select by.
+ */
+const EDGE_KEY_SEPARATOR = "|";
+
 export interface ProjectMapRenderEdge extends ProjectMapEdge {
   /** Stable key; a collapsed group can fold several edges onto one run. */
   key: string;
@@ -109,7 +119,7 @@ export function projectMapRenderModel(
     const from = resolve(edge.from);
     const to = resolve(edge.to);
     if (from === null || to === null || from === to) continue;
-    const key = `${from}\u0000${to}\u0000${edge.kind}`;
+    const key = [from, to, edge.kind].join(EDGE_KEY_SEPARATOR);
     if (seen.has(key)) continue;
     seen.add(key);
     edges.push({ ...edge, key, from, to });

@@ -47,6 +47,15 @@ interface ProjectMapState {
   selection: string[];
   /** The keyboard cursor, which may lead the selection. */
   focused: string | null;
+  /**
+   * The note whose text is open for editing, if any.
+   *
+   * It lives here rather than in the canvas because the two halves of the
+   * gesture are in different components: the inspector's **Add a note** is
+   * what makes a note, and the canvas is where it is typed. A new note opens
+   * its own editor, so adding one is never a dead end.
+   */
+  editingNote: string | null;
   viewport: ProjectMapViewport;
   /** Hidden nodes are drawn, faint, while this is on, so they can be restored. */
   showHidden: boolean;
@@ -71,6 +80,7 @@ interface ProjectMapState {
   addNote: (note: ProjectMapNote) => void;
   updateNote: (id: string, text: string) => void;
   removeNote: (id: string) => void;
+  setEditingNote: (id: string | null) => void;
 
   setViewport: (viewport: ProjectMapViewport) => void;
 }
@@ -110,6 +120,7 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
   dirty: false,
   selection: [],
   focused: null,
+  editingNote: null,
   viewport: INITIAL_VIEWPORT,
   showHidden: false,
 
@@ -127,6 +138,7 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
           ? mergeProjectMap(state.document, incoming).document
           : incoming;
       const ids = new Set(document.nodes.map((node) => node.id));
+      const noteIds = new Set(document.notes.map((note) => note.id));
       return {
         source,
         document,
@@ -138,6 +150,12 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
           state.focused !== null && ids.has(state.focused)
             ? state.focused
             : null,
+        // An open editor whose note the new revision dropped has nothing left
+        // to write to.
+        editingNote:
+          state.editingNote !== null && noteIds.has(state.editingNote)
+            ? state.editingNote
+            : null,
       };
     }),
 
@@ -148,6 +166,7 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
       dirty: false,
       selection: [],
       focused: null,
+      editingNote: null,
       viewport: INITIAL_VIEWPORT,
       showHidden: false,
     }),
@@ -250,13 +269,16 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
 
   toggleShowHidden: () => set((state) => ({ showHidden: !state.showHidden })),
 
+  /** A new note opens its own editor: an empty note nobody can type in is litter. */
   addNote: (note) =>
-    set((state) =>
-      edit(state, (document) => ({
+    set((state) => {
+      const edited = edit(state, (document) => ({
         ...document,
         notes: [...document.notes, note],
-      })),
-    ),
+      }));
+      if (edited.document === undefined) return edited;
+      return { ...edited, editingNote: note.id };
+    }),
 
   updateNote: (id, text) =>
     set((state) =>
@@ -269,12 +291,15 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
     ),
 
   removeNote: (id) =>
-    set((state) =>
-      edit(state, (document) => ({
+    set((state) => ({
+      ...edit(state, (document) => ({
         ...document,
         notes: document.notes.filter((note) => note.id !== id),
       })),
-    ),
+      editingNote: state.editingNote === id ? null : state.editingNote,
+    })),
+
+  setEditingNote: (id) => set({ editingNote: id }),
 
   setViewport: (viewport) =>
     set({

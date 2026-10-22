@@ -12,6 +12,15 @@
  * selection, and the wheel zooms about the pointer so the thing under the
  * cursor stays under the cursor.
  *
+ * Every one of those gestures is decided from the pointer events, never from a
+ * `click`: the drag captures the pointer, and a captured pointer retargets its
+ * events — including the `click` the browser synthesises — at the element
+ * holding the capture. So a plate's own `onClick` never runs during a press
+ * that started on it, which is why pressing and releasing without travelling
+ * is what counts as a click here, on a plate and on the paper alike. The press
+ * also moves focus, because nothing else can while the pointer is captured and
+ * the keyboard grammar below is useless without it.
+ *
  * Keyboard grammar: every plate is a tab stop, the arrow keys step to the
  * nearest plate in that direction, Enter selects, shift+Enter adds to the
  * selection, Escape clears. A diagram that only works with a mouse excludes
@@ -59,6 +68,12 @@ const COLLAPSED_HEIGHT = 56;
 const GROUP_LABEL_PADDING = 12;
 /** Below this zoom the grid and the path lines stop helping and start buzzing. */
 const DETAIL_SCALE = 0.62;
+/**
+ * A press that travels no further than this, in screen pixels, was a click.
+ * Hands shake; a plate that needs a perfectly still finger to select is a
+ * plate you cannot select.
+ */
+const TAP_SLOP = 3;
 
 /**
  * jsdom's SVG elements have no Pointer Capture API, and a drag that keeps
@@ -70,26 +85,59 @@ function capturePointer(element: Element | null, pointerId: number) {
   }
 }
 
+interface Point {
+  x: number;
+  y: number;
+}
+
+/**
+ * A press in progress.
+ *
+ * `screen` is where the press landed in client coordinates and never changes,
+ * which is the whole reason it is here. A pan has to be measured between two
+ * fixed ends: against the *current* viewport it would be measured against a
+ * viewport the previous move already shifted, and the paper would travel half
+ * as far as the pointer. Diagram coordinates are still right for the gestures
+ * that do not move the viewport — a node drag and a marquee sweep both happen
+ * in the drawing's own space, and both leave the viewport alone.
+ */
 type Drag =
   | {
       kind: "pan";
       pointerId: number;
-      from: { x: number; y: number };
-      origin: { x: number; y: number };
+      screen: Point;
+      /** The viewport at the moment of the press. */
+      origin: Point;
     }
   | {
       kind: "marquee";
       pointerId: number;
-      from: { x: number; y: number };
-      to: { x: number; y: number };
+      screen: Point;
+      from: Point;
+      to: Point;
     }
   | {
       kind: "node";
       pointerId: number;
+      screen: Point;
+      /** Everything the drag moves: the whole selection it started inside. */
       ids: string[];
-      from: { x: number; y: number };
-      to: { x: number; y: number };
+      /** The plate under the pointer, which a click without travel selects. */
+      target: string;
+      additive: boolean;
+      /** Whether the target was already selected when the press landed. */
+      wasSelected: boolean;
+      from: Point;
+      to: Point;
     };
+
+/** True while a press has not travelled far enough to mean a drag. */
+function isTap(drag: Drag, event: { clientX: number; clientY: number }) {
+  return (
+    Math.abs(event.clientX - drag.screen.x) <= TAP_SLOP &&
+    Math.abs(event.clientY - drag.screen.y) <= TAP_SLOP
+  );
+}
 
 export interface ProjectMapCanvasProps {
   document: PlacedProjectMapDocument;
@@ -206,23 +254,29 @@ export function ProjectMapCanvas({
     event: React.PointerEvent<SVGSVGElement>,
   ) => {
     if (event.button !== 0) return;
-    const point = toDiagram(event);
+    const screen = { x: event.clientX, y: event.clientY };
     capturePointer(event.currentTarget, event.pointerId);
-    setDrag(
-      event.shiftKey
-        ? {
-            kind: "marquee",
-            pointerId: event.pointerId,
-            from: point,
-            to: point,
-          }
-        : {
-            kind: "pan",
-            pointerId: event.pointerId,
-            from: point,
-            origin: { x: viewport.x, y: viewport.y },
-          },
-    );
+    // The paper takes focus so Escape reaches this element's key handler. With
+    // the pointer captured nothing inside the drawing can take it, and focus
+    // left on the document body is focus the canvas cannot hear.
+    event.currentTarget.focus();
+    if (event.shiftKey) {
+      const point = toDiagram(event);
+      setDrag({
+        kind: "marquee",
+        pointerId: event.pointerId,
+        screen,
+        from: point,
+        to: point,
+      });
+      return;
+    }
+    setDrag({
+      kind: "pan",
+      pointerId: event.pointerId,
+      screen,
+      origin: { x: viewport.x, y: viewport.y },
+    });
   };
 
   const handleNodePointerDown = (
@@ -232,18 +286,27 @@ export function ProjectMapCanvas({
     if (event.button !== 0) return;
     event.stopPropagation();
     const additive = event.shiftKey || event.metaKey;
-    const ids = selection.includes(node.id)
+    const wasSelected = selection.includes(node.id);
+    // A drag moves whatever the press landed inside, so pressing a plate that
+    // is already part of a multi-selection keeps that selection. Narrowing to
+    // this one plate is what *releasing* without travel means.
+    const ids = wasSelected
       ? selection
       : additive
         ? [...selection, node.id]
         : [node.id];
-    if (!selection.includes(node.id)) setSelection(ids);
+    if (!wasSelected) setSelection(ids);
     const point = toDiagram(event);
     capturePointer(frameRef.current, event.pointerId);
+    event.currentTarget.focus();
     setDrag({
       kind: "node",
       pointerId: event.pointerId,
+      screen: { x: event.clientX, y: event.clientY },
       ids,
+      target: node.id,
+      additive,
+      wasSelected,
       from: point,
       to: point,
     });
@@ -251,26 +314,41 @@ export function ProjectMapCanvas({
 
   const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
     if (drag?.pointerId !== event.pointerId) return;
-    const point = toDiagram(event);
     if (drag.kind === "pan") {
+      // Both ends of the delta are fixed for the whole drag: the press, and
+      // the viewport it started from.
       setViewport({
         scale: viewport.scale,
-        x: drag.origin.x - (point.x - drag.from.x),
-        y: drag.origin.y - (point.y - drag.from.y),
+        x: drag.origin.x - (event.clientX - drag.screen.x) / viewport.scale,
+        y: drag.origin.y - (event.clientY - drag.screen.y) / viewport.scale,
       });
       return;
     }
-    setDrag({ ...drag, to: point });
+    setDrag({ ...drag, to: toDiagram(event) });
   };
 
   const handlePointerUp = (event: React.PointerEvent<SVGSVGElement>) => {
     if (drag?.pointerId !== event.pointerId) return;
-    if (drag.kind === "node") {
-      const dx = drag.to.x - drag.from.x;
-      const dy = drag.to.y - drag.from.y;
-      if (dx !== 0 || dy !== 0) moveSelection(drag.ids, dx, dy);
-    }
-    if (drag.kind === "marquee") {
+    const tap = isTap(drag, event);
+    if (drag.kind === "pan") {
+      // A press on empty paper that went nowhere is a click on the paper, and
+      // clicking the paper puts the selection down.
+      if (tap) {
+        clearSelection();
+        setFocused(null);
+      }
+    } else if (drag.kind === "node") {
+      if (tap) {
+        // Shift narrows nothing: it adds, and takes back out what it added
+        // last time. A plain click narrows to the plate under the pointer.
+        if (!drag.additive) setSelection([drag.target]);
+        else if (drag.wasSelected) toggleInSelection(drag.target);
+      } else {
+        const dx = drag.to.x - drag.from.x;
+        const dy = drag.to.y - drag.from.y;
+        if (dx !== 0 || dy !== 0) moveSelection(drag.ids, dx, dy);
+      }
+    } else {
       const box = marqueeBox(drag);
       const swept = drawn
         .filter((node) => {
@@ -327,12 +405,17 @@ export function ProjectMapCanvas({
       data-testid="project-map-canvas"
       role="application"
       aria-label={t(I18nKey.PROJECT_MAP$CANVAS_LABEL)}
-      className="h-full w-full touch-none select-none bg-canvas-base"
+      // Focusable by pointer but not a tab stop: tabbing should reach the
+      // plates, while a press on the paper still has somewhere to put focus.
+      tabIndex={-1}
+      className="h-full w-full touch-none select-none bg-canvas-base outline-none"
       onWheel={handleWheel}
       onPointerDown={handleBackgroundPointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
+      // A cancelled pointer is a gesture the system took away, not a release:
+      // abandon it rather than committing a move the user never finished.
+      onPointerCancel={() => setDrag(null)}
       onKeyDown={(event) => {
         if (event.key === "Escape") clearSelection();
       }}
@@ -490,11 +573,6 @@ export function ProjectMapCanvas({
             focused={focused === node.id}
             lit={focusIds.size === 0 || focusIds.has(node.id)}
             showPath={detailed}
-            onSelect={(target, additive) =>
-              additive
-                ? toggleInSelection(target.id)
-                : setSelection([target.id])
-            }
             onFocus={(target) => setFocused(target.id)}
             onKeyDown={handleNodeKeyDown}
             onPointerDown={handleNodePointerDown}
@@ -609,11 +687,34 @@ function groupBoundary(
   ].join("");
 }
 
+/** Smallest box a note is drawn in, and the most it grows to. */
+const NOTE_MIN_WIDTH = 120;
+const NOTE_MAX_WIDTH = 220;
+/** The side of a note's remove control, and the inset of the × inside it. */
+const NOTE_REMOVE_SIZE = 14;
+const NOTE_REMOVE_INSET = 3.5;
+
+/** The × on a note's remove control: two strokes across an inset square. */
+function noteRemoveCross(left: number, top: number): string {
+  const near = NOTE_REMOVE_INSET;
+  const far = NOTE_REMOVE_SIZE - NOTE_REMOVE_INSET;
+  return [
+    `M${left + near} ${top + near}L${left + far} ${top + far}`,
+    `M${left + far} ${top + near}L${left + near} ${top + far}`,
+  ].join("");
+}
+
 /**
  * A remark on the drawing: a boxed note on a leader line to its subject, which
  * is how an annotation appears on a plate. Not a yellow sticky — the map is
  * ink on paper and a skeuomorphic note would be the one object in it pretending
  * to be something else.
+ *
+ * The box is also where the note is written and thrown away, because a remark
+ * belongs next to what it remarks on: clicking it (or Enter on it, it is a tab
+ * stop) opens a field in its own outline, and the × beside it removes it. The
+ * text is typed in a `foreignObject` rather than an SVG `<text>` because a
+ * caret, a selection and an IME are things a textarea has and SVG does not.
  */
 function ProjectMapNoteMark({
   note,
@@ -622,9 +723,26 @@ function ProjectMapNoteMark({
   note: ProjectMapNote;
   anchorRect: Rect | null;
 }) {
-  const lines = note.text.split("\n").slice(0, 3);
-  const width = Math.max(120, Math.min(220, note.text.length * 5.6));
+  const { t } = useTranslation("openhands");
+  const editingNote = useProjectMapStore((state) => state.editingNote);
+  const setEditingNote = useProjectMapStore((state) => state.setEditingNote);
+  const updateNote = useProjectMapStore((state) => state.updateNote);
+  const removeNote = useProjectMapStore((state) => state.removeNote);
+
+  const editing = editingNote === note.id;
+  const placeholder = t(I18nKey.PROJECT_MAP$NOTE_PLACEHOLDER);
+  const empty = note.text.trim() === "";
+  const lines = (empty ? placeholder : note.text).split("\n").slice(0, 3);
+  const width = Math.max(
+    NOTE_MIN_WIDTH,
+    Math.min(NOTE_MAX_WIDTH, (empty ? placeholder : note.text).length * 5.6),
+  );
   const height = 16 + lines.length * 13;
+  // The control straddles the box's top-right corner, the way a drawing's own
+  // revision marks sit on a boundary rather than inside it.
+  const removeLeft = note.x + width - NOTE_REMOVE_SIZE / 2;
+  const removeTop = note.y - NOTE_REMOVE_SIZE / 2;
+
   return (
     <g data-testid={`project-map-note-${note.id}`}>
       {anchorRect !== null && (
@@ -645,17 +763,89 @@ function ProjectMapNoteMark({
         strokeWidth={1}
         vectorEffect="non-scaling-stroke"
       />
-      {lines.map((line, index) => (
-        <text
-          key={index}
-          x={note.x + 9}
-          y={note.y + 20 + index * 13}
-          fontSize={10.5}
-          className="fill-text-secondary"
+      {editing ? (
+        <foreignObject x={note.x} y={note.y} width={width} height={height}>
+          <textarea
+            // The field appears because the user asked for it, so it takes
+            // focus; a callback ref does that without an autoFocus prop that
+            // would also fire on an unrelated remount.
+            ref={(element) => element?.focus()}
+            aria-label={placeholder}
+            placeholder={placeholder}
+            defaultValue={note.text}
+            className="h-full w-full resize-none bg-transparent px-2 py-1 text-micro text-foreground outline-none placeholder:text-muted"
+            onBlur={(event) => {
+              updateNote(note.id, event.currentTarget.value);
+              setEditingNote(null);
+            }}
+            onKeyDown={(event) => {
+              // Escape here means "done with this note", not "clear the
+              // selection", so it must not reach the canvas.
+              if (event.key !== "Escape") return;
+              event.stopPropagation();
+              event.currentTarget.blur();
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+          />
+        </foreignObject>
+      ) : (
+        <g
+          role="button"
+          tabIndex={0}
+          aria-label={empty ? placeholder : note.text}
+          data-testid={`project-map-edit-note-${note.id}`}
+          className="cursor-text"
+          onClick={() => setEditingNote(note.id)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            setEditingNote(note.id);
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
         >
-          {line.slice(0, 40)}
-        </text>
-      ))}
+          {lines.map((line, index) => (
+            <text
+              key={index}
+              x={note.x + 9}
+              y={note.y + 20 + index * 13}
+              fontSize={10.5}
+              className={empty ? "fill-muted italic" : "fill-text-secondary"}
+            >
+              {line.slice(0, 40)}
+            </text>
+          ))}
+        </g>
+      )}
+      <g
+        role="button"
+        tabIndex={0}
+        aria-label={t(I18nKey.PROJECT_MAP$REMOVE_NOTE)}
+        data-testid={`project-map-remove-note-${note.id}`}
+        className="cursor-pointer"
+        onClick={() => removeNote(note.id)}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          removeNote(note.id);
+        }}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <rect
+          x={removeLeft}
+          y={removeTop}
+          width={NOTE_REMOVE_SIZE}
+          height={NOTE_REMOVE_SIZE}
+          className="fill-surface-raised stroke-border-subtle"
+          strokeWidth={1}
+          vectorEffect="non-scaling-stroke"
+        />
+        <path
+          d={noteRemoveCross(removeLeft, removeTop)}
+          className="stroke-muted"
+          strokeWidth={1.25}
+          vectorEffect="non-scaling-stroke"
+        />
+      </g>
     </g>
   );
 }

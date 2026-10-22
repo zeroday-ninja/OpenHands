@@ -67,7 +67,6 @@ export interface ProjectMapNodePlateProps {
   lit: boolean;
   /** False when the drawing is too small for the path line to be legible. */
   showPath: boolean;
-  onSelect: (node: PlacedProjectMapNode, additive: boolean) => void;
   onFocus: (node: PlacedProjectMapNode) => void;
   onKeyDown: (
     event: React.KeyboardEvent<SVGGElement>,
@@ -86,7 +85,6 @@ export function ProjectMapNodePlate({
   focused,
   lit,
   showPath,
-  onSelect,
   onFocus,
   onKeyDown,
   onPointerDown,
@@ -111,8 +109,10 @@ export function ProjectMapNodePlate({
       className="cursor-pointer outline-none"
       onFocus={() => onFocus(node)}
       onKeyDown={(event) => onKeyDown(event, node)}
+      // Selection is decided on release, in the canvas: a press that captures
+      // the pointer retargets the `click` that follows, so a handler here
+      // would never run for a press that started on this plate.
       onPointerDown={(event) => onPointerDown(event, node)}
-      onClick={(event) => onSelect(node, event.shiftKey || event.metaKey)}
     >
       {/* Crop marks rather than a glow. A drawing points at something by
           bracketing it, and four corners work for every silhouette without
