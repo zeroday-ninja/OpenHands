@@ -13,6 +13,10 @@ import {
  * accepted, changes requested, `SINGLE_RUNTIME` (nobody else was available to
  * review) and `NO_CHANGE` (nothing was changed on purpose).
  *
+ * Its SOUL.md proposals cover both states the dashboard has for one: a
+ * preference the user has not accepted yet, and one the SOUL.md this mock
+ * serves (`DEFAULT_MOCK_SOUL`) already states.
+ *
  * Lives under `src/fixtures/` because MSW handlers are part of the production
  * mock build; `__tests__/` is excluded from the Docker build context.
  */
@@ -78,6 +82,18 @@ const MOCK_CYCLES: ImproveCycle[] = [
       },
     ],
     reviews: [],
+    soul_suggestions: [
+      {
+        text: "Tell me which check you ran before you say a change is safe.",
+        why: "This cycle had to guess whether the repository's own test command counted as verification.",
+      },
+      // Already stated in the built-in SOUL.md this mock serves, so the
+      // dashboard shows it as added rather than offering it again.
+      {
+        text: "Every behavioral change needs a test that fails without it.",
+        why: "The project's contributor guide enforces it, and your standing preferences already agree.",
+      },
+    ],
     error: null,
     created_at: "2026-10-22T06:10:00Z",
     updated_at: "2026-10-22T06:40:00Z",
@@ -105,6 +121,7 @@ const MOCK_CYCLES: ImproveCycle[] = [
       },
     ],
     reviews: [],
+    soul_suggestions: [],
     error: null,
     created_at: "2026-10-21T06:10:00Z",
     updated_at: "2026-10-21T07:02:00Z",
@@ -150,6 +167,12 @@ const MOCK_CYCLES: ImproveCycle[] = [
           "No coverage for the rollback path.",
         ],
         stale_sources: ["https://git-scm.com/docs/git-ls-remote"],
+      },
+    ],
+    soul_suggestions: [
+      {
+        text: "Open a pull request against my fork, never the upstream repository.",
+        why: "Every branch this cycle looked at was pushed to a fork first, which your SOUL.md does not mention.",
       },
     ],
     error: null,

@@ -11,6 +11,7 @@ import { ImproveCitedSources } from "./improve-cited-sources";
 import { ImproveConversationLink } from "./improve-conversation-link";
 import { ImproveCycleReviews } from "./improve-cycle-reviews";
 import { ImproveCycleStatusBadge } from "./improve-cycle-status-badge";
+import { ImproveSoulSuggestions } from "./improve-soul-suggestions";
 import {
   ImproveVerdictBadge,
   improveVerdictExplanationKey,
@@ -127,6 +128,9 @@ export function ImproveCycleCard({ cycle }: { cycle: ImproveCycle }) {
 
       <ImproveCitedSources sources={cycle.sources} />
       <ImproveCycleReviews reviews={cycle.reviews} />
+      {/* Last, and visibly its own thing: everything above is about the
+          repository, this is about the user. */}
+      <ImproveSoulSuggestions suggestions={cycle.soul_suggestions} />
     </li>
   );
 }

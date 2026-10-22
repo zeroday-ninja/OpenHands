@@ -1,10 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router";
 
 import { I18nKey } from "#/i18n/declaration";
 import AutomationService from "#/api/automation-service/automation-service.api";
+import SoulService, {
+  SoulUnsupportedError,
+} from "#/api/soul-service/soul-service.api";
+import type { SoulResponse } from "#/api/soul-service/soul.types";
 import {
   __resetActiveStoreForTests,
   setActiveSelection,
@@ -30,6 +40,27 @@ vi.mock("#/api/automation-service/automation-service.api", () => ({
     getImproveRotation: vi.fn(),
     listImproveCycles: vi.fn(),
   },
+}));
+
+// Only the transport is mocked: whether a backend can serve SOUL.md at all
+// is decided by the real `soulUnsupportedReasonFor` / `SoulUnsupportedError`.
+vi.mock("#/api/soul-service/soul-service.api", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("#/api/soul-service/soul-service.api")
+    >();
+  return {
+    ...actual,
+    default: { getSoul: vi.fn(), saveSoul: vi.fn() },
+  };
+});
+
+const displayErrorToast = vi.fn();
+const displaySuccessToast = vi.fn();
+
+vi.mock("#/utils/custom-toast-handlers", () => ({
+  displayErrorToast: (message: string) => displayErrorToast(message),
+  displaySuccessToast: (message: string) => displaySuccessToast(message),
 }));
 
 const localBackend: Backend = {
@@ -122,6 +153,12 @@ const reviewedCycle: ImproveCycle = {
       stale_sources: ["https://docs.python.org/3/library/asyncio-task.html"],
     },
   ],
+  soul_suggestions: [
+    {
+      text: "Open a pull request against my fork, never the upstream repository.",
+      why: "Every branch this cycle pushed went to a fork first, which your standing preferences do not mention.",
+    },
+  ],
   error: null,
   created_at: "2026-10-20T06:00:00Z",
   updated_at: "2026-10-20T07:00:00Z",
@@ -142,6 +179,7 @@ const unreviewedCycle: ImproveCycle = {
   pr_url: null,
   sources: [],
   reviews: [],
+  soul_suggestions: [],
   created_at: "2026-10-21T06:00:00Z",
   updated_at: "2026-10-21T07:00:00Z",
   completed_at: "2026-10-21T07:00:00Z",
@@ -153,6 +191,16 @@ const rotation: ImproveRotationResponse = {
   next_index: 2,
   last_cycle: unreviewedCycle,
   config,
+};
+
+const SUGGESTION = reviewedCycle.soul_suggestions[0];
+
+/** A SOUL.md the user wrote themselves, with no learned-preference section. */
+const soul: SoulResponse = {
+  content: "# Soul\n\n## How I work\n\n- Read the surrounding code first.\n",
+  exists: true,
+  path: "/home/leander/.openhands/SOUL.md",
+  size_bytes: 62,
 };
 
 function renderPage() {
@@ -189,6 +237,12 @@ beforeEach(() => {
     cycles: [unreviewedCycle, reviewedCycle],
     total: 2,
   });
+  vi.mocked(SoulService.getSoul).mockResolvedValue(soul);
+  vi.mocked(SoulService.saveSoul).mockImplementation(async (content) => ({
+    ...soul,
+    content,
+    size_bytes: content.length,
+  }));
   setRegisteredBackends([localBackend]);
   setActiveSelection({ backendId: localBackend.id });
 });
@@ -328,9 +382,9 @@ describe("AutomationImprove cycle history", () => {
 
     // Assert: the runtime is named once, not printed twice as if the review
     // came from two places.
-    expect(within(review).getByTestId("improve-review-runtime")).toHaveTextContent(
-      "codex",
-    );
+    expect(
+      within(review).getByTestId("improve-review-runtime"),
+    ).toHaveTextContent("codex");
     expect(within(review).getAllByText("codex")).toHaveLength(1);
   });
 
@@ -368,5 +422,146 @@ describe("AutomationImprove cycle history", () => {
     expect(await screen.findAllByTestId("improve-rotation-entry")).toHaveLength(
       3,
     );
+  });
+});
+
+describe("AutomationImprove learned preferences", () => {
+  /**
+   * Only `Date` is faked, so the dated bullet is deterministic while React
+   * Query's and Testing Library's own timers stay real.
+   */
+  const freezeToday = () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 22, 9, 0, 0));
+  };
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /**
+   * The action, once SOUL.md itself has loaded: an append needs the document
+   * it is appending to, so the button renders disabled until the read lands.
+   */
+  const addButton = async () => {
+    const button = await screen.findByTestId("improve-soul-suggestion-add");
+    await waitFor(() => expect(button).toBeEnabled());
+    return button;
+  };
+
+  it("tells a proposal about the user apart from the cycle's project findings", async () => {
+    renderPage();
+
+    const proposal = await screen.findByTestId("improve-soul-suggestion");
+    expect(
+      within(proposal).getByTestId("improve-soul-suggestion-text"),
+    ).toHaveTextContent(SUGGESTION.text);
+    expect(
+      within(proposal).getByTestId("improve-soul-suggestion-why"),
+    ).toHaveTextContent(SUGGESTION.why as string);
+    // Stated in words, because every other section on the card is about the
+    // repository rather than about the user.
+    expect(
+      screen.getByTestId("improve-cycle-soul-suggestions"),
+    ).toHaveTextContent(
+      I18nKey.AUTOMATIONS$IMPROVE$SOUL_SUGGESTIONS_DESCRIPTION,
+    );
+    // A cycle that proposed nothing says nothing: only one card has a section.
+    expect(
+      screen.getAllByTestId("improve-cycle-soul-suggestions"),
+    ).toHaveLength(1);
+  });
+
+  it("appends the proposal under a learned-preferences section it creates", async () => {
+    freezeToday();
+    renderPage();
+
+    fireEvent.click(await addButton());
+
+    // The saved document is the state, so the proposal now reads as added.
+    await screen.findByTestId("improve-soul-suggestion-added");
+    expect(SoulService.saveSoul).toHaveBeenCalledWith(
+      "# Soul\n\n## How I work\n\n- Read the surrounding code first.\n\n## Learned preferences\n\n- 2026-10-22: Open a pull request against my fork, never the upstream repository.\n",
+    );
+    expect(displaySuccessToast).toHaveBeenCalledWith(
+      I18nKey.AUTOMATIONS$IMPROVE$SOUL_SUGGESTION_ADDED_TOAST,
+    );
+  });
+
+  it("adds to the existing section rather than starting a second one", async () => {
+    freezeToday();
+    vi.mocked(SoulService.getSoul).mockResolvedValue({
+      ...soul,
+      content:
+        "# Soul\n\n## Learned preferences\n\n- 2026-10-01: Keep commits small.\n\n## How I work\n\n- Read the surrounding code first.\n",
+    });
+    renderPage();
+
+    fireEvent.click(await addButton());
+    await screen.findByTestId("improve-soul-suggestion-added");
+
+    // The new bullet joins the list it belongs to; the user's own section
+    // after it keeps its place and its wording.
+    expect(SoulService.saveSoul).toHaveBeenCalledWith(
+      "# Soul\n\n## Learned preferences\n\n- 2026-10-01: Keep commits small.\n- 2026-10-22: Open a pull request against my fork, never the upstream repository.\n\n## How I work\n\n- Read the surrounding code first.\n",
+    );
+  });
+
+  it("reads a preference the document already states as already added", async () => {
+    vi.mocked(SoulService.getSoul).mockResolvedValue({
+      ...soul,
+      content: `${soul.content}\n## Learned preferences\n\n- 2026-10-02: ${SUGGESTION.text}\n`,
+    });
+    renderPage();
+
+    expect(
+      await screen.findByTestId("improve-soul-suggestion-added"),
+    ).toHaveTextContent(
+      I18nKey.AUTOMATIONS$IMPROVE$SOUL_SUGGESTION_ALREADY_ADDED,
+    );
+    expect(
+      screen.queryByTestId("improve-soul-suggestion-add"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the proposals readable on a backend that cannot store them", async () => {
+    vi.mocked(SoulService.getSoul).mockRejectedValue(
+      new SoulUnsupportedError("missing-api"),
+    );
+    renderPage();
+
+    expect(
+      await screen.findByTestId("improve-soul-suggestions-read-only"),
+    ).toHaveTextContent(I18nKey.AUTOMATIONS$IMPROVE$SOUL_SUGGESTIONS_READ_ONLY);
+    expect(
+      screen.getByTestId("improve-soul-suggestion-text"),
+    ).toHaveTextContent(SUGGESTION.text);
+    expect(
+      screen.queryByTestId("improve-soul-suggestion-add"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("writes once per click and leaves the action usable after a failure", async () => {
+    let failSave: (error: Error) => void = () => {};
+    vi.mocked(SoulService.saveSoul).mockReturnValue(
+      new Promise((_resolve, reject) => {
+        failSave = reject;
+      }),
+    );
+    renderPage();
+    const button = await addButton();
+
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    await waitFor(() => expect(button).toBeDisabled());
+    failSave(new Error("could not write SOUL.md"));
+
+    // The failure hands the action back rather than leaving it stuck.
+    await waitFor(() => expect(button).toBeEnabled());
+    // One click, one append: a second write built on the same base content
+    // would silently drop the first.
+    expect(SoulService.saveSoul).toHaveBeenCalledTimes(1);
+    expect(displayErrorToast).toHaveBeenCalledTimes(1);
   });
 });
