@@ -27,6 +27,12 @@ import type {
   GitSyncStatus,
   GitSyncTriggerResponse,
 } from "#/types/git-sync";
+import type {
+  CreateImprovementProgramRequest,
+  ImproveCycleListParams,
+  ImproveCycleListResponse,
+  ImproveRotationResponse,
+} from "#/types/improve";
 import {
   automationCreateEndpoint,
   automationUploadEndpoint,
@@ -1258,6 +1264,82 @@ class AutomationService {
       "PUT",
       `/assignments/${encodeURIComponent(automationId)}`,
       { remote_id: remoteId },
+    );
+  }
+
+  // Improvement programs are a preset of the automation surface rather than
+  // an endpoint a host manifest may remap, so these paths are literal for the
+  // same reason the git-sync paths above are.
+
+  /**
+   * One request against the improvement-program surface, built the same way
+   * `requestGitSync` builds a git-sync one. The path is relative to `/v1`,
+   * not to a single prefix: a program's dashboard reads `/v1/improve/...`
+   * while creating one posts to `/v1/preset/improve`.
+   */
+  private static async requestImprove<T>(
+    method: "GET" | "POST",
+    path: string,
+    body?: object,
+  ): Promise<T> {
+    const active = getActiveBackend().backend;
+    const fullPath = `${AUTOMATION_BASE_PATH}/v1${path}`;
+
+    if (active.kind === "cloud") {
+      return callCloudProxy<T>({
+        backend: active,
+        method,
+        path: fullPath,
+        body: body as Record<string, unknown> | undefined,
+        headers: await buildAutomationRequestHeaders(),
+      });
+    }
+
+    const { data } = await localAutomationAxios.request<T>({
+      method,
+      url: fullPath,
+      data: body,
+    });
+    return data;
+  }
+
+  /**
+   * A program's repositories in order, which one the next run will take, and
+   * the cycle the previous run recorded.
+   */
+  static getImproveRotation(
+    automationId: string,
+  ): Promise<ImproveRotationResponse> {
+    return AutomationService.requestImprove<ImproveRotationResponse>(
+      "GET",
+      `/improve/${encodeURIComponent(automationId)}/rotation`,
+    );
+  }
+
+  /** A program's cycle history, newest first. */
+  static listImproveCycles(
+    automationId: string,
+    { limit = 20, offset = 0 }: ImproveCycleListParams = {},
+  ): Promise<ImproveCycleListResponse> {
+    const query = buildListQuery(limit, offset);
+    return AutomationService.requestImprove<ImproveCycleListResponse>(
+      "GET",
+      `/improve/${encodeURIComponent(automationId)}/cycles?${query}`,
+    );
+  }
+
+  /**
+   * Create an improvement program. The service generates the runner tarball
+   * and stores the configuration on the automation, so the returned record is
+   * an ordinary automation with `preset_metadata.preset_type === "improve"`.
+   */
+  static createImprovementProgram(
+    body: CreateImprovementProgramRequest,
+  ): Promise<Automation> {
+    return AutomationService.requestImprove<Automation>(
+      "POST",
+      "/preset/improve",
+      body,
     );
   }
 

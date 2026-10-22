@@ -29,6 +29,7 @@ import { PromptSection } from "#/components/features/automations/detail/prompt-s
 import { ScriptSection } from "#/components/features/automations/detail/script-section";
 import { ConfigurationSection } from "#/components/features/automations/detail/configuration-section";
 import { PluginsSection } from "#/components/features/automations/detail/plugins-section";
+import { ImproveProgramSection } from "#/components/features/automations/detail/improve-program-section";
 import { ActivitySection } from "#/components/features/automations/detail/activity-section";
 import { ActivityLogSection } from "#/components/features/automations/detail/activity-log-section";
 import { DetailSkeleton } from "#/components/features/automations/detail/detail-skeleton";
@@ -45,6 +46,7 @@ import {
 import AutomationService from "#/api/automation-service/automation-service.api";
 import type { Automation } from "#/types/automation";
 import { isDraftAutomation } from "#/utils/automation-state";
+import { isImprovementProgram } from "#/utils/improve-program";
 import {
   getAutomationExportFilename,
   serializeAutomation,
@@ -265,6 +267,9 @@ export default function AutomationDetail() {
             <PromptSection prompt={automation.prompt} />
           ) : (
             <ScriptSection automation={automation} />
+          )}
+          {isImprovementProgram(automation) && (
+            <ImproveProgramSection automationId={automation.id} />
           )}
           <ConfigurationSection automation={automation} runsAs={runsAs} />
           {automation.plugins && automation.plugins.length > 0 && (

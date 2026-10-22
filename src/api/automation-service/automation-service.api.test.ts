@@ -23,6 +23,7 @@ const {
     put: vi.fn(),
     patch: vi.fn(),
     delete: vi.fn(),
+    request: vi.fn(),
   },
   callCloudProxy: vi.fn(),
   clearPendingLocalTelemetryRevocation: vi.fn(),
@@ -492,6 +493,77 @@ describe("AutomationService git sync", () => {
 
     expect(localAxios.post).toHaveBeenCalledWith(
       "/api/automation/v1/git-sync/sync",
+    );
+  });
+});
+
+describe("AutomationService improvement programs", () => {
+  beforeEach(() => {
+    setRegisteredBackends([localBackend]);
+    setActiveSelection({ backendId: localBackend.id });
+  });
+
+  afterEach(() => {
+    setActiveSelection(null);
+    setRegisteredBackends([]);
+    vi.clearAllMocks();
+  });
+
+  it("reads the rotation from the program's own path", async () => {
+    const rotation = { repositories: [], next_index: null };
+    localAxios.request.mockResolvedValueOnce({ data: rotation });
+
+    await expect(
+      AutomationService.getImproveRotation("auto 1"),
+    ).resolves.toEqual(rotation);
+
+    expect(localAxios.request).toHaveBeenCalledWith({
+      method: "GET",
+      // The id is escaped: it reaches Canvas from a URL, not a literal.
+      url: "/api/automation/v1/improve/auto%201/rotation",
+      data: undefined,
+    });
+  });
+
+  it("pages the cycle history", async () => {
+    localAxios.request.mockResolvedValueOnce({
+      data: { cycles: [], total: 0 },
+    });
+
+    await AutomationService.listImproveCycles("auto-1", {
+      limit: 5,
+      offset: 10,
+    });
+
+    expect(localAxios.request).toHaveBeenCalledWith({
+      method: "GET",
+      url: "/api/automation/v1/improve/auto-1/cycles?limit=5&offset=10",
+      data: undefined,
+    });
+  });
+
+  it("creates a program through the preset path on a cloud backend", async () => {
+    setRegisteredBackends([cloudBackend]);
+    setActiveSelection({ backendId: cloudBackend.id, orgId: "org-1" });
+    const created = { id: "auto-2" } as Automation;
+    callCloudProxy.mockResolvedValueOnce(created);
+
+    const body = {
+      name: "Rotating improvements",
+      trigger: { type: "cron", schedule: "0 6 * * *" },
+      improve: { builder_profile_id: "profile-builder" },
+    };
+    await expect(
+      AutomationService.createImprovementProgram(body),
+    ).resolves.toEqual(created);
+
+    expect(callCloudProxy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        backend: cloudBackend,
+        method: "POST",
+        path: "/api/automation/v1/preset/improve",
+        body,
+      }),
     );
   });
 });
