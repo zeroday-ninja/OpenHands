@@ -212,6 +212,57 @@ describe("the project map page", () => {
     expect(options.initialUserMsg).toBe(preview.textContent);
   });
 
+  it("keeps unsaved moves when a regenerated file arrives under them", async () => {
+    // Arrange: the page is open with an edit in hand.
+    const read = vi
+      .spyOn(ProjectMapService, "readProjectMap")
+      .mockResolvedValue({ absolutePath: ABSOLUTE_PATH, raw: mapFile() });
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+    await user.click(screen.getByTestId("project-map-node-src/routes/home.tsx"));
+    await user.click(screen.getByTestId("project-map-toggle-hidden"));
+
+    // Act: the agent regenerates against a new commit, moving that node and
+    // dropping the other one, and the user re-reads the file.
+    read.mockResolvedValue({
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile({
+        commit: "feed9999",
+        nodes: [
+          {
+            id: "src/routes/home.tsx",
+            kind: "route",
+            label: "home",
+            path: "src/routes/home.tsx",
+            group: "web",
+            summary: "Now also launches automations.",
+            size: 520,
+            x: 999,
+            y: 999,
+          },
+        ],
+        edges: [],
+      }),
+    });
+    await user.click(screen.getByTestId("project-map-refresh"));
+
+    // Assert: the new analysis wins on facts, the user's decision survives.
+    await waitFor(() => {
+      expect(screen.getByTestId("project-map-provenance")).toHaveTextContent(
+        "feed9999",
+      );
+    });
+    const open = useProjectMapStore.getState().document;
+    const home = open?.nodes.find((node) => node.id === "src/routes/home.tsx");
+    expect(home).toMatchObject({
+      hidden: true,
+      summary: "Now also launches automations.",
+      x: 0,
+      y: 0,
+    });
+  });
+
   it("writes the arrangement back only when the user saves it", async () => {
     // Arrange
     vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({

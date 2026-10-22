@@ -25,6 +25,7 @@
 
 import {
   PROJECT_MAP_VERSION,
+  type PlacedProjectMapDocument,
   type ProjectMapDocument,
   type ProjectMapGroup,
   type ProjectMapNode,
@@ -33,7 +34,8 @@ import {
 import { ensureProjectMapLayout } from "./project-map-layout";
 
 export interface ProjectMapMergeResult {
-  document: ProjectMapDocument;
+  /** Every node placed, because the layout pass runs as part of the merge. */
+  document: PlacedProjectMapDocument;
   /** Nodes this analysis introduced; the page can point them out. */
   addedNodeIds: string[];
   /** Nodes this analysis no longer reports, and the map therefore drops. */

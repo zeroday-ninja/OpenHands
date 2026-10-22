@@ -25,6 +25,7 @@ import {
   projectMapGroupAtPoint,
   projectMapNodeSize,
 } from "#/utils/project-map/project-map-layout";
+import { mergeProjectMap } from "#/utils/project-map/merge-project-map";
 
 export interface ProjectMapViewport {
   /** Diagram coordinate shown at the top-left of the frame. */
@@ -112,14 +113,24 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
   viewport: INITIAL_VIEWPORT,
   showHidden: false,
 
-  hydrate: (source, document) =>
+  hydrate: (source, incoming) =>
     set((state) => {
       if (state.source === source) return {};
+      // A new revision arriving on top of unsaved edits is the regeneration
+      // case: the agent rewrote the file while the user still had moves in
+      // hand. The merge replays those decisions onto the new analysis, so a
+      // regeneration costs nobody their arrangement even when it was never
+      // saved. The analysis prompt asks the agent to preserve the same
+      // fields; this is the half of that contract Canvas can enforce itself.
+      const document =
+        state.document !== null && state.dirty
+          ? mergeProjectMap(state.document, incoming).document
+          : incoming;
       const ids = new Set(document.nodes.map((node) => node.id));
       return {
         source,
         document,
-        dirty: false,
+        dirty: state.document !== null && state.dirty,
         // A selection that survived a reload keeps the inspector pointing at
         // something that still exists.
         selection: state.selection.filter((id) => ids.has(id)),
