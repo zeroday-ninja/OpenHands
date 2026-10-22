@@ -1,0 +1,6 @@
+{
+  "name": "fork-identity-guard",
+  "version": "1.0.0",
+  "description": "Blocks agent git commands that would record an author or committer email other than the one this fork requires.",
+  "author": "Leander Metcalf"
+}

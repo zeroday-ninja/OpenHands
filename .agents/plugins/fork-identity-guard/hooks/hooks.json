@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "terminal|bash|execute_bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "root=$(git rev-parse --show-toplevel 2>/dev/null) && script=\"$root/.agents/plugins/fork-identity-guard/hooks/check_commit_identity.py\" && [ -f \"$script\" ] && exec python3 \"$script\" --require-email tentpegbob@gmail.com --hint-name 'Leander Metcalf'; exit 0",
+            "timeout": 20
+          }
+        ]
+      }
+    ]
+  }
+}
