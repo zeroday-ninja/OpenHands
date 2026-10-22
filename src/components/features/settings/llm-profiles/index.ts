@@ -6,3 +6,6 @@ export { ProfileActionsMenu } from "./profile-actions-menu";
 export { RenameProfileModal } from "./rename-profile-modal";
 export { DeleteProfileModal } from "./delete-profile-modal";
 export { ProfileNameInput } from "./profile-name-input";
+export { AgentRuntimeProfilesManager } from "./agent-runtime-profiles-manager";
+export { AgentRuntimeProfileRow } from "./agent-runtime-profile-row";
+export { AgentRuntimeProfileEditor } from "./agent-runtime-profile-editor";

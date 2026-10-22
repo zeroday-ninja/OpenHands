@@ -93,6 +93,17 @@ export function ChatInputProfileMenuContent({
                 >
                   {profile.name}
                 </span>
+                {/* An ACP profile drives a model through an agent's own CLI and
+                    its own sign-in, which costs and fails differently from an
+                    API-key model, so say so rather than listing it plain. */}
+                {profile.agent_kind === "acp" && (
+                  <span
+                    data-testid="chat-input-agent-profile-runtime-badge"
+                    className="shrink-0 text-[11px] leading-4 text-text-dim"
+                  >
+                    {t(I18nKey.SETTINGS$RUNTIME_PROFILE_BADGE)}
+                  </span>
+                )}
                 {isCurrent && (
                   <CheckIcon
                     width={14}

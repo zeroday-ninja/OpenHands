@@ -313,7 +313,7 @@ describe("LlmSettingsLocalView", () => {
 
     renderWithProviders(<LlmSettingsLocalView />);
 
-    expect(screen.getByTestId("loading-spinner")).toBeInTheDocument();
+    expect(screen.getByTestId("profiles-loading")).toBeInTheDocument();
   });
 
   it("shows error message when profiles fail to load", () => {

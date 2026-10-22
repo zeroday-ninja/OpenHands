@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderWithProviders } from "test-utils";
 import { setStoredConversationMetadata } from "#/api/conversation-metadata-store";
@@ -80,6 +80,23 @@ describe("ChatInputProfileMenuContent", () => {
 
     expect(activateProfileMutate).toHaveBeenCalledWith("id-codex");
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("marks a runtime-backed profile apart from an API-key one", () => {
+    renderMenu();
+
+    // An ACP profile drives its model through an agent's own CLI and sign-in,
+    // which costs and fails differently from an API-key model.
+    expect(
+      within(
+        screen.getByTestId("chat-input-agent-profile-option-Codex"),
+      ).getByTestId("chat-input-agent-profile-runtime-badge"),
+    ).toBeInTheDocument();
+    expect(
+      within(
+        screen.getByTestId("chat-input-agent-profile-option-Default"),
+      ).queryByTestId("chat-input-agent-profile-runtime-badge"),
+    ).toBeNull();
   });
 
   it("does not activate when the active profile is re-selected", () => {

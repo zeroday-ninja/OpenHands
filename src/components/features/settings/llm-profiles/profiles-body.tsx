@@ -120,7 +120,7 @@ export function ProfilesBody({
 
   if (isLoading) {
     return (
-      <div className="flex justify-center p-4">
+      <div data-testid="profiles-loading" className="flex justify-center p-4">
         <LoadingSpinner size="large" />
       </div>
     );

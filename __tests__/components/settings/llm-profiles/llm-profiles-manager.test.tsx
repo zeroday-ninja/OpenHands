@@ -496,7 +496,7 @@ describe("LlmProfilesManager", () => {
 
     renderManager();
 
-    expect(screen.getByTestId("loading-spinner")).toBeInTheDocument();
+    expect(screen.getByTestId("profiles-loading")).toBeInTheDocument();
   });
 
   it("shows error message when loading fails", async () => {

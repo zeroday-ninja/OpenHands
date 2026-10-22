@@ -213,6 +213,13 @@ function SetupModelPill({
           ) : null}
           {agentProfiles.map((profile) => {
             const isSelected = profile.id === pinnedAgentProfileId;
+            // An ACP profile runs a model through an agent's own CLI, so name
+            // that rather than the raw `agent_kind` tag; an OpenHands profile
+            // names the LLM profile it resolves.
+            const subtitle =
+              profile.agent_kind === "acp"
+                ? t(I18nKey.SETTINGS$RUNTIME_PROFILE_BADGE)
+                : profile.llm_profile_ref;
             return (
               <ContextMenuListItem
                 key={profile.id}
@@ -235,11 +242,9 @@ function SetupModelPill({
                     <CheckIcon className="size-4 shrink-0" aria-hidden />
                   ) : null}
                 </div>
-                {profile.agent_kind || profile.llm_profile_ref ? (
+                {subtitle ? (
                   <span className="truncate text-xs leading-4 text-[var(--oh-muted)]">
-                    {[profile.agent_kind, profile.llm_profile_ref]
-                      .filter(Boolean)
-                      .join(" · ")}
+                    {subtitle}
                   </span>
                 ) : null}
               </ContextMenuListItem>

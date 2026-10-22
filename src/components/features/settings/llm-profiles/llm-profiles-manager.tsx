@@ -5,11 +5,13 @@ import { RenameProfileModal } from "./rename-profile-modal";
 import { DeleteProfileModal } from "./delete-profile-modal";
 import { AddModelsModal } from "./add-models-modal";
 import { ProfilesBody } from "./profiles-body";
+import { AgentRuntimeProfilesManager } from "./agent-runtime-profiles-manager";
 import { ProviderConnectionsManager } from "./provider-connections-manager";
 import ProfilesService, {
   ProfileInfo,
   type SaveProfileRequest,
 } from "#/api/profiles-service/profiles-service.api";
+import { type AgentProfileSummary } from "#/api/agent-profiles-service/agent-profiles-service.api";
 import { useLlmProfiles } from "#/hooks/query/use-llm-profiles";
 import { useModelCatalogWarning } from "#/hooks/use-model-catalog-warning";
 import { useProviderConnections } from "#/hooks/query/use-provider-connections";
@@ -26,11 +28,15 @@ import { I18nKey } from "#/i18n/declaration";
 interface LlmProfilesManagerProps {
   onAddProfile?: () => void;
   onEditProfile?: (profile: ProfileInfo) => void;
+  onAddRuntimeProfile?: () => void;
+  onEditRuntimeProfile?: (profile: AgentProfileSummary) => void;
 }
 
 export function LlmProfilesManager({
   onAddProfile,
   onEditProfile,
+  onAddRuntimeProfile,
+  onEditRuntimeProfile,
 }: LlmProfilesManagerProps) {
   const { t } = useTranslation("openhands");
   const { data, isLoading, error } = useLlmProfiles();
@@ -183,6 +189,11 @@ export function LlmProfilesManager({
             isModelUnlisted={isModelUnlisted}
           />
         </div>
+
+        <AgentRuntimeProfilesManager
+          onAddProfile={onAddRuntimeProfile}
+          onEditProfile={onEditRuntimeProfile}
+        />
 
         {supportsConnections && canManage ? (
           <ProviderConnectionsManager
