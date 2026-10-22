@@ -27,8 +27,9 @@ hook. You do not need to install anything.
 ## What it checks
 
 `hooks/hooks.json` registers a `PreToolUse` hook on the terminal tool. The hook
-splits the command on shell operators and finds each `git` call that writes a
-commit object:
+joins `\`-continued lines, splits the command on shell operators, looks past a
+leading reserved word (`if`, `then`, `do`, `!`, `{` and similar) and finds each
+`git` call that writes a commit object:
 
 - `commit`, `commit-tree`, `merge`, `pull` and `revert`, whose author and
   committer both come from the current identity;
@@ -68,7 +69,9 @@ These commands can still record another email without being blocked:
   variables exported in the agent's terminal session by a previous command.
 - **Hidden git calls.** Commits made inside `bash -c`, `$(...)`, scripts, git
   aliases, editors, `rebase --exec`, or text sent to a running process
-  (`is_input`) are not parsed.
+  (`is_input`) are not parsed. Neither is git started by another command, such
+  as `command`, `exec`, `time`, `timeout`, `nice`, `sudo`, `xargs` or `env`
+  with options (`env -u X git commit`).
 - **Replayed authors.** `cherry-pick`, `rebase` and `am`, and a `git commit`
   that concludes one of them, keep the original author, which is not checked.
 - **Other objects and writers.** Annotated tags (the tagger), `git replace`,
