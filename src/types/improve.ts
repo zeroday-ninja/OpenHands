@@ -87,6 +87,20 @@ export interface ImproveCycleReview {
   stale_sources: string[];
 }
 
+/**
+ * Something a cycle learned about how the user wants to be worked for.
+ *
+ * A proposal for the user's `SOUL.md`, never an edit to it: the service gives
+ * a run no way to rewrite the document that tells every future run what the
+ * user wants, so the user accepts or discards each entry themselves.
+ */
+export interface ImproveSoulSuggestion {
+  /** The preference, written as the user would want it stated. */
+  text: string;
+  /** What in this cycle suggested it, so the user can judge it. */
+  why: string | null;
+}
+
 /** One recorded pass of a program over one repository. */
 export interface ImproveCycle {
   id: string;
@@ -103,6 +117,8 @@ export interface ImproveCycle {
   pr_url: string | null;
   sources: ImproveCitedSource[];
   reviews: ImproveCycleReview[];
+  /** Proposals for the user's SOUL.md, from either stage of the cycle. */
+  soul_suggestions: ImproveSoulSuggestion[];
   error: string | null;
   created_at: string;
   updated_at: string;
