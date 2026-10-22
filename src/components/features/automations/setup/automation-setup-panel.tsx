@@ -60,6 +60,7 @@ import { BackNavButton } from "#/components/shared/buttons/back-nav-button";
 import { StyledTooltip } from "#/components/shared/buttons/styled-tooltip";
 import { OptionalTag } from "#/components/features/settings/optional-tag";
 import { AutomationSetupPromptStack } from "#/components/features/automations/setup/automation-setup-prompt-stack";
+import { AutomationSetupImproveNotice } from "#/components/features/automations/setup/automation-setup-improve-notice";
 import { ContextMenuListItem } from "#/components/features/context-menu/context-menu-list-item";
 import { formatTriggerSourceLabel } from "#/components/features/home/featured-automations/automation-run-health";
 import { useClickOutsideElement } from "#/hooks/use-click-outside-element";
@@ -1995,6 +1996,12 @@ export function AutomationSetupPanel({
                   className={formControlFieldClassName}
                 />
               </Field>
+
+              {draft.improveProgramId ? (
+                <AutomationSetupImproveNotice
+                  automationId={draft.improveProgramId}
+                />
+              ) : null}
 
               {isHydratingServerDraft ? (
                 <p

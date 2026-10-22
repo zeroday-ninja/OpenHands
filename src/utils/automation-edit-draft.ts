@@ -13,6 +13,7 @@ import {
 } from "#/api/automation-setup-types";
 import type { Automation } from "#/types/automation";
 import { formatAutomationRepositories } from "#/utils/automation-repo-sources";
+import { isImprovementProgram } from "#/utils/improve-program";
 import {
   formatTimeOfDay,
   parseCronSchedule,
@@ -127,6 +128,9 @@ export function setupDraftFromAutomation(
     prompt,
     kind,
     editingAutomationId: automation.id,
+    ...(isImprovementProgram(automation)
+      ? { improveProgramId: automation.id }
+      : {}),
     existingRepositories: automation.repositories ?? [],
     canUpdateRepositories: canUpdateRepositories(automation),
     ...(kind === "custom" && automation.tarball_path

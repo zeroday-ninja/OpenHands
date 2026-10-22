@@ -59,6 +59,12 @@ export interface AutomationSetupDraft {
   kind: AutomationSetupKind;
   plugins?: string[];
   editingAutomationId?: string;
+  /**
+   * Set when the edited automation is an improvement program: this form can
+   * reach its name, schedule and timeout, but nothing that makes it a
+   * program, so the panel points at the page that can.
+   */
+  improveProgramId?: string;
   serverDraftId?: string;
   materializedAutomationId?: string | null;
   existingCustomTarballPath?: string;
