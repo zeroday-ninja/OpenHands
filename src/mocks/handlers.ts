@@ -28,6 +28,7 @@ import {
   CANVAS_EXTENSIONS_HANDLERS,
   resetCanvasExtensionsMockData,
 } from "./canvas-extensions-handlers";
+import { SOUL_HANDLERS, resetMockSoul } from "./soul-handlers";
 
 export const handlers = [
   ...FILE_SERVICE_HANDLERS,
@@ -43,6 +44,7 @@ export const handlers = [
   ...MCP_HANDLERS,
   ...WORKSPACES_HANDLERS,
   ...CANVAS_EXTENSIONS_HANDLERS,
+  ...SOUL_HANDLERS,
 ];
 
 export {
@@ -51,6 +53,7 @@ export {
   resetAutomationMockData,
   resetMockWorkspaces,
   resetCanvasExtensionsMockData,
+  resetMockSoul,
 };
 
 export {

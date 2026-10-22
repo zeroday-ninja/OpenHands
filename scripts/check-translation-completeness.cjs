@@ -66,6 +66,9 @@ const IDENTICAL_VALUE_ALLOWLIST = new Set([
   'SETTINGS$MCP_SERVER_TYPE_SSE',
   'SETTINGS$MCP_SERVER_TYPE_STDIO',
   'SETTINGS$NAV_LLM',
+  // The settings nav entry is the literal filename the agent reads, so users
+  // searching for "SOUL.md" find the page in every language.
+  'SETTINGS$NAV_SOUL',
   'SETTINGS$OPENHANDS_API_KEY_HELP_LINK',
   'SETTINGS$SKILLS_PILLS_MORE',
   'SETTINGS$SKILLS_VERSION',
