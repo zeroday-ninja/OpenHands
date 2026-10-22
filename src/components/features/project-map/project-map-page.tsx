@@ -78,6 +78,28 @@ export function ProjectMapPage() {
     );
   }, [data, hydrate]);
 
+  // Frame the whole map the first time a document arrives. A map that opens
+  // part-way off the canvas reads as broken before the user has touched it,
+  // and the first thing anyone does is reach for Fit to view. Keyed by
+  // revision so a *later* refetch never yanks the view away from someone who
+  // has panned somewhere deliberately.
+  const framedRevision = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (document_ === null) return;
+    const revision = data?.absolutePath ?? "";
+    if (framedRevision.current === revision) return;
+    const frame = frameRef.current?.getBoundingClientRect();
+    const bounds = projectMapBounds(document_.nodes);
+    if (!frame || frame.width === 0 || bounds === null) return;
+    framedRevision.current = revision;
+    setViewport(
+      fitProjectMapViewBox(bounds, frame, {
+        min: PROJECT_MAP_MIN_SCALE,
+        max: PROJECT_MAP_MAX_SCALE,
+      }),
+    );
+  }, [document_, data?.absolutePath, setViewport]);
+
   const generate = async () => {
     const conversation = await createConversation.mutateAsync({
       query: PROJECT_MAP_ANALYSIS_PROMPT,

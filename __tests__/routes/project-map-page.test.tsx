@@ -173,6 +173,70 @@ describe("the project map page", () => {
     expect(screen.getByTestId("project-map-provenance")).toHaveTextContent("abc1234");
   });
 
+  it("frames the whole map when the page opens", async () => {
+    // Arrange: a map placed far from the origin, so the initial viewport
+    // cannot happen to contain it.
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile({
+        nodes: [
+          {
+            id: "a",
+            kind: "route",
+            label: "a",
+            path: "a.tsx",
+            group: "web",
+            summary: "",
+            size: 100,
+            x: 1200,
+            y: 900,
+          },
+          {
+            id: "b",
+            kind: "service",
+            label: "b",
+            path: "b.ts",
+            group: "web",
+            summary: "",
+            size: 100,
+            x: 2000,
+            y: 1400,
+          },
+        ],
+        edges: [],
+      }),
+    });
+    const FRAME = { width: 900, height: 600 };
+    vi.spyOn(SVGElement.prototype, "getBoundingClientRect").mockReturnValue({
+      ...FRAME,
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: FRAME.width,
+      bottom: FRAME.height,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    // Act
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+
+    // Assert: both nodes fall inside the visible region. A map that opens
+    // part-way off the canvas reads as broken before anyone touches it.
+    await waitFor(() => {
+      const { viewport } = useProjectMapStore.getState();
+      expect(viewport.x).toBeLessThanOrEqual(1200);
+      expect(viewport.y).toBeLessThanOrEqual(900);
+      expect(viewport.x + FRAME.width / viewport.scale).toBeGreaterThanOrEqual(
+        2000,
+      );
+      expect(viewport.y + FRAME.height / viewport.scale).toBeGreaterThanOrEqual(
+        1400,
+      );
+    });
+  });
+
   it("puts the selection in removable chips and in the exact text it will send", async () => {
     // Arrange
     vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
