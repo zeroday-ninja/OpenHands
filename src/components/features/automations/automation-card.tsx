@@ -16,6 +16,8 @@ import { StyledTooltip } from "#/components/shared/buttons/styled-tooltip";
 import { cn } from "#/utils/utils";
 import { formatRelativeTime } from "#/utils/format-relative-time";
 import { buildAutomationMetadataPills } from "./build-automation-pills";
+import { useAutomationAgentDisplay } from "#/hooks/query/use-automation-agent-display";
+import { automationAgentPillLabel } from "#/utils/automation-agent";
 import { buildAutomationMenuItems } from "./build-automation-menu-items";
 import { automationIconActionButtonClassName } from "./automation-action-button-classes";
 import { AutomationRunStats } from "./automation-run-insights";
@@ -79,9 +81,11 @@ export function AutomationCard({
 
   const scheduleLabel =
     automation.trigger.schedule_human || automation.trigger.type;
+  const agent = useAutomationAgentDisplay(automation);
+  const agentLabel = automationAgentPillLabel(agent, t);
   const pills = useMemo(
-    () => buildAutomationMetadataPills(automation, scheduleLabel),
-    [automation, scheduleLabel],
+    () => buildAutomationMetadataPills(automation, scheduleLabel, agentLabel),
+    [automation, scheduleLabel, agentLabel],
   );
 
   const handleView = () => {

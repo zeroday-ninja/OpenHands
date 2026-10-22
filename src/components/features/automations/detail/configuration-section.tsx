@@ -13,6 +13,7 @@ import BellIcon from "#/icons/bell.svg?react";
 import CodeTagIcon from "#/icons/code-tag.svg?react";
 import LinkExternalIcon from "#/icons/link-external.svg?react";
 import { formatEventOn } from "#/utils/automation-schedule";
+import type { AutomationAgentDisplay } from "#/utils/automation-agent";
 import { parseGitRemoteUrl } from "#/utils/parse-git-remote-url";
 import { SectionCard } from "./section-card";
 import { ConfigField } from "./config-field";
@@ -20,6 +21,12 @@ import { BranchBadge } from "./branch-badge";
 
 interface ConfigurationSectionProps {
   automation: Automation;
+  /**
+   * What the automation runs as, resolved by the page (the automation itself
+   * only carries an agent-profile id). Omitted, the section falls back to the
+   * automation's own pinned LLM profile.
+   */
+  agent?: AutomationAgentDisplay;
   /**
    * Identity the automation runs as — the creator's email, or their raw user
    * id when the email could not be resolved. Omitted/null hides the field
@@ -58,8 +65,58 @@ function FilterExpression({ filter }: { filter: string }) {
   );
 }
 
+/**
+ * What the automation runs as.
+ *
+ * An automation on an agent profile has no `model`, so the field names the
+ * profile and the runtime behind it instead — the thing that says whether a
+ * run is Claude Code, Codex or a local model. An unresolved id is named
+ * rather than hidden; only an id still being resolved renders nothing.
+ */
+function AgentField({ agent }: { agent: AutomationAgentDisplay }) {
+  const { t } = useTranslation("openhands");
+
+  if (agent.kind === "pending") return null;
+
+  const isProfile = agent.kind === "profile" || agent.kind === "missing";
+  let value = t(I18nKey.COMMON$ACTIVE_PROFILE);
+  if (agent.kind === "model") value = agent.model;
+  if (agent.kind === "profile") value = agent.name;
+  if (agent.kind === "missing") {
+    value = t(I18nKey.AUTOMATIONS$UNAVAILABLE_AGENT_PROFILE, {
+      id: agent.profileId,
+    });
+  }
+
+  return (
+    <ConfigField
+      icon={<SparkleIcon className="size-3.5" />}
+      label={
+        isProfile
+          ? t(I18nKey.CHAT$AGENT_PROFILE_PLACEHOLDER)
+          : t(I18nKey.AUTOMATIONS$DETAIL$MODEL)
+      }
+    >
+      <div className="flex flex-col gap-0.5">
+        <span data-testid="automation-agent" className="break-all">
+          {value}
+        </span>
+        {agent.kind === "profile" && agent.runtime && (
+          <span
+            data-testid="automation-agent-runtime"
+            className="break-all text-xs text-muted"
+          >
+            {agent.runtime}
+          </span>
+        )}
+      </div>
+    </ConfigField>
+  );
+}
+
 export function ConfigurationSection({
   automation,
+  agent,
   runsAs,
 }: ConfigurationSectionProps) {
   const { t } = useTranslation("openhands");
@@ -71,6 +128,14 @@ export function ConfigurationSection({
       ? `${automation.trigger.schedule_human} (${automation.timezone})`
       : automation.trigger.schedule_human;
   }
+
+  // Without a resolved agent the automation's own pinned LLM profile is all
+  // this section knows, which is what it showed before agent profiles.
+  const agentDisplay: AutomationAgentDisplay =
+    agent ??
+    (automation.model
+      ? { kind: "model", model: automation.model }
+      : { kind: "none" });
 
   const triggerDisplay = isEvent
     ? t(I18nKey.AUTOMATIONS$DETAIL$TRIGGER_EVENT)
@@ -156,12 +221,7 @@ export function ConfigurationSection({
           </ConfigField>
         )}
 
-        <ConfigField
-          icon={<SparkleIcon className="size-3.5" />}
-          label={t(I18nKey.AUTOMATIONS$DETAIL$MODEL)}
-        >
-          {automation.model ?? t(I18nKey.COMMON$ACTIVE_PROFILE)}
-        </ConfigField>
+        <AgentField agent={agentDisplay} />
 
         {automation.notification && (
           <ConfigField

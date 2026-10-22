@@ -16,9 +16,15 @@ import {
   getTriggerSource,
 } from "#/components/features/home/featured-automations/automation-run-health";
 
+/**
+ * @param agentLabel What the automation runs as, already resolved by the card
+ *   (an agent profile is stored as an id). `null` falls back to the pinned
+ *   LLM profile, which is all a pre-agent-profile automation carries.
+ */
 export function buildAutomationMetadataPills(
   automation: Automation,
   scheduleLabel: string,
+  agentLabel?: string | null,
 ): SkillCardPill[] {
   const pills: SkillCardPill[] = [];
 
@@ -98,13 +104,17 @@ export function buildAutomationMetadataPills(
     });
   }
 
-  if (automation.model) {
+  const agent = agentLabel?.trim() || automation.model?.trim();
+  if (agent) {
     pills.push({
-      id: "model",
+      id: "agent",
       node: (
-        <span className={cn(extensionModuleCardPillClassName, "gap-1")}>
+        <span
+          className={cn(extensionModuleCardPillClassName, "gap-1")}
+          title={agent}
+        >
           <SparkleIcon className="size-3 shrink-0" />
-          {automation.model}
+          {agent}
         </span>
       ),
     });

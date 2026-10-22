@@ -165,6 +165,89 @@ describe("ConfigurationSection", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("shows the agent profile and the runtime behind it, not the active-profile placeholder", () => {
+    // Arrange — an automation that runs under an agent profile carries no
+    // model, so the page resolves the profile and passes it down.
+    const automation: Automation = {
+      ...cronAutomation,
+      model: null,
+      agent_profile_id: "96ace0a6-483e-4a39-91cc-ced1b8663056",
+    };
+
+    // Act
+    render(
+      <ConfigurationSection
+        automation={automation}
+        agent={{
+          kind: "profile",
+          name: "claude-code",
+          runtime: "Claude Code (opus)",
+        }}
+      />,
+    );
+
+    // Assert
+    expect(
+      screen.getByText("CHAT$AGENT_PROFILE_PLACEHOLDER"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("automation-agent")).toHaveTextContent(
+      "claude-code",
+    );
+    expect(screen.getByTestId("automation-agent-runtime")).toHaveTextContent(
+      "Claude Code (opus)",
+    );
+    expect(screen.queryByText("COMMON$ACTIVE_PROFILE")).not.toBeInTheDocument();
+  });
+
+  it("names an agent profile the backend no longer lists", () => {
+    // Arrange / Act
+    render(
+      <ConfigurationSection
+        automation={{ ...cronAutomation, model: null }}
+        agent={{ kind: "missing", profileId: "deleted-profile-id" }}
+      />,
+    );
+
+    // Assert — the field reports the profile rather than going blank or
+    // claiming the automation runs as the active profile.
+    expect(screen.getByTestId("automation-agent")).toHaveTextContent(
+      "AUTOMATIONS$UNAVAILABLE_AGENT_PROFILE",
+    );
+    expect(
+      screen.queryByTestId("automation-agent-runtime"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("COMMON$ACTIVE_PROFILE")).not.toBeInTheDocument();
+  });
+
+  it("leaves the field out while the agent profile is still being resolved", () => {
+    // Arrange / Act
+    render(
+      <ConfigurationSection
+        automation={{ ...cronAutomation, model: null }}
+        agent={{ kind: "pending" }}
+      />,
+    );
+
+    // Assert — no placeholder that could be mistaken for the answer.
+    expect(screen.queryByTestId("automation-agent")).not.toBeInTheDocument();
+    expect(screen.queryByText("COMMON$ACTIVE_PROFILE")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the active profile when the automation pins neither", () => {
+    // Arrange / Act
+    render(
+      <ConfigurationSection
+        automation={{ ...cronAutomation, model: null }}
+        agent={{ kind: "none" }}
+      />,
+    );
+
+    // Assert
+    expect(screen.getByTestId("automation-agent")).toHaveTextContent(
+      "COMMON$ACTIVE_PROFILE",
+    );
+  });
+
   it("renders the Automation Runs As field with the resolved identity", () => {
     // Arrange / Act — the route resolves the creator and passes it down.
     render(
