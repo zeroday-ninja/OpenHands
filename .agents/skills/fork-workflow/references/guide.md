@@ -25,13 +25,20 @@ Read a failure before you classify it: `gh run view <id> --repo zeroday-ninja/Op
 
 ## Stacked PRs
 
-GitHub made stacked pull requests generally available on 6 October 2026. Use them for any new stack. They need `gh` 2.90.0 or later, Git 2.36 or later, and the `gh stack` extension (`gh extension install github/gh-stack`). Every branch must be in the fork itself; cross-fork stacks are not supported. The behaviour below was checked on `gh stack` v0.2.1. If `gh stack --version` reports another version, rerun the check at the end of this section first.
+GitHub made stacked pull requests generally available on 6 October 2026. Use them for any new stack. They need `gh` 2.90.0 or later, Git 2.36 or later, and the `gh stack` extension (`gh extension install github/gh-stack`). The quickstart and the CLI reference state different minimums; these are the stricter of each. Every branch must be in the fork itself; cross-fork stacks are not supported. The behaviour below was checked on `gh stack` v0.2.1 (still the latest release on 22 October 2026). If `gh stack --version` reports another version, rerun the check at the end of this section first.
 
 ### Pin the repository with `GH_REPO` on every command
 
-`--remote origin` only chooses where Git pushes and fetches. `gh stack` finds its GitHub API repository separately, through go-gh's `repository.Current()`. That function takes `GH_REPO` first. Without it, a fork clone with the usual `upstream` remote resolves to `OpenHands/OpenHands`, because a remote named `upstream` sorts before `origin`. `git config remote.pushDefault origin` does not change this. So a bare `gh stack` command sends its API calls to upstream.
+`--remote origin` only chooses where Git pushes and fetches. `gh stack` finds its GitHub API repository separately, through go-gh's `repository.Current()`. That function takes `GH_REPO` first. Next it takes the remote that `gh repo set-default` marked. Only then does it fall back to remote order, and a remote named `upstream` sorts before `origin`. `git config remote.pushDefault origin` does not change this. So in a fork clone with the usual `upstream` remote and no default set, a bare `gh stack` command sends its API calls to `OpenHands/OpenHands`.
 
-Prefix every `gh stack` command with `GH_REPO=zeroday-ninja/OpenHands`, even in a clone with only `origin`. Also pass the flags that keep each command from prompting; under a PTY the bare forms open an editor or a menu and block.
+Set up each clone once. The first line makes bare `gh` and `gh stack` commands resolve to the fork; it writes `remote.origin.gh-resolved base`. The second is what GitHub's own gh-stack skill requires when a clone has more than one remote, because `checkout` and `trunk` have no `--remote` flag.
+
+```sh
+gh repo set-default zeroday-ninja/OpenHands
+git config remote.pushDefault origin
+```
+
+Still prefix every `gh stack` command with `GH_REPO=zeroday-ninja/OpenHands`, even in a clone with only `origin`. The default lives in one clone's `.git/config` and is lost in a fresh clone; the prefix does not depend on it. Also pass the flags that keep each command from prompting; under a PTY the bare forms open an editor or a menu and block.
 
 ```sh
 GH_REPO=zeroday-ninja/OpenHands gh stack init <first-branch>
@@ -48,6 +55,8 @@ GH_REPO=zeroday-ninja/OpenHands gh stack merge --yes --rebase            # only 
 - `submit` exits 9 with `Stacked PRs are not enabled for this repository` when the token is bad too, so run `gh auth status` before you report that. On 22 October 2026, `gh api repos/zeroday-ninja/OpenHands/stacks` returned `[]` with HTTP 200.
 
 When a lower PR in a linked stack merges, GitHub retargets the PRs above it to the stack's base. You do not edit bases by hand. `gh stack merge` is all-or-nothing: if any PR in the range cannot merge, none merge. Merge from the bottom up. To merge a stack through the API, use the asynchronous merge endpoint (`PUT /repos/{owner}/{repo}/pulls/{n}/merge-async`); the synchronous merge endpoint does not support stacks.
+
+This was checked on 22 October 2026 in a real clone of the fork with `upstream` added, `git` 2.47 and `gh` 2.102.1. Pushes went to a local bare repository and the token was invalid, so nothing reached GitHub. Bare `init`, `view --json`, `push`, `submit --auto`, `sync`, `link` and `merge --yes --rebase` all named `OpenHands/OpenHands`. With the `GH_REPO` prefix, or with only `gh repo set-default` and no prefix, every one of them named `zeroday-ninja/OpenHands`. `add` makes no API call. A successful `submit` or `merge` was not run, because it would open or merge real PRs.
 
 To recheck the repository pinning without changing anything on GitHub, run this from a branch of a stack. The bad token makes every request fail with 401. The debug log still shows the owner each request names, which must be `zeroday-ninja`:
 
