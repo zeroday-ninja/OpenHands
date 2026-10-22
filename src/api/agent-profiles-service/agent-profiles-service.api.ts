@@ -16,6 +16,7 @@ import {
   type GetAgentProfileOptions,
 } from "@openhands/typescript-client/clients";
 import type {
+  ACPAgentProfile,
   AgentProfile,
   AgentProfileSummary,
   AgentProfileSaveInput,
@@ -56,6 +57,13 @@ export type AcpProfileFailoverFields = {
   acp_fallback_server?: string | null;
   acp_fallback_model?: string | null;
 };
+
+/**
+ * An ACP profile as a current agent-server stores it: the pinned client's
+ * `ACPAgentProfile` plus the failover fields above. Read a profile as this so
+ * a whole-profile overwrite can carry those fields forward untouched.
+ */
+export type StoredAcpProfile = ACPAgentProfile & AcpProfileFailoverFields;
 
 // Re-export SDK types for consumers.
 export type {

@@ -161,6 +161,14 @@ vi.mock("#/hooks/query/use-agent-profiles", () => ({
           llm_profile_ref: "fast",
           mcp_server_refs: null,
         },
+        {
+          id: "agent-codex",
+          name: "codex",
+          agent_kind: "acp",
+          revision: 1,
+          llm_profile_ref: null,
+          mcp_server_refs: null,
+        },
       ],
       active_agent_profile_id: "agent-default",
     },
@@ -563,6 +571,33 @@ describe("AutomationSetupPanel", () => {
         }),
       ),
     );
+  });
+
+  it("names an agent profile's runtime rather than its wire tag", async () => {
+    const user = userEvent.setup();
+    renderPanel({
+      prompt: "Review every pull request",
+      kind: "prompt",
+      form: { kind: "prompt", model: "" },
+    });
+
+    await user.click(screen.getByTestId("automation-setup-model"));
+
+    // An ACP profile runs a model through an agent's own CLI; an OpenHands one
+    // resolves an LLM profile. Neither reads as the raw `agent_kind` value.
+    expect(
+      screen.getByTestId("automation-setup-agent-profile-option-agent-codex"),
+    ).toHaveTextContent("SETTINGS$RUNTIME_PROFILE_BADGE");
+    expect(
+      screen.getByTestId(
+        "automation-setup-agent-profile-option-agent-reviewer",
+      ),
+    ).toHaveTextContent("fast");
+    expect(
+      screen.getByTestId(
+        "automation-setup-agent-profile-option-agent-reviewer",
+      ),
+    ).not.toHaveTextContent("openhands");
   });
 
   it("offers agent profiles next to LLM profiles and sends the chosen one for prompt automations", async () => {

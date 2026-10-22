@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { LlmProfilesManager } from "./llm-profiles-manager";
+import { AgentRuntimeProfileEditor } from "./agent-runtime-profile-editor";
 import { ProfileNameInput } from "./profile-name-input";
 import { BrandButton } from "#/components/features/settings/brand-button";
 import { LlmSettingsScreen } from "#/routes/llm-settings";
@@ -27,6 +28,10 @@ import ProfilesService, {
   ProfileInfo,
   type SaveProfileRequest,
 } from "#/api/profiles-service/profiles-service.api";
+import AgentProfilesService, {
+  type AgentProfileSummary,
+  type StoredAcpProfile,
+} from "#/api/agent-profiles-service/agent-profiles-service.api";
 import {
   displayErrorToast,
   displaySuccessToast,
@@ -57,7 +62,18 @@ import { BackNavButton } from "#/components/shared/buttons/back-nav-button";
 import { Typography } from "#/ui/typography";
 import { useSettingsSectionHeader } from "#/contexts/settings-section-header-context";
 
-type ViewMode = "list" | "create" | "edit";
+type ViewMode = "list" | "create" | "edit" | "runtime";
+
+/**
+ * The agent-runtime profile the editor opens on: its summary, plus the stored
+ * profile read before mounting so a save merges over its real fields (the list
+ * endpoint omits them and saving is a whole-profile overwrite). Both are null
+ * when creating one.
+ */
+interface EditingRuntimeProfile {
+  summary: AgentProfileSummary | null;
+  stored: StoredAcpProfile | null;
+}
 
 interface EditingProfile {
   profile: ProfileInfo;
@@ -161,6 +177,8 @@ export function LlmSettingsLocalView() {
   const [editingProfile, setEditingProfile] = useState<EditingProfile | null>(
     null,
   );
+  const [editingRuntimeProfile, setEditingRuntimeProfile] =
+    useState<EditingRuntimeProfile | null>(null);
   const [saveControl, setSaveControl] = useState<SdkSectionSaveControl | null>(
     null,
   );
@@ -244,9 +262,36 @@ export function LlmSettingsLocalView() {
     automaticCreateBooleanKeys.current = null;
     setViewMode("list");
     setEditingProfile(null);
+    setEditingRuntimeProfile(null);
     setProfileName("");
     setSaveControl(null);
   }, []);
+
+  const handleAddRuntimeProfile = useCallback(() => {
+    setEditingRuntimeProfile({ summary: null, stored: null });
+    setViewMode("runtime");
+  }, []);
+
+  const handleEditRuntimeProfile = useCallback(
+    async (summary: AgentProfileSummary) => {
+      try {
+        // Read the stored profile before mounting the editor: its save is a
+        // whole-profile overwrite, so it must never open without the fields it
+        // does not model (command, session mode, timeouts, scopes, failover).
+        const detail = await AgentProfilesService.getProfile(summary.name);
+        if (detail.profile.agent_kind !== "acp") {
+          displayErrorToast(t(I18nKey.ERROR$GENERIC));
+          return;
+        }
+        setEditingRuntimeProfile({ summary, stored: detail.profile });
+        setViewMode("runtime");
+      } catch (error) {
+        console.error("Failed to fetch agent runtime profile:", error);
+        displayErrorToast(t(I18nKey.ERROR$GENERIC));
+      }
+    },
+    [t],
+  );
 
   const handleSaveControlChange = useCallback(
     (control: SdkSectionSaveControl) => {
@@ -448,6 +493,18 @@ export function LlmSettingsLocalView() {
       <LlmProfilesManager
         onAddProfile={handleAddProfile}
         onEditProfile={handleEditProfile}
+        onAddRuntimeProfile={handleAddRuntimeProfile}
+        onEditRuntimeProfile={handleEditRuntimeProfile}
+      />
+    );
+  }
+
+  if (viewMode === "runtime" && editingRuntimeProfile) {
+    return (
+      <AgentRuntimeProfileEditor
+        summary={editingRuntimeProfile.summary}
+        stored={editingRuntimeProfile.stored}
+        onClose={handleBackToList}
       />
     );
   }
