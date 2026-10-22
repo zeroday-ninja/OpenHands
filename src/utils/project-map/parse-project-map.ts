@@ -378,3 +378,29 @@ export function parseProjectMap(raw: string): ProjectMapParseResult {
 export function serializeProjectMap(document: ProjectMapDocument): string {
   return `${JSON.stringify(document, null, 2)}\n`;
 }
+
+/**
+ * Identity of the bytes on disk, used to decide whether a re-read is a new
+ * revision of the map or the same one again.
+ *
+ * It fingerprints the raw text rather than reading `generated_at` or `commit`,
+ * because the interesting writer is the agent asked to "group these three",
+ * which rewrites positions and groups and has no reason to touch the
+ * provenance fields. Keying on provenance alone would make that edit look
+ * identical to what the page already had, and the page would ignore it.
+ *
+ * The fingerprint only has to change when the content does; it is never
+ * stored, compared across machines, or used for security, so a short
+ * multiply-and-add hash alongside the length is enough.
+ */
+export function projectMapRevision(
+  absolutePath: string,
+  raw: string | null,
+): string {
+  if (raw === null) return `${absolutePath}@absent`;
+  let hash = 0;
+  for (let index = 0; index < raw.length; index += 1) {
+    hash = (hash * 31 + raw.charCodeAt(index)) % 2147483647;
+  }
+  return `${absolutePath}@${raw.length.toString()}@${hash.toString(36)}`;
+}
