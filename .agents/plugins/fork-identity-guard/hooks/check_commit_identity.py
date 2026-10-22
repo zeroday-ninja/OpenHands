@@ -3,12 +3,17 @@
 
 The OpenHands hook executor sends the pending tool call as JSON on stdin and
 treats exit code 2 as "block". This script finds every git invocation in a
-terminal command that creates commits, asks git itself which author and
+terminal command that writes a commit object, asks git itself which author and
 committer identity that invocation would record (honouring `-c user.email=`,
-`-C`, `VAR=value` prefixes, repository config and `--author`), and blocks the
-call when either email differs from the one this fork requires.
+`-C`, `VAR=value` prefixes, repository config, `--author`, `--amend` and the
+authorship-reusing `-C`/`-c` commit options), and blocks the call when either
+email differs from the one this fork requires.
 
-Anything it cannot recognise as a commit-creating git call is allowed: the hook
+It judges every call against the state that exists before the command runs. It
+cannot know what an earlier segment of the same command (`git config ... &&`,
+`export ... &&`) will change, so it is a best-effort check, not a guarantee.
+
+Anything it cannot recognise as a commit-writing git call is allowed: the hook
 must never stand between the agent and unrelated commands.
 """
 
@@ -25,10 +30,12 @@ from dataclasses import dataclass, field
 
 BLOCK_EXIT_CODE = 2
 
-# Subcommands that write a commit object. For `commit` both identities are
-# checked; the others keep the original author and only record a committer.
-AUTHORING_SUBCOMMANDS = {"commit"}
-COMMITTING_SUBCOMMANDS = {"cherry-pick", "revert", "rebase", "am", "merge"}
+# Subcommands that write a commit object whose author and committer both come
+# from the current identity.
+AUTHORING_SUBCOMMANDS = {"commit", "commit-tree", "merge", "pull", "revert", "stash", "notes"}
+# Subcommands that replay commits: each keeps its original author and only the
+# committer comes from the current identity.
+COMMITTING_SUBCOMMANDS = {"cherry-pick", "rebase", "am"}
 
 # Arguments after which these subcommands write nothing.
 NON_WRITING_ARGS = {
@@ -41,6 +48,79 @@ NON_WRITING_ARGS = {
     "-h",
     "--help",
 }
+
+# `git stash` and `git notes` actions that write a commit. A bare `git stash`,
+# or one that starts with an option, is `git stash push`.
+STASH_WRITING_ACTIONS = {"push", "save", "create"}
+NOTES_WRITING_ACTIONS = {"add", "copy", "append", "edit", "merge", "remove", "prune"}
+
+# `git commit` options, as listed by `git commit -h` (git 2.47). git accepts
+# any unambiguous prefix of a long option and clusters short ones (`-aC HEAD`),
+# so the hook resolves them the same way rather than matching literal strings.
+COMMIT_SHORT = {
+    "q": "quiet",
+    "v": "verbose",
+    "F": "file",
+    "m": "message",
+    "c": "reedit-message",
+    "C": "reuse-message",
+    "s": "signoff",
+    "t": "template",
+    "e": "edit",
+    "S": "gpg-sign",
+    "a": "all",
+    "i": "include",
+    "p": "patch",
+    "o": "only",
+    "n": "no-verify",
+    "z": "null",
+    "u": "untracked-files",
+}
+COMMIT_LONG_WITH_VALUE = {
+    "file",
+    "author",
+    "date",
+    "message",
+    "reedit-message",
+    "reuse-message",
+    "fixup",
+    "squash",
+    "trailer",
+    "template",
+    "cleanup",
+    "pathspec-from-file",
+}
+COMMIT_LONG_OPTIONAL_VALUE = {"gpg-sign", "untracked-files"}
+COMMIT_LONG_FLAGS = {
+    "quiet",
+    "verbose",
+    "reset-author",
+    "signoff",
+    "edit",
+    "status",
+    "all",
+    "include",
+    "interactive",
+    "patch",
+    "only",
+    "dry-run",
+    "short",
+    "branch",
+    "ahead-behind",
+    "porcelain",
+    "long",
+    "null",
+    "amend",
+    "pathspec-file-nul",
+}
+COMMIT_LONG_NAMES = (
+    {
+        f"{prefix}{name}"
+        for name in COMMIT_LONG_WITH_VALUE | COMMIT_LONG_OPTIONAL_VALUE | COMMIT_LONG_FLAGS
+        for prefix in ("", "no-")
+    }
+    | {"no-verify", "verify", "no-post-rewrite", "post-rewrite"}
+) - {"no-trailer"}
 
 # git global options that take a separate value (`git -C dir commit`).
 GLOBAL_OPTS_WITH_VALUE = {
@@ -143,39 +223,153 @@ def ident_email(call: GitCall, role: str) -> str | None:
     )
 
 
-def option_value(args: list[str], name: str) -> str | None:
-    for index, arg in enumerate(args):
-        if arg.startswith(f"{name}="):
-            return arg.split("=", 1)[1]
-        if arg == name and index + 1 < len(args):
-            return args[index + 1]
-    return None
+def resolve_long(name: str) -> str | None:
+    """Full `git commit` long option for `name`, which may be abbreviated."""
+    if name in COMMIT_LONG_NAMES:
+        return name
+    matches = [option for option in COMMIT_LONG_NAMES if option.startswith(name)]
+    # git rejects an ambiguous prefix, so the command would not commit.
+    return matches[0] if len(matches) == 1 else None
+
+
+@dataclass
+class CommitOptions:
+    author: str | None = None
+    reuse: str | None = None
+    amend: bool = False
+    reset_author: bool = False
+
+
+def parse_commit_args(args: list[str]) -> CommitOptions:
+    """The `git commit` options that decide which author is recorded."""
+    options = CommitOptions()
+    settings: list[tuple[str, str | None]] = []
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        index += 1
+        if arg == "--":
+            break
+        if arg.startswith("--"):
+            name, has_value, value = arg[2:].partition("=")
+            option = resolve_long(name)
+            if option in COMMIT_LONG_WITH_VALUE and not has_value:
+                value = args[index] if index < len(args) else ""
+                index += 1
+            if option:
+                settings.append((option, value))
+        elif arg.startswith("-") and len(arg) > 1:
+            cluster = arg[1:]
+            for position, letter in enumerate(cluster):
+                option = COMMIT_SHORT.get(letter)
+                rest = cluster[position + 1 :]
+                if option in COMMIT_LONG_WITH_VALUE:
+                    if not rest:
+                        rest = args[index] if index < len(args) else ""
+                        index += 1
+                    settings.append((option, rest))
+                    break
+                if option in COMMIT_LONG_OPTIONAL_VALUE:
+                    break
+                if option:
+                    settings.append((option, None))
+
+    for option, value in settings:
+        if option == "author":
+            options.author = value
+        elif option == "no-author":
+            options.author = None
+        elif option in {"reuse-message", "reedit-message"}:
+            options.reuse = value
+        elif option in {"no-reuse-message", "no-reedit-message"}:
+            options.reuse = None
+        elif option in {"amend", "no-amend"}:
+            options.amend = option == "amend"
+        elif option in {"reset-author", "no-reset-author"}:
+            options.reset_author = option == "reset-author"
+    return options
+
+
+def commit_author(call: GitCall, revision: str) -> str | None:
+    return run_git(call, "log", "-1", "--format=%ae", "--end-of-options", revision, "--")
 
 
 def author_email(call: GitCall) -> tuple[str | None, str]:
-    author = option_value(call.args, "--author")
+    """Email `git commit` would record as author, in git's own precedence."""
+    options = parse_commit_args(call.args)
+    author = options.author
     if author is not None:
         if "<" in author:
             return email_of(author), "--author"
         # git treats a bare --author value as a search pattern.
         found = run_git(call, "log", "-1", "--all", "-i", f"--author={author}", "--format=%ae")
         return found or None, f"--author pattern {author!r}"
-    if "--amend" in call.args and "--reset-author" not in call.args:
-        return run_git(call, "log", "-1", "--format=%ae", "HEAD"), "the amended commit"
+    if options.reset_author:
+        return ident_email(call, "author"), "git config"
+    # -C/-c reuse the named commit's authorship, and so does --amend for HEAD.
+    if options.reuse is not None:
+        return commit_author(call, options.reuse), f"the reused commit {options.reuse!r}"
+    if options.amend:
+        return commit_author(call, "HEAD"), "the amended commit"
     return ident_email(call, "author"), "git config"
+
+
+def first_action(args: list[str], options_with_value: set[str]) -> str | None:
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg in options_with_value:
+            index += 2
+        elif arg.startswith("-"):
+            index += 1
+        else:
+            return arg
+    return None
+
+
+def has_non_writing_arg(args: list[str]) -> bool:
+    """True when an argument such as `--abort` really is an option.
+
+    `git commit -m --dry-run` commits with the message "--dry-run", so an
+    argument right after a bare option may be that option's value. Such a
+    command is checked rather than waved through.
+    """
+    previous = None
+    for arg in args:
+        if arg == "--":
+            return False
+        value_slot = previous is not None and previous.startswith("-") and "=" not in previous
+        if arg in NON_WRITING_ARGS and not value_slot:
+            return True
+        previous = arg
+    return False
+
+
+def writes_commit(call: GitCall) -> bool:
+    if call.subcommand not in AUTHORING_SUBCOMMANDS | COMMITTING_SUBCOMMANDS:
+        return False
+    if has_non_writing_arg(call.args):
+        return False
+    if call.subcommand == "stash":
+        if not call.args or call.args[0].startswith("-"):
+            return True
+        return call.args[0] in STASH_WRITING_ACTIONS
+    if call.subcommand == "notes":
+        return first_action(call.args, {"--ref"}) in NOTES_WRITING_ACTIONS
+    return True
 
 
 def violations(call: GitCall, required: str) -> list[str]:
     subcommand = call.subcommand
-    if subcommand not in AUTHORING_SUBCOMMANDS | COMMITTING_SUBCOMMANDS:
-        return []
-    if NON_WRITING_ARGS.intersection(call.args):
+    if not writes_commit(call):
         return []
 
     found: list[tuple[str, str | None, str]] = []
-    if subcommand in AUTHORING_SUBCOMMANDS:
+    if subcommand == "commit":
         email, origin = author_email(call)
         found.append(("author", email, origin))
+    elif subcommand in AUTHORING_SUBCOMMANDS:
+        found.append(("author", ident_email(call, "author"), "git config"))
     found.append(("committer", ident_email(call, "committer"), "git config"))
 
     problems = []
