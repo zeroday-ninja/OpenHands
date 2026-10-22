@@ -43,6 +43,14 @@
   --color-map-accent-6: var(--oh-map-accent-6);
   /* Ink of the drafting grid the map is drawn on. */
   --color-map-grid: var(--oh-map-grid);
+
+  /*
+   * One step below `text-xs`, for the metadata a drawing hangs off its labels:
+   * a file path under a node name, a commit, an edge kind. Declared as a scale
+   * value rather than written as an off-token size at each site.
+   */
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 1.35;
   --color-basic: var(--oh-color-basic);
   --color-tertiary: var(--oh-color-tertiary);
   --color-tertiary-light: var(--oh-color-tertiary-light);

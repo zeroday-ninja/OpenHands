@@ -149,7 +149,10 @@ describe("projectMapArrowTarget", () => {
 
   it("stays put at the edge of the drawing rather than wrapping around", () => {
     // Arrange
-    const nodes = [node({ id: "origin", x: 0, y: 0 }), node({ id: "right", x: 400, y: 0 })];
+    const nodes = [
+      node({ id: "origin", x: 0, y: 0 }),
+      node({ id: "right", x: 400, y: 0 }),
+    ];
 
     // Act / Assert
     expect(projectMapArrowTarget(nodes, "origin", "left")).toBeNull();

@@ -59,7 +59,8 @@ export function buildProjectMapContextBlock(
 
 const INTENT_OPENING: Record<ProjectMapIntent, string> = {
   ask: "Explain the selection below: what it does, what depends on it, and anything surprising about how it fits together.",
-  change: "I want to change the selection below. Read the files first, then tell me what you plan to do before you do it.",
+  change:
+    "I want to change the selection below. Read the files first, then tell me what you plan to do before you do it.",
   redesign:
     "I want to redesign the selection below. It is user-facing, so treat the visual result as the deliverable.",
 };
@@ -77,7 +78,10 @@ export function buildProjectMapLaunchMessage(
 ): string {
   const prefix = intent === "redesign" ? `${DESIGN_SKILL_COMMAND} ` : "";
   const block = buildProjectMapContextBlock(nodes, options);
-  const body = block === "" ? INTENT_OPENING[intent] : `${INTENT_OPENING[intent]}\n\n${block}`;
+  const body =
+    block === ""
+      ? INTENT_OPENING[intent]
+      : `${INTENT_OPENING[intent]}\n\n${block}`;
   return `${prefix}${body}`;
 }
 

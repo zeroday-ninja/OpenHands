@@ -16,7 +16,10 @@ import {
 describe("resolveProjectMapAccent", () => {
   it("wraps an out-of-range index instead of refusing to draw", () => {
     // Arrange / Act
-    const accent = resolveProjectMapAccent(String(PROJECT_MAP_ACCENT_COUNT + 2), "web");
+    const accent = resolveProjectMapAccent(
+      String(PROJECT_MAP_ACCENT_COUNT + 2),
+      "web",
+    );
 
     // Assert
     expect(accent).toBe(2);
@@ -39,7 +42,9 @@ describe("resolveProjectMapAccent", () => {
     const accents = groupIds.map((id) => resolveProjectMapAccent(null, id));
 
     // Assert: stable for the same id, in range, and not all one colour.
-    expect(accents).toEqual(groupIds.map((id) => resolveProjectMapAccent(null, id)));
+    expect(accents).toEqual(
+      groupIds.map((id) => resolveProjectMapAccent(null, id)),
+    );
     for (const accent of accents) {
       expect(accent).toBeGreaterThanOrEqual(1);
       expect(accent).toBeLessThanOrEqual(PROJECT_MAP_ACCENT_COUNT);
@@ -50,7 +55,9 @@ describe("resolveProjectMapAccent", () => {
   it("resolves to a theme token rather than a colour, in both directions", () => {
     // Act / Assert: the map follows the theme, so no literal colour escapes.
     for (let accent = 1; accent <= PROJECT_MAP_ACCENT_COUNT; accent += 1) {
-      expect(projectMapAccentToken(accent)).toBe(`var(--color-map-accent-${accent})`);
+      expect(projectMapAccentToken(accent)).toBe(
+        `var(--color-map-accent-${accent})`,
+      );
     }
     expect(projectMapAccentToken(99)).toBe(
       `var(--color-map-accent-${PROJECT_MAP_ACCENT_COUNT})`,
@@ -127,7 +134,11 @@ describe("projectMapEdgeGeometry", () => {
 
   it("points the head back along the line it arrived on", () => {
     // Act
-    const rightward = projectMapEdgeHeadPath("filled", { x: 100, y: 50 }, "right");
+    const rightward = projectMapEdgeHeadPath(
+      "filled",
+      { x: 100, y: 50 },
+      "right",
+    );
     const upward = projectMapEdgeHeadPath("filled", { x: 100, y: 50 }, "up");
 
     // Assert: the base of each head sits behind the tip, on the travel axis.

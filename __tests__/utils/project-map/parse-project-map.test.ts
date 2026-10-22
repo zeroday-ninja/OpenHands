@@ -190,7 +190,9 @@ describe("parseProjectMap", () => {
     // Arrange
     const raw = JSON.stringify({
       ...minimalDocument(),
-      notes: [{ id: "n1", text: "the hot path", anchor: "src/gone.ts", x: 3, y: 4 }],
+      notes: [
+        { id: "n1", text: "the hot path", anchor: "src/gone.ts", x: 3, y: 4 },
+      ],
     });
 
     // Act
