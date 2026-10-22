@@ -13,11 +13,7 @@
  * because a path is what makes "change this" unambiguous.
  */
 
-import {
-  PROJECT_MAP_FILE_PATH,
-  type ProjectMapDocument,
-  type ProjectMapNode,
-} from "#/types/project-map";
+import type { ProjectMapDocument, ProjectMapNode } from "#/types/project-map";
 
 /** Why a conversation is being started from the map. */
 export type ProjectMapIntent = "ask" | "change" | "redesign";
@@ -28,6 +24,18 @@ const DESIGN_SKILL_COMMAND = "/frontend-design";
 export interface ProjectMapContextOptions {
   /** The commit the open document was generated against, when it says. */
   commit: string | null;
+  /**
+   * Where the open map is, absolute on the agent server.
+   *
+   * It has to be absolute and it has to be passed in, because the conversation
+   * this message starts does not run where the page is reading: the page reads
+   * the backend's own working directory, and a new conversation gets a
+   * subdirectory of it. A relative `.openhands/project-map.json` would send
+   * the agent looking in its own directory, where there is no map — so the one
+   * thing this feature cannot do without, the agent and the user editing the
+   * same file, would quietly not happen.
+   */
+  mapPath: string;
 }
 
 /** One line per selected node: kind, label, path. */
@@ -47,13 +55,13 @@ export function buildProjectMapContextBlock(
   if (nodes.length === 0) return "";
   const provenance =
     options.commit === null
-      ? PROJECT_MAP_FILE_PATH
-      : `${PROJECT_MAP_FILE_PATH}, generated against ${options.commit}`;
+      ? options.mapPath
+      : `${options.mapPath}, generated against ${options.commit}`;
   return [
     `Selected on the project map (${provenance}):`,
     ...nodes.map(describeProjectMapNode),
     "",
-    `You can edit ${PROJECT_MAP_FILE_PATH} to change the map itself — grouping, labels, hidden nodes and positions all live in that file. Keep every node's x, y, pinned, hidden, group and any label whose label_source is "user".`,
+    `You can edit ${options.mapPath} to change the map itself — grouping, labels, hidden nodes and positions all live in that file. It is an absolute path because it may be outside your working directory. Keep every node's x, y, pinned, hidden, group and any label whose label_source is "user".`,
   ].join("\n");
 }
 

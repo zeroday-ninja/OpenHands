@@ -29,12 +29,16 @@ import {
   PROJECT_MAP_MIN_SCALE,
   useProjectMapStore,
 } from "#/stores/project-map-store";
-import { PROJECT_MAP_VERSION } from "#/types/project-map";
+import {
+  PROJECT_MAP_FILE_PATH,
+  PROJECT_MAP_VERSION,
+} from "#/types/project-map";
 import {
   fitProjectMapViewBox,
   projectMapBounds,
 } from "#/utils/project-map/project-map-layout";
-import { PROJECT_MAP_ANALYSIS_PROMPT } from "./project-map-analysis-prompt";
+import { displayErrorToast } from "#/utils/custom-toast-handlers";
+import { buildProjectMapAnalysisPrompt } from "./project-map-analysis-prompt";
 import { ProjectMapCanvas } from "./project-map-canvas";
 import { ProjectMapChat } from "./project-map-chat";
 import { ProjectMapInspector } from "./project-map-inspector";
@@ -52,7 +56,7 @@ export function ProjectMapPage() {
   const { t } = useTranslation("openhands");
   const { navigate } = useNavigation();
   const frameRef = React.useRef<SVGSVGElement | null>(null);
-  const { data, isLoading, error, unsupportedReason, refetch } =
+  const { data, isLoading, error, unsupportedReason, attemptedPath, refetch } =
     useProjectMap();
   const saveProjectMap = useSaveProjectMap();
   const createConversation = useCreateConversation();
@@ -100,11 +104,22 @@ export function ProjectMapPage() {
     );
   }, [document_, data?.absolutePath, setViewport]);
 
+  // The map is named by its absolute path so the analysis writes the file the
+  // page reads: a conversation's working directory is a subdirectory of the
+  // one this page looks in.
+  const mapPath = attemptedPath ?? PROJECT_MAP_FILE_PATH;
+
   const generate = async () => {
-    const conversation = await createConversation.mutateAsync({
-      query: PROJECT_MAP_ANALYSIS_PROMPT,
-    });
-    navigate(`/conversations/${conversation.conversation_id}`);
+    try {
+      const conversation = await createConversation.mutateAsync({
+        query: buildProjectMapAnalysisPrompt(mapPath),
+      });
+      navigate(`/conversations/${conversation.conversation_id}`);
+    } catch {
+      // The mutation's own toast covers the request; this keeps a thrown
+      // launch from leaving an unhandled rejection behind.
+      displayErrorToast(t(I18nKey.PROJECT_MAP$LAUNCH_FAILED));
+    }
   };
 
   const fitToView = () => {
@@ -236,7 +251,7 @@ export function ProjectMapPage() {
       ))}
 
       {unsupportedReason !== null ? (
-        <Notice testId="project-map-unsupported">
+        <Notice testId="project-map-unsupported" reason={unsupportedReason}>
           {t(
             unsupportedReason === "cloud-backend"
               ? I18nKey.PROJECT_MAP$UNSUPPORTED_CLOUD
@@ -249,9 +264,12 @@ export function ProjectMapPage() {
         </Notice>
       ) : error ? (
         <Notice testId="project-map-read-error">
-          {t(I18nKey.PROJECT_MAP$READ_FAILED, {
-            path: data?.absolutePath ?? "",
-          })}
+          {/* The path comes from the error, not from the data a failed query
+              does not have. Without one — the home directory itself was
+              unreachable — the sentence does not pretend to know it. */}
+          {attemptedPath === null
+            ? t(I18nKey.PROJECT_MAP$READ_FAILED_NO_PATH)
+            : t(I18nKey.PROJECT_MAP$READ_FAILED, { path: attemptedPath })}
         </Notice>
       ) : data?.failure ? (
         <InvalidNotice failure={data.failure} />
@@ -270,16 +288,9 @@ export function ProjectMapPage() {
               <span className={PROJECT_MAP_SECTION_LABEL_CLASS}>
                 {t(I18nKey.PROJECT_MAP$INSPECTOR_TITLE)}
               </span>
-              <ProjectMapInspector
-                document={document_}
-                onOpenInFiles={(node) =>
-                  navigate(
-                    `/conversations?path=${encodeURIComponent(node.path ?? "")}`,
-                  )
-                }
-              />
+              <ProjectMapInspector document={document_} />
             </div>
-            <ProjectMapChat document={document_} />
+            <ProjectMapChat document={document_} mapPath={mapPath} />
             <ProjectMapLegend document={document_} />
           </aside>
         </div>
@@ -291,13 +302,17 @@ export function ProjectMapPage() {
 function Notice({
   children,
   testId,
+  reason,
 }: {
   children: React.ReactNode;
   testId: string;
+  /** Which of several reasons this notice is showing, for the harness. */
+  reason?: string;
 }) {
   return (
     <div
       data-testid={testId}
+      data-reason={reason}
       className="rounded-lg border border-border-subtle bg-base-secondary p-6 text-sm text-text-secondary"
     >
       {children}

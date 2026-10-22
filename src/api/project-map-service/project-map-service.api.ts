@@ -65,6 +65,41 @@ export function isProjectMapUnsupportedError(
 }
 
 /**
+ * A read that failed for a reason other than the file being absent, carrying
+ * the path it tried.
+ *
+ * The page's complaint names that path, and it is the one thing the page
+ * cannot work out for itself: a failed query has no data to read it from, and
+ * resolving it is an async call against the agent server's home directory.
+ */
+export class ProjectMapReadError extends Error {
+  readonly absolutePath: string;
+
+  constructor(absolutePath: string, cause: unknown) {
+    super(`The project map at ${absolutePath} could not be read`, { cause });
+    this.name = "ProjectMapReadError";
+    this.absolutePath = absolutePath;
+  }
+}
+
+/**
+ * The path a failed read tried, or null when it failed before resolving one —
+ * which is what a backend whose home directory is unreachable looks like.
+ *
+ * Read through a property check rather than `instanceof`, for the same reason
+ * {@link isProjectMapUnsupportedError} is: React Query hands back the cached
+ * error object, and a rebuilt instance loses its prototype.
+ */
+export function projectMapReadErrorPath(error: unknown): string | null {
+  if (typeof error !== "object" || error === null) return null;
+  if (!("absolutePath" in error)) return null;
+  const { absolutePath } = error as { absolutePath: unknown };
+  return typeof absolutePath === "string" && absolutePath !== ""
+    ? absolutePath
+    : null;
+}
+
+/**
  * Pure, so the page can decide from the backend it is rendering without
  * waiting for a request.
  */
@@ -130,7 +165,7 @@ class ProjectMapService {
       return { absolutePath, raw: await client.downloadTextFile(absolutePath) };
     } catch (error) {
       if (isSdkHttpStatusError(error, 404)) return { absolutePath, raw: null };
-      throw error;
+      throw new ProjectMapReadError(absolutePath, error);
     } finally {
       client.close();
     }

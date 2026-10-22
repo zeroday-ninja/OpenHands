@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import ProjectMapService, {
+  projectMapReadErrorPath,
   projectMapUnsupportedReasonFor,
   type ProjectMapUnsupportedReason,
 } from "#/api/project-map-service/project-map-service.api";
@@ -84,5 +85,14 @@ export function useProjectMap(conversationId: string | null = null) {
     meta: { disableToast: true },
   });
 
-  return { ...query, unsupportedReason };
+  return {
+    ...query,
+    unsupportedReason,
+    /**
+     * The file the page is looking at, whether or not reading it worked, so a
+     * failure can name it. Null only when the path itself never resolved.
+     */
+    attemptedPath:
+      query.data?.absolutePath ?? projectMapReadErrorPath(query.error),
+  };
 }

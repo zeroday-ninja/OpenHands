@@ -3,14 +3,22 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "../../test-utils";
 import MapRoute from "#/routes/map";
-import ProjectMapService from "#/api/project-map-service/project-map-service.api";
+import ProjectMapService, {
+  ProjectMapReadError,
+} from "#/api/project-map-service/project-map-service.api";
+import translations from "#/i18n/translation.json";
+import { ActiveBackendProvider } from "#/contexts/active-backend-context";
+import { displayErrorToast } from "#/utils/custom-toast-handlers";
 import {
   setActiveSelection,
   setRegisteredBackends,
 } from "#/api/backend-registry/active-store";
 import type { Backend } from "#/api/backend-registry/types";
 import { useProjectMapStore } from "#/stores/project-map-store";
-import { PROJECT_MAP_FILE_PATH, PROJECT_MAP_VERSION } from "#/types/project-map";
+import {
+  PROJECT_MAP_FILE_PATH,
+  PROJECT_MAP_VERSION,
+} from "#/types/project-map";
 
 const launchConversation = vi.hoisted(() => vi.fn());
 
@@ -45,6 +53,20 @@ vi.mock("react-i18next", async (importOriginal) => {
 vi.mock("#/hooks/mutation/resolve-conversation-launch", () => ({
   launchConversation: launchConversation,
 }));
+
+// No `Toaster` is mounted in these renders, so the toast is observed where it
+// is raised rather than where it would be drawn.
+vi.mock("#/utils/custom-toast-handlers", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("#/utils/custom-toast-handlers")>()),
+  displayErrorToast: vi.fn(),
+}));
+
+/** The English copy of a key, read from the file rather than restated here. */
+function copy(key: string): string {
+  return (translations as unknown as Record<string, Record<string, string>>)[
+    key
+  ].en;
+}
 
 const localBackend: Backend = {
   id: "local-test",
@@ -96,8 +118,17 @@ function mapFile(overrides: Record<string, unknown> = {}) {
   });
 }
 
+const cloudBackend: Backend = {
+  id: "cloud-test",
+  name: "Cloud test backend",
+  host: "https://app.all-hands.dev",
+  apiKey: "cloud-key",
+  kind: "cloud",
+};
+
 describe("the project map page", () => {
   beforeEach(() => {
+    vi.mocked(displayErrorToast).mockClear();
     launchConversation.mockReset();
     launchConversation.mockResolvedValue({
       app_conversation_id: "conversation-1",
@@ -141,6 +172,10 @@ describe("the project map page", () => {
     expect(options.initialUserMsg).toContain(
       "Preserve everything the user decided",
     );
+    // The conversation runs in a subdirectory of the directory the page reads,
+    // so the analysis is told the absolute path or it writes a map the page
+    // will never open.
+    expect(options.initialUserMsg).toContain(ABSOLUTE_PATH);
   });
 
   it("explains a malformed document instead of rendering a blank canvas", async () => {
@@ -154,7 +189,9 @@ describe("the project map page", () => {
     renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
 
     // Assert
-    expect(await screen.findByTestId("project-map-invalid")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("project-map-invalid"),
+    ).toBeInTheDocument();
     expect(screen.queryByTestId("project-map-canvas")).toBeNull();
   });
 
@@ -170,7 +207,9 @@ describe("the project map page", () => {
 
     // Assert
     expect(await screen.findByTestId("project-map-canvas")).toBeInTheDocument();
-    expect(screen.getByTestId("project-map-provenance")).toHaveTextContent("abc1234");
+    expect(screen.getByTestId("project-map-provenance")).toHaveTextContent(
+      "abc1234",
+    );
   });
 
   it("frames the whole map when the page opens", async () => {
@@ -248,16 +287,23 @@ describe("the project map page", () => {
     await screen.findByTestId("project-map-canvas");
 
     // Act
-    await user.click(screen.getByTestId("project-map-node-src/stores/events.ts"));
+    await user.click(
+      screen.getByTestId("project-map-node-src/stores/events.ts"),
+    );
 
     // Assert: the chip names it, and the preview is the real message body.
-    expect(screen.getByTestId("project-map-selection-chips")).toHaveTextContent("events");
+    expect(screen.getByTestId("project-map-selection-chips")).toHaveTextContent(
+      "events",
+    );
     const preview = screen.getByTestId("project-map-context-preview");
     expect(preview).toHaveTextContent('store "events" (src/stores/events.ts)');
     expect(preview).toHaveTextContent("generated against abc1234");
 
     // Act: typing a question puts it ahead of the context block.
-    await user.type(screen.getByTestId("project-map-composer"), "why is this slow?");
+    await user.type(
+      screen.getByTestId("project-map-composer"),
+      "why is this slow?",
+    );
 
     // Assert
     expect(preview.textContent?.startsWith("why is this slow?")).toBe(true);
@@ -289,7 +335,9 @@ describe("the project map page", () => {
     const user = userEvent.setup();
     renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
     await screen.findByTestId("project-map-canvas");
-    await user.click(screen.getByTestId("project-map-node-src/routes/home.tsx"));
+    await user.click(
+      screen.getByTestId("project-map-node-src/routes/home.tsx"),
+    );
     await user.click(screen.getByTestId("project-map-toggle-hidden"));
 
     // Act: the agent regenerates against a new commit, moving that node and
@@ -350,7 +398,9 @@ describe("the project map page", () => {
     expect(write).not.toHaveBeenCalled();
 
     // Act: hide a node, which is an edit.
-    await user.click(screen.getByTestId("project-map-node-src/routes/home.tsx"));
+    await user.click(
+      screen.getByTestId("project-map-node-src/routes/home.tsx"),
+    );
     await user.click(screen.getByTestId("project-map-toggle-hidden"));
 
     // Assert
@@ -370,5 +420,107 @@ describe("the project map page", () => {
         expect.objectContaining({ id: "src/routes/home.tsx", hidden: true }),
       ]),
     });
+  });
+
+  it("names the file it tried to read when reading it fails", async () => {
+    // Arrange: the read failed for a reason other than the file being absent.
+    vi.spyOn(ProjectMapService, "readProjectMap").mockRejectedValue(
+      new ProjectMapReadError(ABSOLUTE_PATH, new Error("is a directory")),
+    );
+
+    // Act
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+
+    // Assert: the path comes from the failure, because a failed query has no
+    // data to read it from.
+    const notice = await screen.findByTestId("project-map-read-error");
+    expect(notice).toHaveTextContent(ABSOLUTE_PATH);
+  });
+
+  it("leaves no empty gap when the path itself never resolved", async () => {
+    // Arrange: a failure from before the path was known.
+    vi.spyOn(ProjectMapService, "readProjectMap").mockRejectedValue(
+      new Error("the agent server home is unreachable"),
+    );
+
+    // Act
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+
+    // Assert: a sentence with a hole in it where a path should be is worse
+    // than a sentence that does not promise one.
+    const notice = await screen.findByTestId("project-map-read-error");
+    expect(notice.textContent?.trim()).not.toMatch(/ {2}/);
+    expect(notice.textContent?.trim()).not.toBe("");
+  });
+
+  it("tells the user a launch failed, not that a save failed", async () => {
+    // Arrange
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    launchConversation.mockRejectedValue(new Error("no runtime"));
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+    await user.click(
+      screen.getByTestId("project-map-node-src/stores/events.ts"),
+    );
+
+    // Act
+    await user.click(screen.getByTestId("project-map-change"));
+
+    // Assert: nothing was being written, so the save failure's sentence would
+    // be a lie about what went wrong.
+    await waitFor(() => {
+      expect(displayErrorToast).toHaveBeenCalledWith(
+        copy("PROJECT_MAP$LAUNCH_FAILED"),
+      );
+    });
+    expect(displayErrorToast).not.toHaveBeenCalledWith(
+      copy("PROJECT_MAP$SAVE_FAILED"),
+    );
+  });
+
+  it("tells the agent the map's absolute path, not one relative to its own directory", async () => {
+    // Arrange
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+
+    // Act
+    await user.click(
+      screen.getByTestId("project-map-node-src/stores/events.ts"),
+    );
+
+    // Assert: the conversation this starts gets its own working directory
+    // under the one the page read, so a relative path would point at no map.
+    expect(screen.getByTestId("project-map-context-preview")).toHaveTextContent(
+      ABSOLUTE_PATH,
+    );
+  });
+
+  it("says which kind of backend cannot serve the map, for the harness too", async () => {
+    // Arrange: the active backend only reaches the page through its provider.
+    const read = vi.spyOn(ProjectMapService, "readProjectMap");
+    setRegisteredBackends([cloudBackend]);
+    setActiveSelection({ backendId: cloudBackend.id });
+
+    // Act
+    renderWithProviders(
+      <ActiveBackendProvider>
+        <MapRoute />
+      </ActiveBackendProvider>,
+      { navigation: { currentPath: "/map" } },
+    );
+
+    // Assert
+    const notice = await screen.findByTestId("project-map-unsupported");
+    expect(notice).toHaveAttribute("data-reason", "cloud-backend");
+    expect(read).not.toHaveBeenCalled();
   });
 });

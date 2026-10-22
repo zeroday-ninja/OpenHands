@@ -131,6 +131,30 @@ describe("projectMapRenderModel", () => {
       kind: "calls",
     });
   });
+
+  it("keys an edge with something a DOM attribute can hold", () => {
+    // Arrange
+    const source = document({
+      nodes: [node({ id: "a" }), node({ id: "b" })],
+      edges: [
+        { from: "a", to: "b", kind: "calls", label: null },
+        { from: "a", to: "b", kind: "reads", label: null },
+      ],
+    });
+
+    // Act: the key is also the edge's `data-testid`.
+    const keys = projectMapRenderModel(source).edges.map((edge) => edge.key);
+
+    // Assert: distinct relationships keep distinct keys, and a key a selector
+    // cannot be written for is a key the drawing cannot be addressed by.
+    expect(new Set(keys).size).toBe(2);
+    for (const key of keys) {
+      // eslint-disable-next-line no-control-regex
+      expect(key).not.toMatch(/[\u0000-\u001f]/);
+      expect(key).toContain("a");
+      expect(key).toContain("b");
+    }
+  });
 });
 
 describe("projectMapArrowTarget", () => {

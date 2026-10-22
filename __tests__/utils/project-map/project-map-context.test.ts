@@ -12,6 +12,12 @@ import {
   type ProjectMapNode,
 } from "#/types/project-map";
 
+/**
+ * Where the page found the open map. It is absolute because the conversation
+ * these messages start runs in a subdirectory of the directory the page reads.
+ */
+const MAP_PATH = `/home/agent/workspace/project/${PROJECT_MAP_FILE_PATH}`;
+
 function node(
   overrides: Partial<ProjectMapNode> & { id: string },
 ): ProjectMapNode {
@@ -49,18 +55,36 @@ describe("buildProjectMapContextBlock", () => {
     // Act
     const block = buildProjectMapContextBlock([route, external], {
       commit: "abc1234",
+      mapPath: MAP_PATH,
     });
 
     // Assert
     expect(block).toContain('- route "home" (src/routes/home.tsx)');
     expect(block).toContain('- external "PostHog" (no file)');
     expect(block).toContain("generated against abc1234");
-    expect(block).toContain(PROJECT_MAP_FILE_PATH);
+  });
+
+  it("names the map by the absolute path the agent can open, never a relative one", () => {
+    // Act
+    const block = buildProjectMapContextBlock([route], {
+      commit: null,
+      mapPath: MAP_PATH,
+    });
+
+    // Assert: a bare `.openhands/project-map.json` would resolve against the
+    // conversation's own working directory, which has no map in it.
+    expect(block).toContain(MAP_PATH);
+    for (const line of block.split("\n")) {
+      if (!line.includes(PROJECT_MAP_FILE_PATH)) continue;
+      expect(line).toContain(MAP_PATH);
+    }
   });
 
   it("sends nothing extra when nothing is selected", () => {
     // Act / Assert
-    expect(buildProjectMapContextBlock([], { commit: null })).toBe("");
+    expect(
+      buildProjectMapContextBlock([], { commit: null, mapPath: MAP_PATH }),
+    ).toBe("");
   });
 });
 
@@ -69,6 +93,7 @@ describe("buildProjectMapLaunchMessage", () => {
     // Act
     const message = buildProjectMapLaunchMessage("redesign", [route], {
       commit: null,
+      mapPath: MAP_PATH,
     });
 
     // Assert: the catalog skill loads from the first token of the message.
@@ -80,7 +105,10 @@ describe("buildProjectMapLaunchMessage", () => {
     // Act / Assert
     for (const intent of ["ask", "change"] as const) {
       expect(
-        buildProjectMapLaunchMessage(intent, [route], { commit: null }),
+        buildProjectMapLaunchMessage(intent, [route], {
+          commit: null,
+          mapPath: MAP_PATH,
+        }),
       ).not.toContain("/frontend-design");
     }
   });
@@ -92,9 +120,7 @@ describe("buildProjectMapQuestionMessage", () => {
     const message = buildProjectMapQuestionMessage(
       "why is this slow?",
       [route],
-      {
-        commit: null,
-      },
+      { commit: null, mapPath: MAP_PATH },
     );
 
     // Assert
@@ -106,7 +132,10 @@ describe("buildProjectMapQuestionMessage", () => {
   it("sends only the question when nothing is selected", () => {
     // Act / Assert
     expect(
-      buildProjectMapQuestionMessage("  hello  ", [], { commit: null }),
+      buildProjectMapQuestionMessage("  hello  ", [], {
+        commit: null,
+        mapPath: MAP_PATH,
+      }),
     ).toBe("hello");
   });
 });

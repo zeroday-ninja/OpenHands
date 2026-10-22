@@ -6,6 +6,7 @@ import {
 import type { Backend } from "#/api/backend-registry/types";
 import ProjectMapService, {
   isProjectMapUnsupportedError,
+  projectMapReadErrorPath,
   projectMapUnsupportedReasonFor,
   ProjectMapUnsupportedError,
 } from "#/api/project-map-service/project-map-service.api";
@@ -97,17 +98,23 @@ describe("ProjectMapService", () => {
     expect(close).toHaveBeenCalled();
   });
 
-  it("leaves a real read failure alone so the page can offer a retry", async () => {
+  it("reports a real read failure with the path it tried, so the page can name it", async () => {
     // Arrange
-    downloadTextFile.mockRejectedValue(httpError(500));
+    const cause = httpError(500);
+    downloadTextFile.mockRejectedValue(cause);
 
     // Act
     const error = await ProjectMapService.readProjectMap().catch(
       (caught: unknown) => caught,
     );
 
-    // Assert
+    // Assert: the page has no other way to learn the path — a failed query
+    // carries no data, and resolving it again is an async call.
+    expect(projectMapReadErrorPath(error)).toBe(
+      `/home/agent/workspace/project/${PROJECT_MAP_FILE_PATH}`,
+    );
     expect(error).toBeInstanceOf(Error);
+    expect((error as Error).cause).toBe(cause);
     expect(close).toHaveBeenCalled();
   });
 
