@@ -29,6 +29,20 @@
   --color-markdown-alert-important: var(--oh-markdown-alert-important);
   --color-markdown-alert-warning: var(--oh-markdown-alert-warning);
   --color-markdown-alert-caution: var(--oh-markdown-alert-caution);
+  /*
+   * The project map's accent series. Six hues, spaced so a group keeps its
+   * identity at a hairline stroke width and at an 8% wash, and so no group
+   * shouts louder than another. The map stores an index, never a color, so a
+   * committed `.openhands/project-map.json` follows every theme.
+   */
+  --color-map-accent-1: var(--oh-map-accent-1);
+  --color-map-accent-2: var(--oh-map-accent-2);
+  --color-map-accent-3: var(--oh-map-accent-3);
+  --color-map-accent-4: var(--oh-map-accent-4);
+  --color-map-accent-5: var(--oh-map-accent-5);
+  --color-map-accent-6: var(--oh-map-accent-6);
+  /* Ink of the drafting grid the map is drawn on. */
+  --color-map-grid: var(--oh-map-grid);
   --color-basic: var(--oh-color-basic);
   --color-tertiary: var(--oh-color-tertiary);
   --color-tertiary-light: var(--oh-color-tertiary-light);
@@ -105,6 +119,14 @@
   --oh-markdown-alert-important: #D8B4FE;
   --oh-markdown-alert-warning: #FFE02A;
   --oh-markdown-alert-caution: #FFB3BF;
+  /* Project map accents, tuned for the dark canvas (see tokens above). */
+  --oh-map-accent-1: #7FB2FF;
+  --oh-map-accent-2: #5FD3A6;
+  --oh-map-accent-3: #E0A458;
+  --oh-map-accent-4: #C79CF2;
+  --oh-map-accent-5: #F28FA0;
+  --oh-map-accent-6: #58C8D8;
+  --oh-map-grid: #2A313D;
   --oh-color-basic: var(--cool-grey-400);
   --oh-color-tertiary: var(--cool-grey-800);
   --oh-color-tertiary-light: var(--cool-grey-300);

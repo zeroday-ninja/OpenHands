@@ -71,6 +71,15 @@ export const LIGHT_PLUS_TOKENS: Partial<
   "--oh-markdown-alert-important": "#7E22CE",
   "--oh-markdown-alert-warning": "#6D4C00",
   "--oh-markdown-alert-caution": "#AA2025",
+  // Project map accents: the same six hues, darkened to hold a hairline
+  // stroke and small mono type on paper.
+  "--oh-map-accent-1": "#1F5FBF",
+  "--oh-map-accent-2": "#0E7A52",
+  "--oh-map-accent-3": "#8A5200",
+  "--oh-map-accent-4": "#6D3BC4",
+  "--oh-map-accent-5": "#B5243C",
+  "--oh-map-accent-6": "#0F6E82",
+  "--oh-map-grid": "#D9DEE6",
   // @spec WN-001 — Darker warning text preserves contrast on light surfaces
   "--oh-feedback-warning": "#7D5D08",
   "--oh-color-basic": "#616161",
