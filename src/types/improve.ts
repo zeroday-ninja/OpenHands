@@ -140,6 +140,14 @@ export interface ImproveExplicitRepository {
 /** What one program does on each of its runs. */
 export interface ImproveProgramConfig {
   builder_profile_id: string;
+  /**
+   * Further profiles that take turns building, after `builder_profile_id`.
+   * Empty keeps one builder — and that one runtime then never reviews
+   * anything. The service refuses it alongside explicit
+   * `reviewer_profile_ids`: on the turn a named reviewer builds, it would be
+   * asked to review its own work.
+   */
+  rotate_builder: string[];
   /** Empty means "every available runtime other than the builder's". */
   reviewer_profile_ids: string[];
   repository_source: ImproveRepositorySource;

@@ -3,6 +3,7 @@ import {
   ImproveVerdict,
   type ImproveCycle,
   type ImproveCycleListResponse,
+  type ImproveCycleRepository,
   type ImproveProgramConfig,
   type ImproveRotationResponse,
 } from "#/types/improve";
@@ -25,6 +26,7 @@ export const MOCK_IMPROVE_AUTOMATION_ID =
 
 export const MOCK_IMPROVE_CONFIG: ImproveProgramConfig = {
   builder_profile_id: "aaaaaaaa-0000-0000-0000-000000000001",
+  rotate_builder: [],
   reviewer_profile_ids: [],
   repository_source: "git_sync",
   repositories: [],
@@ -189,6 +191,37 @@ export const MOCK_IMPROVE_ROTATION: ImproveRotationResponse = {
   last_cycle: MOCK_CYCLES[0],
   config: MOCK_IMPROVE_CONFIG,
 };
+
+/**
+ * The rotation a configuration resolves to, the way the service resolves it
+ * when a program's configuration is replaced: the explicit list in order, or
+ * the synced repositories narrowed by the label filter.
+ */
+export function mockImproveRotationFor(
+  config: ImproveProgramConfig,
+): ImproveRotationResponse {
+  const repositories: ImproveCycleRepository[] =
+    config.repository_source === "explicit"
+      ? config.repositories.map((repository, index) => ({
+          label: repository.label,
+          url: repository.url,
+          ref: repository.ref ?? null,
+          index,
+          remote_id: null,
+        }))
+      : REPOSITORIES.filter(
+          (repository) =>
+            config.repository_labels.length === 0 ||
+            config.repository_labels.includes(repository.label),
+        ).map((repository, index) => ({ ...repository, index }));
+
+  return {
+    repositories,
+    next_index: repositories.length === 0 ? null : repositories.length - 1,
+    last_cycle: MOCK_CYCLES[0],
+    config,
+  };
+}
 
 export function mockImproveCyclePage(
   limit: number,

@@ -31,6 +31,7 @@ import type {
   CreateImprovementProgramRequest,
   ImproveCycleListParams,
   ImproveCycleListResponse,
+  ImproveProgramConfig,
   ImproveRotationResponse,
 } from "#/types/improve";
 import {
@@ -1278,7 +1279,7 @@ class AutomationService {
    * while creating one posts to `/v1/preset/improve`.
    */
   private static async requestImprove<T>(
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "PUT",
     path: string,
     body?: object,
   ): Promise<T> {
@@ -1325,6 +1326,26 @@ class AutomationService {
     return AutomationService.requestImprove<ImproveCycleListResponse>(
       "GET",
       `/improve/${encodeURIComponent(automationId)}/cycles?${query}`,
+    );
+  }
+
+  /**
+   * Replace a program's whole configuration, from its next cycle onwards.
+   *
+   * A replacement rather than a patch because that is what the service takes:
+   * the fields constrain each other (a repository source and its companion
+   * list, a builder and its reviewers), so a partial update would have to be
+   * re-validated against the merged result anyway. The answer is the new
+   * rotation, which is how a caller can show what the change put up next.
+   */
+  static replaceImproveConfig(
+    automationId: string,
+    config: ImproveProgramConfig,
+  ): Promise<ImproveRotationResponse> {
+    return AutomationService.requestImprove<ImproveRotationResponse>(
+      "PUT",
+      `/improve/${encodeURIComponent(automationId)}/config`,
+      config,
     );
   }
 

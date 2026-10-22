@@ -11,6 +11,7 @@ import { MemoryRouter, Route, Routes } from "react-router";
 
 import { I18nKey } from "#/i18n/declaration";
 import AutomationService from "#/api/automation-service/automation-service.api";
+import AgentProfilesService from "#/api/agent-profiles-service/agent-profiles-service.api";
 import SoulService, {
   SoulUnsupportedError,
 } from "#/api/soul-service/soul-service.api";
@@ -39,7 +40,13 @@ vi.mock("#/api/automation-service/automation-service.api", () => ({
     getAutomation: vi.fn(),
     getImproveRotation: vi.fn(),
     listImproveCycles: vi.fn(),
+    listGitSyncRemotes: vi.fn(),
+    replaceImproveConfig: vi.fn(),
   },
+}));
+
+vi.mock("#/api/agent-profiles-service/agent-profiles-service.api", () => ({
+  default: { listProfiles: vi.fn(), getProfile: vi.fn() },
 }));
 
 // Only the transport is mocked: whether a backend can serve SOUL.md at all
@@ -73,8 +80,13 @@ const localBackend: Backend = {
 
 const AUTOMATION_ID = "auto-improve-1";
 
+const BUILDER_ID = "profile-builder";
+const CODEX_ID = "profile-codex";
+const GEMINI_ID = "profile-gemini";
+
 const config: ImproveProgramConfig = {
-  builder_profile_id: "profile-builder",
+  builder_profile_id: BUILDER_ID,
+  rotate_builder: [CODEX_ID],
   reviewer_profile_ids: [],
   repository_source: "git_sync",
   repositories: [],
@@ -82,7 +94,7 @@ const config: ImproveProgramConfig = {
   branch_prefix: "improve/",
   max_changed_files: 20,
   open_pr: true,
-  focus: null,
+  focus: "Prefer fixing flaky tests.",
 };
 
 const hazard: ImproveCycleRepository = {
@@ -227,9 +239,67 @@ function renderPage() {
 
 const cycleCards = () => screen.findAllByTestId("improve-cycle-card");
 
+/**
+ * The profile library as the list endpoint answers it. `acp_server` is absent
+ * here on purpose: that is what the detail read below is for, and what the
+ * form has to resolve a runtime from.
+ */
+const profileSummaries = [
+  { id: BUILDER_ID, name: "Claude builder", agent_kind: "acp" },
+  { id: CODEX_ID, name: "Codex", agent_kind: "acp" },
+  { id: GEMINI_ID, name: "Gemini", agent_kind: "acp" },
+];
+
+const acpServers: Record<string, string> = {
+  "Claude builder": "claude-code",
+  Codex: "codex",
+  Gemini: "gemini-cli",
+};
+
+const remotes = {
+  remotes: [
+    { id: hazard.remote_id, label: hazard.label, repo_url: hazard.url },
+    {
+      id: pairwatch.remote_id,
+      label: pairwatch.label,
+      repo_url: pairwatch.url,
+    },
+    { id: biomoe.remote_id, label: biomoe.label, repo_url: biomoe.url },
+  ],
+  unassigned_count: 0,
+};
+
 beforeEach(() => {
   window.localStorage.clear();
   __resetActiveStoreForTests();
+  vi.mocked(AgentProfilesService.listProfiles).mockResolvedValue({
+    profiles: profileSummaries,
+  } as unknown as Awaited<
+    ReturnType<typeof AgentProfilesService.listProfiles>
+  >);
+  vi.mocked(AgentProfilesService.getProfile).mockImplementation(
+    async (name: string) =>
+      ({
+        profile: {
+          agent_kind: "acp",
+          name,
+          acp_server: acpServers[name],
+          acp_model: null,
+        },
+      }) as unknown as Awaited<
+        ReturnType<typeof AgentProfilesService.getProfile>
+      >,
+  );
+  vi.mocked(AutomationService.listGitSyncRemotes).mockResolvedValue(
+    remotes as unknown as Awaited<
+      ReturnType<typeof AutomationService.listGitSyncRemotes>
+    >,
+  );
+  // The service answers the new rotation, which is how a caller learns what
+  // the change put up next.
+  vi.mocked(AutomationService.replaceImproveConfig).mockImplementation(
+    async (_automationId, saved) => ({ ...rotation, config: saved }),
+  );
   vi.mocked(AutomationService.checkHealth).mockResolvedValue({ status: "ok" });
   vi.mocked(AutomationService.getAutomation).mockResolvedValue(automation);
   vi.mocked(AutomationService.getImproveRotation).mockResolvedValue(rotation);
@@ -563,5 +633,228 @@ describe("AutomationImprove learned preferences", () => {
     // would silently drop the first.
     expect(SoulService.saveSoul).toHaveBeenCalledTimes(1);
     expect(displayErrorToast).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("AutomationImprove configuration", () => {
+  /** The form, once the profile library it offers has landed. */
+  const form = async () => {
+    await screen.findByTestId("improve-config-form");
+    await waitFor(() =>
+      expect(screen.getByTestId("improve-config-builder")).not.toBeDisabled(),
+    );
+    return screen.getByTestId("improve-config-form");
+  };
+
+  const save = async () => {
+    fireEvent.click(screen.getByTestId("improve-config-save"));
+    await waitFor(() =>
+      expect(AutomationService.replaceImproveConfig).toHaveBeenCalled(),
+    );
+  };
+
+  const rotationOption = (profileId: string) =>
+    screen
+      .getAllByTestId("improve-config-rotation-option")
+      .find((option) => option.dataset.profileId === profileId) as HTMLElement;
+
+  const reviewerOption = (profileId: string) =>
+    screen
+      .getAllByTestId("improve-config-reviewer-option")
+      .find((option) => option.dataset.profileId === profileId) as HTMLElement;
+
+  it("loads the program's stored configuration, including what an empty reviewer list means", async () => {
+    // Arrange / Act
+    renderPage();
+    await form();
+
+    // Assert — every field the program actually has, not just name and schedule.
+    expect(screen.getByTestId("improve-config-builder")).toHaveValue(
+      BUILDER_ID,
+    );
+    expect(rotationOption(CODEX_ID)).toBeChecked();
+    expect(rotationOption(GEMINI_ID)).not.toBeChecked();
+    // An empty stored reviewer list is "every other runtime", not "nobody".
+    expect(
+      screen.getByTestId("improve-config-reviewers-automatic"),
+    ).toBeChecked();
+    expect(screen.getByTestId("improve-config-branch-prefix")).toHaveValue(
+      config.branch_prefix,
+    );
+    expect(screen.getByTestId("improve-config-max-files")).toHaveValue(
+      config.max_changed_files,
+    );
+    expect(screen.getByTestId("improve-config-open-pr")).toBeChecked();
+    expect(screen.getByTestId("improve-config-focus")).toHaveValue(
+      config.focus as string,
+    );
+    // The profile's runtime is in the option, since that is what makes a
+    // review independent.
+    expect(screen.getByTestId("improve-config-builder")).toHaveTextContent(
+      "Claude builder",
+    );
+  });
+
+  it("sends the whole configuration to the program's config endpoint", async () => {
+    renderPage();
+    await form();
+
+    fireEvent.change(screen.getByTestId("improve-config-focus"), {
+      target: { value: "Prefer accessibility fixes." },
+    });
+    fireEvent.change(screen.getByTestId("improve-config-max-files"), {
+      target: { value: "8" },
+    });
+    fireEvent.click(rotationOption(GEMINI_ID));
+    await save();
+
+    expect(AutomationService.replaceImproveConfig).toHaveBeenCalledWith(
+      AUTOMATION_ID,
+      {
+        ...config,
+        rotate_builder: [CODEX_ID, GEMINI_ID],
+        max_changed_files: 8,
+        focus: "Prefer accessibility fixes.",
+      },
+    );
+  });
+
+  it("cannot send chosen reviewers together with a rotating builder", async () => {
+    renderPage();
+    await form();
+
+    // Act — name the reviewers on a program that rotates its builder, the
+    // combination the service answers 422 for.
+    fireEvent.click(screen.getByTestId("improve-config-reviewers-chosen"));
+
+    // Assert — the rotation is no longer offered, and says why.
+    expect(
+      screen.getByTestId("improve-config-rotation-unavailable"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("improve-config-rotation-option"),
+    ).not.toBeInTheDocument();
+    // Reviewers are required once chosen explicitly, so there is nothing to
+    // send until one is picked.
+    expect(
+      screen.getByTestId("improve-config-reviewers-error"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("improve-config-save")).toBeDisabled();
+
+    fireEvent.click(reviewerOption(CODEX_ID));
+    await save();
+
+    expect(AutomationService.replaceImproveConfig).toHaveBeenCalledWith(
+      AUTOMATION_ID,
+      { ...config, rotate_builder: [], reviewer_profile_ids: [CODEX_ID] },
+    );
+  });
+
+  it("swaps which repository fields apply when the source changes", async () => {
+    renderPage();
+    await form();
+
+    // The synced-repository filter is what a git_sync program narrows with.
+    expect(screen.getByTestId("improve-config-labels")).toBeInTheDocument();
+    fireEvent.click(
+      screen
+        .getAllByTestId("improve-config-label-option")
+        .find((option) => option.dataset.label === hazard.label) as HTMLElement,
+    );
+
+    // Act — its own list instead.
+    fireEvent.click(screen.getByTestId("improve-config-source-explicit"));
+
+    // Assert — the filter no longer applies, and a list is required.
+    expect(
+      screen.queryByTestId("improve-config-labels"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("improve-config-repositories-error"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("improve-config-save")).toBeDisabled();
+
+    fireEvent.click(screen.getByTestId("improve-config-repository-add"));
+    fireEvent.change(screen.getByTestId("improve-config-repository-label"), {
+      target: { value: "hazard" },
+    });
+    fireEvent.change(screen.getByTestId("improve-config-repository-url"), {
+      target: { value: "https://github.com/zeroday-ninja/HAZARD" },
+    });
+    await save();
+
+    // The label picked for the other source is gone from the payload rather
+    // than sent alongside a list the service refuses it with.
+    expect(AutomationService.replaceImproveConfig).toHaveBeenCalledWith(
+      AUTOMATION_ID,
+      {
+        ...config,
+        repository_source: "explicit",
+        repository_labels: [],
+        repositories: [
+          {
+            label: "hazard",
+            url: "https://github.com/zeroday-ninja/HAZARD",
+            ref: null,
+          },
+        ],
+      },
+    );
+  });
+
+  it("refuses a repository URL a cycle could not clone before sending anything", async () => {
+    renderPage();
+    await form();
+    fireEvent.click(screen.getByTestId("improve-config-source-explicit"));
+    fireEvent.click(screen.getByTestId("improve-config-repository-add"));
+    fireEvent.change(screen.getByTestId("improve-config-repository-label"), {
+      target: { value: "hazard" },
+    });
+
+    fireEvent.change(screen.getByTestId("improve-config-repository-url"), {
+      target: { value: "http://github.com/zeroday-ninja/HAZARD" },
+    });
+
+    expect(
+      screen.getByTestId("improve-config-repository-url-error"),
+    ).toHaveTextContent(
+      I18nKey.AUTOMATIONS$IMPROVE$CONFIG_REPOSITORY_URL_INVALID,
+    );
+    fireEvent.click(screen.getByTestId("improve-config-save"));
+    expect(AutomationService.replaceImproveConfig).not.toHaveBeenCalled();
+  });
+
+  it("shows which repository is up next from the rotation the save answered with", async () => {
+    // Arrange — the saved configuration narrows the rotation to one
+    // repository, so what runs next changes with it.
+    vi.mocked(AutomationService.replaceImproveConfig).mockImplementation(
+      async (_automationId, saved) => ({
+        repositories: [{ ...biomoe, index: 0 }],
+        next_index: 0,
+        last_cycle: null,
+        config: saved,
+      }),
+    );
+    renderPage();
+    await form();
+
+    // Act
+    fireEvent.click(
+      screen
+        .getAllByTestId("improve-config-label-option")
+        .find((option) => option.dataset.label === biomoe.label) as HTMLElement,
+    );
+    await save();
+
+    // Assert — the page answers "what now?" without a reload.
+    const entries = await screen.findAllByTestId("improve-rotation-entry");
+    expect(entries).toHaveLength(1);
+    expect(entries[0].dataset.repository).toBe(biomoe.url);
+    expect(
+      within(entries[0]).getByTestId("improve-rotation-up-next"),
+    ).toBeInTheDocument();
+    expect(displaySuccessToast).toHaveBeenCalledWith(
+      I18nKey.AUTOMATIONS$IMPROVE$CONFIG_SAVED,
+    );
   });
 });

@@ -13,6 +13,7 @@ import { NotFoundState } from "#/components/features/automations/detail/not-foun
 import { ErrorState } from "#/components/features/automations/error-state";
 import { BackendNotConfigured } from "#/components/features/automations/backend-not-configured";
 import { GitSyncSkeleton } from "#/components/features/automations/git-sync/git-sync-skeleton";
+import { ImproveConfigForm } from "#/components/features/automations/improve/improve-config-form";
 import { ImproveCycleHistory } from "#/components/features/automations/improve/improve-cycle-history";
 import { ImproveRotationStrip } from "#/components/features/automations/improve/improve-rotation-strip";
 import { extensionModuleEmptyStateClassName } from "#/utils/extension-module-card-classes";
@@ -86,6 +87,14 @@ function ImproveProgramPage({ automationId }: { automationId: string }) {
         repositories={rotation.data.repositories}
         nextIndex={rotation.data.next_index}
         lastVerdicts={lastVerdictByRepository(cycleList)}
+      />
+
+      {/* Keyed by the program so the form is seeded from the configuration of
+          the automation it is editing, and never carries a draft across. */}
+      <ImproveConfigForm
+        key={automationId}
+        automationId={automationId}
+        config={rotation.data.config}
       />
 
       {cycles.isError && cycleList.length === 0 ? (
