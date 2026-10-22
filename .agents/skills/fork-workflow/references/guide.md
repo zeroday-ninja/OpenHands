@@ -2,7 +2,13 @@
 
 ## Checks on fork PRs and on the fork's `main`
 
-Upstream workflows run unchanged on the fork. Secrets are scoped to the repository that defines them, and an unset secret expands to an empty string. So every job that needs an upstream secret, or that writes to an upstream resource, fails here on every run, whatever the change.
+Upstream workflows run unchanged on the fork. The fork has no secrets to give them. On 22 October 2026 it had 0 repository secrets, 0 organization secrets shared with it, and 0 environments. An unset secret expands to an empty string. So every job that needs one of upstream's secrets, or that writes to an upstream resource, fails here on every run, whatever the change. Recheck the counts before you rely on this:
+
+```sh
+gh api repos/zeroday-ninja/OpenHands/actions/secrets --jq .total_count
+gh api repos/zeroday-ninja/OpenHands/actions/organization-secrets --jq .total_count
+gh api repos/zeroday-ninja/OpenHands/environments --jq .total_count
+```
 
 | Check | Result on the fork | Why | What to do |
 |---|---|---|---|
@@ -13,17 +19,33 @@ Upstream workflows run unchanged on the fork. Secrets are scoped to the reposito
 | `PR Artifacts` / `cleanup-after-merge` | Fails after every merge | `actions/checkout` gets an empty `token` (`Input required and not supplied: token`) because `OPENHANDS_BOT_GITHUB_PAT_PUBLIC` is unset. | Remove `.pr/` yourself before merge (see below). |
 | `release` | Fails on every push to `main` | release-please needs a GitHub App (`Input required and not supplied: app-id`). | Ignore. The fork does not publish releases. |
 | `Docker` (push to `main`) | Fails at the push step | `ghcr.io/openhands/agent-canvas` is upstream's registry (`denied: permission_denied`). The image still builds, so a build error above the push step is real. | Read the log above the push. Only the push failure is expected. |
-| `Mock-LLM E2E Tests` | Often red on `main` | These are real test failures, not missing secrets. Every completed run on `main` from 21 to 22 October 2026 failed. | Before you blame your change, compare with the latest run on `main`: `gh run list --repo zeroday-ninja/OpenHands --workflow "Mock-LLM E2E Tests" --branch main --limit 5`. Report any failing spec that is not red on `main`. |
+| `Mock-LLM E2E Tests` | Often red on `main` | These are real test failures, not missing secrets. From 21 to 22 October 2026, every run on `main` that finished without being cancelled failed. Cancelled runs are not failures; skip them when you compare. | Before you blame your change, compare with the latest run on `main`: `gh run list --repo zeroday-ninja/OpenHands --workflow "Mock-LLM E2E Tests" --branch main --limit 5`. Report any failing spec that is not red on `main`. |
 
 Read a failure before you classify it: `gh run view <id> --repo zeroday-ninja/OpenHands --log-failed`. A row in this table is only a starting point. If the log shows a different error, treat it as real.
 
 ## Stacked PRs
 
-When a merged PR's head branch is deleted, GitHub retargets open PRs based on that branch to its base. The fork does not delete head branches on merge (`delete_branch_on_merge` is `false`), and `gh pr merge` deletes them only with `--delete-branch`. So nothing retargets the upper PR.
+GitHub made stacked pull requests generally available on 6 October 2026. Use them for any new stack. They need `gh` 2.90.0 or later and the `gh stack` extension (`gh extension install github/gh-stack`). Every branch must be in the fork itself; cross-fork stacks are not supported.
 
-This happened: #10 was stacked on #9 (`feat/acp-usage-limit-failover`). #9 merged and its branch stayed. #10 was then merged into the dead `feat/acp-usage-limit-failover` branch, not `main`. #12 and #14 were needed to carry its commits to `main`.
+```sh
+gh stack init                         # first branch; trunk defaults to main
+gh stack add <branch>                 # next layer on top
+gh stack submit --remote origin       # push, open the PRs with the right bases, link them as a stack
+gh stack sync --remote origin         # after main moves: fetch, cascade-rebase, push
+gh stack merge --rebase               # only when the user asks
+```
 
-Before you merge an upper PR, check its base:
+Run these from a clone whose `origin` is `zeroday-ninja/OpenHands`. `gh stack` has no `--repo` flag; `--remote` picks the remote.
+
+When a lower PR in a linked stack merges, GitHub retargets the PRs above it to the stack's base. You do not edit bases by hand. `gh stack merge` is all-or-nothing: if any PR in the range cannot merge, none merge. Merge from the bottom up. To merge a stack through the API, use the asynchronous merge endpoint (`PUT /repos/{owner}/{repo}/pulls/{n}/merge-async`); the synchronous merge endpoint does not support stacks.
+
+### Recovery: a chain that is not linked as a stack
+
+PRs chained by hand (each based on the branch of the one below) are not a stack. GitHub retargets the upper PR to the lower PR's base when the lower PR's branch is deleted. #10 below shows that merging alone did not retarget it. The fork does not delete head branches on merge (`delete_branch_on_merge` is `false`), and `gh pr merge` deletes them only with `--delete-branch`.
+
+This happened: #10 was based on #9's branch `feat/acp-usage-limit-failover`. #9 merged and its branch stayed. #10 was then merged into that dead branch, not `main`. #12 and #14 were needed to carry its commits to `main`.
+
+If you find such a chain, link it: `gh stack link --remote origin <bottom> <next> ...` takes branches or PR numbers from bottom to top and reuses the open PRs. If you cannot link it, check the upper PR's base before every merge:
 
 ```sh
 gh pr view <n> --repo zeroday-ninja/OpenHands --json baseRefName --jq .baseRefName
