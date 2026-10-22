@@ -11,8 +11,10 @@ import { ContextMenuListItem } from "#/components/features/context-menu/context-
 import { StyledTooltip } from "#/components/shared/buttons/styled-tooltip";
 import { useGitRepositories } from "#/hooks/query/use-git-repositories";
 import { useAgentProfiles } from "#/hooks/query/use-agent-profiles";
+import { useSearchRepositories } from "#/hooks/query/use-search-repositories";
 import { useLlmProfiles } from "#/hooks/query/use-llm-profiles";
 import { useClickOutsideElement } from "#/hooks/use-click-outside-element";
+import { useDebounce } from "#/hooks/use-debounce";
 import { useUserProviders } from "#/hooks/use-user-providers";
 import { usePromptTextareaResize } from "#/hooks/use-prompt-textarea-resize";
 import { I18nKey } from "#/i18n/declaration";
@@ -24,11 +26,14 @@ import { ContextMenu } from "#/ui/context-menu";
 import { extensionModuleCardPillClassName } from "#/utils/extension-module-card-classes";
 import { chatInputPillButtonClassName } from "#/utils/form-control-classes";
 import { modalTitleLgClassName } from "#/utils/modal-classes";
-import { cn } from "#/utils/utils";
+import { cn, getProviderName } from "#/utils/utils";
 import { formatModelNameForDisplay } from "#/utils/format-model-name";
 import type { Provider } from "#/types/settings";
 
 const PROFILE_LABEL_MAX_CHARS = 18;
+// Automations clone the picker's `owner/repo` names as GitHub repositories.
+const AUTOMATION_CLONE_PROVIDER: Provider = "github";
+const REPOSITORY_SEARCH_DEBOUNCE_MS = 300;
 
 function truncateLabel(label: string): string {
   return label.length <= PROFILE_LABEL_MAX_CHARS
@@ -328,6 +333,7 @@ export function AutomationSetupPromptStack({
   showTitle = true,
   model,
   agentProfileId,
+  repositoryReadOnly = false,
   onPromptChange,
   onRepositoryChange,
   onModelChange,
@@ -345,6 +351,8 @@ export function AutomationSetupPromptStack({
   showTitle?: boolean;
   model: string;
   agentProfileId: string;
+  /** Show the repositories without letting them be added or removed. */
+  repositoryReadOnly?: boolean;
   onPromptChange: (value: string) => void;
   onRepositoryChange: (value: string) => void;
   onModelChange: (profileName: string) => void;
@@ -382,7 +390,28 @@ export function AutomationSetupPromptStack({
     .flatMap((page) => page.items)
     .map((repo) => repo.full_name);
   const repositorySearchText = repositorySearch.trim().toLowerCase();
-  const listedRepositoryNames = repositoryNames.filter(
+  // The loaded pages may not hold every match, so a search also asks the
+  // provider.
+  const debouncedRepositorySearch = useDebounce(
+    repositorySearch.trim(),
+    REPOSITORY_SEARCH_DEBOUNCE_MS,
+  );
+  const repositorySearchQuery = useSearchRepositories(
+    debouncedRepositorySearch,
+    repositoryProvider,
+    !isRepositoryMenuOpen,
+  );
+  const isRepositorySearchLoading =
+    repositorySearchText !== "" &&
+    (repositorySearchQuery.isFetching ||
+      debouncedRepositorySearch !== repositorySearch.trim());
+  const searchedRepositoryNames = repositorySearchText
+    ? (repositorySearchQuery.data ?? []).map((repo) => repo.full_name)
+    : [];
+  const listedRepositoryNames = [
+    ...repositoryNames,
+    ...searchedRepositoryNames,
+  ].filter(
     (name, index, names) =>
       !repositories.includes(name) && names.indexOf(name) === index,
   );
@@ -392,6 +421,9 @@ export function AutomationSetupPromptStack({
       )
     : listedRepositoryNames;
   const addLabel = `${t(I18nKey.BUTTON$ADD)} ${t(I18nKey.AUTOMATIONS$DETAIL$REPOSITORIES)}`;
+  const isRepositoryProviderUnsupported =
+    repositoryProvider !== null &&
+    repositoryProvider !== AUTOMATION_CLONE_PROVIDER;
 
   const writeRepositories = (next: string[]) => {
     onRepositoryChange(next.join(", "));
@@ -487,23 +519,32 @@ export function AutomationSetupPromptStack({
                     {repositorySuffix}
                   </span>
                 ) : null}
-                <button
-                  ref={repositoryAddRef}
-                  type="button"
-                  data-testid="automation-setup-repository-add"
-                  aria-label={addLabel}
-                  aria-haspopup="menu"
-                  aria-expanded={isRepositoryMenuOpen}
-                  className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-[var(--oh-muted)] hover:bg-white/10 hover:text-white"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => {
-                    setRepositorySearch("");
-                    setIsRepositoryMenuOpen((open) => !open);
-                  }}
-                >
-                  <Plus className="size-4" aria-hidden />
-                </button>
-                {isLocalGithubTokenMissing ? (
+                {repositoryReadOnly ? (
+                  <span
+                    data-testid="automation-setup-repository-read-only"
+                    className="text-xs text-muted"
+                  >
+                    {t(I18nKey.AUTOMATION_SETUP$REPOSITORIES_READ_ONLY)}
+                  </span>
+                ) : (
+                  <button
+                    ref={repositoryAddRef}
+                    type="button"
+                    data-testid="automation-setup-repository-add"
+                    aria-label={addLabel}
+                    aria-haspopup="menu"
+                    aria-expanded={isRepositoryMenuOpen}
+                    className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-[var(--oh-muted)] hover:bg-white/10 hover:text-white"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => {
+                      setRepositorySearch("");
+                      setIsRepositoryMenuOpen((open) => !open);
+                    }}
+                  >
+                    <Plus className="size-4" aria-hidden />
+                  </button>
+                )}
+                {isLocalGithubTokenMissing && !repositoryReadOnly ? (
                   <StyledTooltip
                     content={t(
                       I18nKey.AUTOMATION_SETUP$GITHUB_TOKEN_REQUIRED_TOOLTIP,
@@ -528,7 +569,7 @@ export function AutomationSetupPromptStack({
                     ref={repositoryMenuRef}
                     role="menu"
                     data-testid="automation-setup-repository-menu"
-                    className="absolute top-full left-0 z-[60] mt-1 flex max-h-72 w-[260px] flex-col overflow-hidden rounded-md border border-border-subtle bg-tertiary py-1 shadow-lg"
+                    className="absolute top-full left-0 z-[60] mt-1 flex max-h-72 w-[min(28rem,calc(100vw-3rem))] flex-col overflow-hidden rounded-md border border-border-subtle bg-tertiary py-1 shadow-lg"
                   >
                     <div className="shrink-0 px-2">
                       <div className="relative">
@@ -565,6 +606,17 @@ export function AutomationSetupPromptStack({
                         }
                       }}
                     >
+                      {isRepositoryProviderUnsupported && repositoryProvider ? (
+                        <p
+                          data-testid="automation-setup-repository-unsupported"
+                          className="px-2 py-2 text-sm text-muted"
+                        >
+                          {t(
+                            I18nKey.AUTOMATION_SETUP$REPOSITORY_PROVIDER_UNSUPPORTED,
+                            { provider: getProviderName(repositoryProvider) },
+                          )}
+                        </p>
+                      ) : null}
                       {isRepositoryListError ? (
                         <p
                           data-testid="automation-setup-repository-error"
@@ -572,7 +624,8 @@ export function AutomationSetupPromptStack({
                         >
                           {t(I18nKey.HOME$FAILED_TO_LOAD_REPOSITORIES)}
                         </p>
-                      ) : isRepositoryListLoading &&
+                      ) : (isRepositoryListLoading ||
+                          isRepositorySearchLoading) &&
                         visibleRepositoryNames.length === 0 ? (
                         <div
                           data-testid="automation-setup-repository-loading"
@@ -591,14 +644,20 @@ export function AutomationSetupPromptStack({
                               writeRepositories([...repositories, name]);
                               setIsRepositoryMenuOpen(false);
                             }}
-                            className="flex w-full items-center"
+                            isDisabled={isRepositoryProviderUnsupported}
+                            className="flex w-full items-center text-wrap"
                           >
-                            <span className="truncate">{name}</span>
+                            {/* Organization/project/repository names can be
+                                long; wrap them so every option reads in full. */}
+                            <span className="min-w-0 break-all" title={name}>
+                              {name}
+                            </span>
                           </ContextMenuListItem>
                         ))
                       )}
                       {repositorySearchText &&
                       !isRepositoryListLoading &&
+                      !isRepositorySearchLoading &&
                       !isRepositoryListError &&
                       visibleRepositoryNames.length === 0 ? (
                         <p className="px-2 py-2 text-sm text-muted italic">
@@ -642,21 +701,25 @@ export function AutomationSetupPromptStack({
                       "gap-1 pr-1",
                     )}
                   >
-                    <span className="truncate">{item}</span>
-                    <button
-                      type="button"
-                      data-testid="automation-setup-repository-remove"
-                      aria-label={`${t(I18nKey.COMMON$REMOVE)} ${item}`}
-                      className="inline-flex size-4 items-center justify-center rounded-full text-tertiary-light hover:bg-white/10 hover:text-white"
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() =>
-                        writeRepositories(
-                          repositories.filter((entry) => entry !== item),
-                        )
-                      }
-                    >
-                      <X className="size-3" aria-hidden />
-                    </button>
+                    <span className="truncate" title={item}>
+                      {item}
+                    </span>
+                    {repositoryReadOnly ? null : (
+                      <button
+                        type="button"
+                        data-testid="automation-setup-repository-remove"
+                        aria-label={`${t(I18nKey.COMMON$REMOVE)} ${item}`}
+                        className="inline-flex size-4 items-center justify-center rounded-full text-tertiary-light hover:bg-white/10 hover:text-white"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() =>
+                          writeRepositories(
+                            repositories.filter((entry) => entry !== item),
+                          )
+                        }
+                      >
+                        <X className="size-3" aria-hidden />
+                      </button>
+                    )}
                   </span>
                 ))}
               </div>
