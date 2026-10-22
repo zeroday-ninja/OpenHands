@@ -2287,6 +2287,269 @@ createInterface({ input: process.stdin }).on("line", (line) => {
 });
 `;
 
+/** The variants `fixture project-map` can write. */
+const PROJECT_MAP_FIXTURE_VARIANTS = [
+  "small",
+  "regenerated",
+  "warnings",
+  "unsupported-version",
+  "invalid-field",
+  "not-json",
+];
+
+/**
+ * A small, deterministic project map: two groups, eight nodes covering seven
+ * kinds, five edge kinds, one hidden node, one pinned node, one node with no
+ * summary, one node with no edges, one plate tall enough to show its path line,
+ * and one anchored note. Everything in it is named `QA_`/`qa/`, so no
+ * assertion can collide with a real repository.
+ */
+function projectMapFixtureDocument() {
+  const node = (id, kind, label, summary, x, y, group, extra = {}) => ({
+    id,
+    kind,
+    label,
+    path: id.startsWith("ext:") ? null : id,
+    group,
+    summary,
+    size: extra.size ?? 60,
+    x,
+    y,
+    ...(extra.pinned ? { pinned: true } : {}),
+    ...(extra.hidden ? { hidden: true } : {}),
+  });
+  return {
+    version: 1,
+    generated_at: "2026-10-20T12:00:00Z",
+    commit: "qa1234c",
+    groups: [
+      { id: "qa-web", label: "QA_Web", accent: "1" },
+      { id: "qa-data", label: "QA_Data", accent: "3" },
+    ],
+    nodes: [
+      node(
+        "qa/src/routes/home.tsx",
+        "route",
+        "QA_Home route",
+        "The QA home page.",
+        0,
+        0,
+        "qa-web",
+        // Big enough that its plate carries the path line under the label.
+        { size: 480 },
+      ),
+      // No summary: the inspector's "No summary yet" line needs one.
+      node(
+        "qa/src/components/panel.tsx",
+        "component",
+        "QA_Panel",
+        "",
+        0,
+        140,
+        "qa-web",
+        { size: 80 },
+      ),
+      node(
+        "qa/src/hooks/use-things.ts",
+        "hook",
+        "QA_Things hook",
+        "Reads the QA things for the panel.",
+        0,
+        280,
+        "qa-web",
+        { size: 40 },
+      ),
+      node(
+        "qa/src/legacy/old.ts",
+        "module",
+        "QA_Legacy",
+        "Left over from the old QA build.",
+        0,
+        420,
+        "qa-web",
+        { size: 30, hidden: true },
+      ),
+      node(
+        "qa/src/api/things.ts",
+        "service",
+        "QA_Things service",
+        "Talks to the QA endpoint.",
+        360,
+        0,
+        "qa-data",
+      ),
+      node(
+        "qa/src/stores/things.ts",
+        "store",
+        "QA_Things store",
+        "Holds the QA things the panel reads.",
+        360,
+        140,
+        "qa-data",
+        { size: 50, pinned: true },
+      ),
+      node(
+        "ext:qa-api",
+        "external",
+        "QA_External API",
+        "An API outside the repository.",
+        720,
+        0,
+        null,
+        { size: 0 },
+      ),
+      // Nothing connects to it: the inspector's "Nothing in the map connects
+      // to this yet" needs a node with no edges.
+      node(
+        "qa/docs",
+        "dir",
+        "QA_Docs",
+        "Notes nothing else links to.",
+        720,
+        280,
+        null,
+        { size: 200 },
+      ),
+    ],
+    edges: [
+      {
+        from: "qa/src/routes/home.tsx",
+        to: "qa/src/components/panel.tsx",
+        kind: "renders",
+      },
+      {
+        from: "qa/src/routes/home.tsx",
+        to: "qa/src/hooks/use-things.ts",
+        kind: "imports",
+      },
+      {
+        from: "qa/src/components/panel.tsx",
+        to: "qa/src/hooks/use-things.ts",
+        kind: "calls",
+      },
+      {
+        from: "qa/src/components/panel.tsx",
+        to: "qa/src/stores/things.ts",
+        kind: "reads",
+      },
+      {
+        from: "qa/src/hooks/use-things.ts",
+        to: "qa/src/api/things.ts",
+        kind: "calls",
+      },
+      {
+        from: "qa/src/api/things.ts",
+        to: "qa/src/stores/things.ts",
+        kind: "writes",
+      },
+      { from: "qa/src/api/things.ts", to: "ext:qa-api", kind: "calls" },
+    ],
+    notes: [
+      {
+        id: "qa-note-store",
+        text: "QA note: the store is the one to watch.",
+        anchor: "qa/src/stores/things.ts",
+        x: 620,
+        y: -80,
+      },
+    ],
+  };
+}
+
+/**
+ * One fixture document as the text to write, or null for an unknown variant.
+ * Text rather than an object because two variants are deliberately not valid
+ * documents: the page's invalid and warning states have no other way in.
+ */
+function projectMapFixture(variant) {
+  if (variant === "not-json") return "{ this is not a map document\n";
+  const document = projectMapFixtureDocument();
+  if (variant === "regenerated") {
+    // A later analysis of the same repository: new commit, one node gone, one
+    // node new, and every carried-over field (position, group, label, pinned,
+    // hidden) deliberately different from `small`, so what regeneration keeps
+    // and what it replaces is visible rather than asserted.
+    document.commit = "qa5678d";
+    document.generated_at = "2026-10-21T09:00:00Z";
+    document.notes = [];
+    document.nodes = document.nodes
+      .filter((node) => node.id !== "ext:qa-api")
+      .map((node, index) => ({
+        ...node,
+        label: `${node.label} (analysis)`,
+        summary: "Described again by a later analysis.",
+        group: "qa-data",
+        x: 0,
+        y: index * 140,
+        pinned: false,
+        hidden: false,
+      }));
+    document.nodes.push({
+      id: "qa/src/api/cache.ts",
+      kind: "module",
+      label: "QA_Cache",
+      path: "qa/src/api/cache.ts",
+      group: "qa-data",
+      summary: "New in this analysis.",
+      size: 40,
+      x: 0,
+      y: 980,
+    });
+    document.edges = document.edges
+      .filter((edge) => edge.to !== "ext:qa-api")
+      .concat({
+        from: "qa/src/api/things.ts",
+        to: "qa/src/api/cache.ts",
+        kind: "reads",
+      });
+    return `${JSON.stringify(document, null, 2)}\n`;
+  }
+  if (variant === "warnings") {
+    // One of each repair the parser reports.
+    document.nodes.push({
+      id: "qa/src/components/panel.tsx",
+      kind: "component",
+      label: "QA_Panel again",
+      path: "qa/src/components/panel.tsx",
+      group: "qa-web",
+      summary: "An id that is already taken.",
+      size: 10,
+      x: 180,
+      y: 560,
+    });
+    document.nodes.push({
+      id: "qa/src/orphan.ts",
+      kind: "module",
+      label: "QA_Orphan",
+      path: "qa/src/orphan.ts",
+      group: "qa-missing",
+      summary: "Names a group this document does not declare.",
+      size: 20,
+      x: 360,
+      y: 420,
+    });
+    document.edges.push({
+      from: "qa/src/routes/home.tsx",
+      to: "qa/src/gone.ts",
+      kind: "calls",
+    });
+    document.notes.push({
+      id: "qa-note-lost",
+      text: "QA note whose subject is gone.",
+      anchor: "qa/src/gone.ts",
+      x: 180,
+      y: -80,
+    });
+  } else if (variant === "unsupported-version") {
+    document.version = 99;
+  } else if (variant === "invalid-field") {
+    document.nodes[0].kind = "spaceship";
+  } else if (variant !== "small") {
+    return null;
+  }
+  return `${JSON.stringify(document, null, 2)}\n`;
+}
+
 async function cmdFixture({ positional, flags }) {
   const run = loadRun(flags);
   const [kind] = positional;
@@ -2394,6 +2657,72 @@ async function cmdFixture({ positional, flags }) {
         : "QA fixture file created by control-openhands.\n",
     );
     out({ ok: true, path });
+    return;
+  }
+  if (kind === "project-map") {
+    // The document the /map page reads. Without a conversation the page looks
+    // in the backend's own working directory, which is `workspace/project`
+    // under the agent server's home, so the path is resolved from this run's
+    // `/api/file/home` rather than guessed.
+    const variant =
+      flags.variant && flags.variant !== true ? String(flags.variant) : "small";
+    const raw =
+      flags.remove || flags.unreadable ? null : projectMapFixture(variant);
+    if (flags.remove || flags.unreadable) {
+      // The page's empty state needs the file gone, which is also the state a
+      // repository that was never analysed is in.
+      const home = await http(run, "GET", "/api/file/home");
+      const path = join(
+        String(home.json?.home ?? ""),
+        "workspace",
+        "project",
+        ".openhands",
+        "project-map.json",
+      );
+      const existed = existsSync(path);
+      if (existed) rmSync(path, { recursive: true });
+      // A directory where the file should be: the download fails with
+      // something other than a 404, which is the page's read-error state.
+      if (flags.unreadable) mkdirSync(path, { recursive: true });
+      out({
+        ok: true,
+        path,
+        removed: existed,
+        unreadable: Boolean(flags.unreadable),
+        hint: "An open /map page holds the file in its cache: `browser reload`.",
+      });
+      return;
+    }
+    if (raw === null) {
+      usage(
+        `Unknown project-map variant ${variant}; one of ${PROJECT_MAP_FIXTURE_VARIANTS.join("|")}`,
+        "control-openhands fixture project-map --variant warnings",
+      );
+      return;
+    }
+    const home = await http(run, "GET", "/api/file/home");
+    const base = home.json?.home;
+    if (!base) {
+      throw new CliError("The agent server did not report a home directory.", {
+        code: 1,
+        hint: "control-openhands doctor",
+      });
+    }
+    const dir = join(base, "workspace", "project", ".openhands");
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, "project-map.json");
+    // --unreadable left a directory behind; writing the document again is how
+    // a recipe gets back to a readable map.
+    if (existsSync(path) && lstatSync(path).isDirectory())
+      rmSync(path, { recursive: true });
+    writeFileSync(path, raw);
+    out({
+      ok: true,
+      path,
+      variant,
+      bytes: raw.length,
+      hint: "An open /map page holds the file in its cache: click `testid=project-map-refresh`, or `browser reload`.",
+    });
     return;
   }
   if (kind === "tarball") {
@@ -2551,7 +2880,7 @@ async function cmdFixture({ positional, flags }) {
     return;
   }
   usage(
-    "Usage: control-openhands fixture git-repo|git-remote|folder|image|file|tarball|skill|mcp-server [--name N] [--remote URL]",
+    "Usage: control-openhands fixture git-repo|git-remote|folder|image|file|tarball|skill|mcp-server|project-map [--name N] [--remote URL] [--variant V]",
     "control-openhands fixture git-repo --name qa-repo",
   );
 }
@@ -4548,7 +4877,7 @@ Lifecycle
 Arrange (preconditions, never UI proof)
   api           Call this run's API with its session key (writes need --write)
   llm           show | set | preset deepseek | check — configure LLM profiles from an env key
-  fixture       git-repo | git-remote | folder | image | file | tarball | skill | mcp-server — disposable fixtures in the run
+  fixture       git-repo | git-remote | folder | image | file | tarball | skill | mcp-server | project-map — disposable fixtures in the run
 
 Essential pathways (driven through the real UI)
   login         Public mode: enter the session key on the API-key screen
@@ -4702,6 +5031,10 @@ control-openhands fixture folder [--name qa-folder]
 control-openhands fixture image [--name qa-image] [--width 160 --height 96]   # PNG under evidence/_fixtures
 control-openhands fixture file [--name qa-note.txt] [--content TEXT]
 control-openhands fixture tarball [--name qa-tarball]   # evidence/_fixtures/qa-tarball.tar.gz (main.py prints pong)
+control-openhands fixture project-map [--variant small|regenerated|warnings|unsupported-version|invalid-field|not-json] [--remove|--unreadable]
+        # .openhands/project-map.json in the backend's working dir (workspace/project under
+        # the agent server's home), the document the /map page reads; prints the path.
+        # --remove deletes it again (the empty state); --unreadable leaves a directory there
 control-openhands fixture skill [--name qa-hello] [--repo qa-repo] [--trigger qa-ping] [--body TEXT] [--commit]
         # SKILL.md in the run's private ~/.agents/skills, or in a fixture repo's .agents/skills;
         # --commit records it in the repo (a New Worktree conversation checks out commits only)
