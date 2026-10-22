@@ -15,6 +15,12 @@ import type {
   AutomationRunsResponse,
 } from "#/types/automation";
 import { AutomationRunStatus } from "#/types/automation";
+import { IMPROVE_PRESET_TYPE } from "#/types/improve";
+import {
+  MOCK_IMPROVE_ROTATION,
+  mockImproveCyclePage,
+} from "#/fixtures/improve-program";
+import { isImprovementProgram } from "#/utils/improve-program";
 import { MOCK_AUTOMATIONS_RESPONSE } from "./automations.mock";
 import { MOCK_AUTOMATION_RUNS } from "./automation-runs.mock";
 
@@ -410,6 +416,92 @@ export const AUTOMATION_HANDLERS = [
   }),
 
   // POST /api/automation/v1/preset/:kind — Create a prompt/plugin automation
+  // GET /api/automation/v1/improve/:automationId/rotation — the rotation and
+  // which repository the next run takes. Registered before the generic
+  // `/v1/:id` handlers below, which would otherwise never see these paths.
+  http.get(
+    "*/api/automation/v1/improve/:automationId/rotation",
+    async ({ params }) => {
+      await delay(200);
+
+      const automation = automations.get(params.automationId as string);
+      if (!automation) {
+        return HttpResponse.json(
+          { detail: "Automation not found" },
+          { status: 404 },
+        );
+      }
+      if (!isImprovementProgram(automation)) {
+        return HttpResponse.json(
+          { detail: "Not an improvement program" },
+          { status: 409 },
+        );
+      }
+
+      return HttpResponse.json(MOCK_IMPROVE_ROTATION);
+    },
+  ),
+
+  // GET /api/automation/v1/improve/:automationId/cycles — cycle history
+  http.get(
+    "*/api/automation/v1/improve/:automationId/cycles",
+    async ({ params, request }) => {
+      await delay(200);
+
+      const automation = automations.get(params.automationId as string);
+      if (!automation) {
+        return HttpResponse.json(
+          { detail: "Automation not found" },
+          { status: 404 },
+        );
+      }
+      if (!isImprovementProgram(automation)) {
+        return HttpResponse.json(
+          { detail: "Not an improvement program" },
+          { status: 409 },
+        );
+      }
+
+      const url = new URL(request.url);
+      const limit = Number(url.searchParams.get("limit") ?? "20");
+      const offset = Number(url.searchParams.get("offset") ?? "0");
+      return HttpResponse.json(mockImproveCyclePage(limit, offset));
+    },
+  ),
+
+  // POST /api/automation/v1/preset/improve — create an improvement program.
+  // Ahead of the generic preset handler, which rejects unknown kinds.
+  http.post("*/api/automation/v1/preset/improve", async ({ request }) => {
+    await delay(200);
+
+    const body = (await request.clone().json()) as {
+      name: string;
+      trigger: Automation["trigger"];
+      improve: Record<string, unknown>;
+      timeout?: number;
+    };
+    const now = new Date().toISOString();
+    const automation: Automation = {
+      id: crypto.randomUUID(),
+      name: body.name,
+      prompt: null,
+      model: null,
+      trigger: body.trigger,
+      enabled: true,
+      created_at: now,
+      updated_at: now,
+      last_triggered_at: null,
+      preset_metadata: {
+        preset_type: IMPROVE_PRESET_TYPE,
+        improve: body.improve,
+      },
+      ...(typeof body.timeout === "number" && { timeout: body.timeout }),
+    };
+
+    automations.set(automation.id, automation);
+    return HttpResponse.json(automation, { status: 201 });
+  }),
+
   http.post("*/api/automation/v1/preset/:kind", async ({ params, request }) => {
     await delay(200);
 

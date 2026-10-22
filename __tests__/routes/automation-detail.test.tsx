@@ -506,3 +506,33 @@ describe("AutomationDetail — script automations", () => {
     ).not.toBeInTheDocument();
   });
 });
+
+describe("AutomationDetail — improvement programs", () => {
+  it("links to the program dashboard when the automation is one", async () => {
+    // Arrange
+    vi.mocked(AutomationService.getAutomation).mockResolvedValue({
+      ...automation,
+      preset_metadata: { preset_type: "improve", improve: {} },
+    });
+
+    // Act
+    renderDetail();
+
+    // Assert
+    expect(await screen.findByTestId("improve-program-link")).toHaveAttribute(
+      "href",
+      "/automations/improve/auto-1",
+    );
+  });
+
+  it("does not offer the dashboard for an ordinary automation", async () => {
+    // Arrange / Act
+    renderDetail();
+
+    // Assert
+    await screen.findByTestId("automation-prompt-content");
+    expect(
+      screen.queryByTestId("improve-program-link"),
+    ).not.toBeInTheDocument();
+  });
+});

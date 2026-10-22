@@ -50,6 +50,31 @@ export const GIT_SYNC_QUERY_KEYS = {
 } as const;
 
 /**
+ * Improvement programs, the automations backend's repository rotation. Keyed
+ * per automation under one root so a write to any part of a program (or a
+ * backend switch) invalidates every view of it.
+ */
+export const IMPROVE_QUERY_KEYS = {
+  all: ["improve-program"] as const,
+  rotation: (automationId: string, backendId: string, orgId: string | null) =>
+    ["improve-program", "rotation", automationId, backendId, orgId] as const,
+  cycles: (
+    automationId: string,
+    page: { limit: number; offset: number },
+    backendId: string,
+    orgId: string | null,
+  ) =>
+    [
+      "improve-program",
+      "cycles",
+      automationId,
+      page,
+      backendId,
+      orgId,
+    ] as const,
+} as const;
+
+/**
  * The user's SOUL.md on the active agent server. Keyed by backend so
  * switching backends never shows another server's file.
  */

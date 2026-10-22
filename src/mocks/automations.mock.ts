@@ -1,4 +1,8 @@
 import type { AutomationsResponse } from "#/types/automation";
+import {
+  MOCK_IMPROVE_AUTOMATION_ID,
+  MOCK_IMPROVE_CONFIG,
+} from "#/fixtures/improve-program";
 
 /**
  * Mock automations data matching the AutomationResponse schema from the backend.
@@ -172,6 +176,28 @@ export const MOCK_AUTOMATIONS_RESPONSE: AutomationsResponse = {
       notification: "GitHub release body update",
       last_triggered_at: daysAgo(3),
     },
+    {
+      // An improvement program: the only thing that marks one is
+      // `preset_metadata.preset_type`, which the detail page reads to offer
+      // its rotation-and-cycles dashboard.
+      id: MOCK_IMPROVE_AUTOMATION_ID,
+      name: "Rotating repository improvements",
+      trigger: {
+        type: "cron",
+        schedule: "0 6 * * *",
+        schedule_human: "Daily at 06:00",
+      },
+      enabled: true,
+      timeout: 3600,
+      created_at: daysAgo(14),
+      updated_at: now,
+      prompt: null,
+      preset_metadata: {
+        preset_type: "improve",
+        improve: MOCK_IMPROVE_CONFIG,
+      },
+      last_triggered_at: daysAgo(0),
+    },
   ],
-  total: 7,
+  total: 8,
 };
