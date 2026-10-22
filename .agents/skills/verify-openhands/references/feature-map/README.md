@@ -261,8 +261,9 @@ How to write and prove new entries: [../mapping.md](../mapping.md).
 | F29 | [Git Sync repositories](F29-git-sync-repositories.md) | add, sync, configure, promote and remove repositories, per-automation assignment, empty and no-default states, fallback to F24 | `/automations/git-sync` | an automation backend with `git-sync/remotes` (`launch --automation-path`); `fixture git-remote` | 16 |
 | F30 | [SOUL.md standing preferences](F30-soul-settings.md) | the user's `SOUL.md`: default vs own file, save, revert, limits, unsupported backends | `/settings/soul`, settings nav, command menu | an Agent Server with `GET /api/soul` (`launch --sdk-path`); no LLM | 11 |
 | F31 | [Improvement programs](F31-improvement-programs.md) | rotation and up-next, cycle history, verdicts, cited sources, adversarial reviews, SOUL.md proposals | a program's detail page, `/automations/improve/<id>` | an automation backend with the improve API and an Agent Server with `GET /api/soul` (both from checkouts); no LLM | 20 |
+| F32 | [Project map](F32-project-map.md) | the `/map` drawing of the repository, its editor buffer and explicit save, the regeneration merge, and the chat that launches conversations from a selection | `/map`, sidebar **Project map**, command menu | `fixture project-map`; an LLM profile for the launcher buttons; Cloud unsupported state blocked | 35 |
 
-31 families, 830 sub-features. `control-openhands map ids` lists every ID with its file.
+32 families, 865 sub-features. `control-openhands map ids` lists every ID with its file.
 
 ### Neighbouring families
 
@@ -274,6 +275,7 @@ Several pages are shared. Each behavior has one owner; the others reference its 
 - Agent behavior settings: the condenser, agent context and verification pages are F15; the SOUL.md page is F30, which also owns its nav and command-menu entries (the nav itself is F09, the menu F02). The **Add to SOUL.md** action that writes into the same document belongs to F31.
 - Automations: dashboard F21, creation F22, detail and runs F23, Git Sync F24 (the single-repository page a backend without the remotes API shows; also the page's health, permission and loading gates) and F29 (the repositories page with the remotes API); the setup page's form, drafts and Test are F28 (F22 keeps the agent-assisted recipes, F23 owns edit mode). An improvement program's rotation and cycle history are F31, which owns the link to it from the detail page; everything else on that page stays F23.
 - Customize: MCP F17, skills F18, plugins F19, apps F20; the hub and its navigation are in F17.
+- Project map: the `/map` page is F32, which also owns its sidebar and command-menu entries (the rail itself is F02, the menu F02). The conversations its buttons start belong to F06 and F07, and **Open in Files** leaves for Home (F03); the drawer's own file views stay F08.
 - Backends: adding and switching backends is F25; launcher flags that create them are F26.
 
 ## Not mapped
