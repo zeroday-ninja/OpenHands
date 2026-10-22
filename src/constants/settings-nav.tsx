@@ -1,4 +1,10 @@
-import { AppWindow, Brain, Route as RouteIcon, Shield } from "lucide-react";
+import {
+  AppWindow,
+  Brain,
+  Route as RouteIcon,
+  Shield,
+  Sparkles,
+} from "lucide-react";
 import KeyIcon from "#/icons/key.svg?react";
 import MemoryIcon from "#/icons/memory_icon.svg?react";
 import CircuitIcon from "#/icons/u-circuit.svg?react";
@@ -68,6 +74,15 @@ export const OSS_NAV_ITEMS: SettingsNavItem[] = [
     to: "/settings/secrets",
     text: "SETTINGS$NAV_SECRETS",
     subtitle: "SETTINGS$PAGE_SECRETS_SUBLINE",
+  },
+  {
+    // The user's own SOUL.md: standing preferences the agent applies to every
+    // conversation, including ACP runtimes. Agent-server resource, so the page
+    // renders an unsupported state on Cloud or on a server without the route.
+    icon: <Sparkles className="size-4" strokeWidth={2} aria-hidden />,
+    to: "/settings/soul",
+    text: "SETTINGS$NAV_SOUL",
+    subtitle: "SETTINGS$PAGE_SOUL_SUBLINE",
   },
 ];
 

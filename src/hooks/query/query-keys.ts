@@ -49,6 +49,15 @@ export const GIT_SYNC_QUERY_KEYS = {
   assignments: ["git-sync", "assignments"] as const,
 } as const;
 
+/**
+ * The user's SOUL.md on the active agent server. Keyed by backend so
+ * switching backends never shows another server's file.
+ */
+export const SOUL_QUERY_KEYS = {
+  all: ["soul"] as const,
+  byBackend: (backendId: string) => ["soul", backendId] as const,
+} as const;
+
 export const TOOL_CATALOG_QUERY_KEYS = {
   all: ["tool-catalog"] as const,
 } as const;
