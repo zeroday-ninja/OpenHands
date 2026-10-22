@@ -25,19 +25,35 @@ Read a failure before you classify it: `gh run view <id> --repo zeroday-ninja/Op
 
 ## Stacked PRs
 
-GitHub made stacked pull requests generally available on 6 October 2026. Use them for any new stack. They need `gh` 2.90.0 or later and the `gh stack` extension (`gh extension install github/gh-stack`). Every branch must be in the fork itself; cross-fork stacks are not supported.
+GitHub made stacked pull requests generally available on 6 October 2026. Use them for any new stack. They need `gh` 2.90.0 or later, Git 2.36 or later, and the `gh stack` extension (`gh extension install github/gh-stack`). Every branch must be in the fork itself; cross-fork stacks are not supported. The behaviour below was checked on `gh stack` v0.2.1. If `gh stack --version` reports another version, rerun the check at the end of this section first.
+
+### Pin the repository with `GH_REPO` on every command
+
+`--remote origin` only chooses where Git pushes and fetches. `gh stack` finds its GitHub API repository separately, through go-gh's `repository.Current()`. That function takes `GH_REPO` first. Without it, a fork clone with the usual `upstream` remote resolves to `OpenHands/OpenHands`, because a remote named `upstream` sorts before `origin`. `git config remote.pushDefault origin` does not change this. So a bare `gh stack` command sends its API calls to upstream.
+
+Prefix every `gh stack` command with `GH_REPO=zeroday-ninja/OpenHands`, even in a clone with only `origin`. Also pass the flags that keep each command from prompting; under a PTY the bare forms open an editor or a menu and block.
 
 ```sh
-gh stack init                         # first branch; trunk defaults to main
-gh stack add <branch>                 # next layer on top
-gh stack submit --remote origin       # push, open the PRs with the right bases, link them as a stack
-gh stack sync --remote origin         # after main moves: fetch, cascade-rebase, push
-gh stack merge --rebase               # only when the user asks
+GH_REPO=zeroday-ninja/OpenHands gh stack init <first-branch>
+GH_REPO=zeroday-ninja/OpenHands gh stack add <next-branch>
+GH_REPO=zeroday-ninja/OpenHands gh stack submit --auto --remote origin   # push, open draft PRs, link them as a stack
+GH_REPO=zeroday-ninja/OpenHands gh stack view --json
+GH_REPO=zeroday-ninja/OpenHands gh stack sync --remote origin            # after main moves: fetch, rebase, push
+GH_REPO=zeroday-ninja/OpenHands gh stack merge --yes --rebase            # only when the user asks
 ```
 
-Run these from a clone whose `origin` is `zeroday-ninja/OpenHands`. `gh stack` has no `--repo` flag; `--remote` picks the remote.
+- After `init`, `jq -r .repository "$(git rev-parse --git-common-dir)/gh-stack"` must print `github.com:zeroday-ninja/OpenHands`. If it prints `OpenHands/OpenHands`, `init` ran without `GH_REPO`. Run `GH_REPO=zeroday-ninja/OpenHands gh stack unstack --local`, which makes no API call, then run `init` again with the prefix. This value is a check on `init`, not a guard: `gh stack` does not use it to choose where API calls go. In a two-remote clone whose stack was recorded as `zeroday-ninja/OpenHands`, a bare `gh stack merge` still called `OpenHands/OpenHands`.
+- `submit --auto` generates each PR's title and body. Then set each body with `gh pr edit <n> --repo zeroday-ninja/OpenHands --body-file <file>`, following the PR body rules in `SKILL.md`.
+- Run `merge` from a branch of the stack, with no argument, so it merges the whole stack. A bare number is tried as a stack number before a PR number, so `merge 42` can select another stack. To merge only part of a stack, ask the user first.
+- `submit` exits 9 with `Stacked PRs are not enabled for this repository` when the token is bad too, so run `gh auth status` before you report that. On 22 October 2026, `gh api repos/zeroday-ninja/OpenHands/stacks` returned `[]` with HTTP 200.
 
 When a lower PR in a linked stack merges, GitHub retargets the PRs above it to the stack's base. You do not edit bases by hand. `gh stack merge` is all-or-nothing: if any PR in the range cannot merge, none merge. Merge from the bottom up. To merge a stack through the API, use the asynchronous merge endpoint (`PUT /repos/{owner}/{repo}/pulls/{n}/merge-async`); the synchronous merge endpoint does not support stacks.
+
+To recheck the repository pinning without changing anything on GitHub, run this from a branch of a stack. The bad token makes every request fail with 401. The debug log still shows the owner each request names, which must be `zeroday-ninja`:
+
+```sh
+GH_REPO=zeroday-ninja/OpenHands GH_TOKEN=invalid GH_DEBUG=api gh stack view --json 2>&1 | grep -E 'GraphQL variables|^> (GET|POST)'
+```
 
 ### Recovery: a chain that is not linked as a stack
 
@@ -45,7 +61,7 @@ PRs chained by hand (each based on the branch of the one below) are not a stack.
 
 This happened: #10 was based on #9's branch `feat/acp-usage-limit-failover`. #9 merged and its branch stayed. #10 was then merged into that dead branch, not `main`. #12 and #14 were needed to carry its commits to `main`.
 
-If you find such a chain, link it: `gh stack link --remote origin <bottom> <next> ...` takes branches or PR numbers from bottom to top and reuses the open PRs. If you cannot link it, check the upper PR's base before every merge:
+If you find such a chain, link it: `GH_REPO=zeroday-ninja/OpenHands gh stack link --remote origin <bottom> <next> ...` takes branches or PR numbers from bottom to top and reuses the open PRs. It creates no local tracking state. If you cannot link it, check the upper PR's base before every merge:
 
 ```sh
 gh pr view <n> --repo zeroday-ninja/OpenHands --json baseRefName --jq .baseRefName
