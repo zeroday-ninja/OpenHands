@@ -14,6 +14,8 @@ import { resolveNewConversationWorkspace } from "#/api/conversation-workspace";
 import GitService from "#/api/git-service/git-service.api";
 import AgentServerConversationService from "#/api/conversation-service/agent-server-conversation-service.api";
 import AgentServerRuntimeService from "#/api/runtime-service/agent-server-runtime-service";
+import ProjectMapService from "#/api/project-map-service/project-map-service.api";
+import { PROJECT_MAP_FILE_PATH } from "#/types/project-map";
 
 const host = "http://localhost:9876";
 const cid = "11111111-1111-4111-8111-111111111111";
@@ -72,6 +74,8 @@ beforeEach(() => {
         return HttpResponse.json({ original: "before", modified: "after" });
       if (url.pathname.endsWith("/file/download"))
         return HttpResponse.text("plan contents");
+      if (url.pathname.endsWith("/file/upload"))
+        return HttpResponse.json({ success: true });
       if (url.pathname.endsWith("/bash/execute_bash_command"))
         return HttpResponse.json({
           exit_code: 0,
@@ -209,6 +213,47 @@ describe("conversation runtime boundaries", () => {
     );
     expect(paths).toContain(
       `/api/conversations/${cid}/bash/execute_bash_command`,
+    );
+  });
+
+  it("routes the project map to the conversation's own workspace", async () => {
+    // A repository cloned inside this conversation's container is invisible to
+    // a host-level file call, so both legs have to be conversation-scoped and
+    // anchored on the conversation's own working dir — which is also the only
+    // directory the runtime routes accept a path inside.
+    const read = await ProjectMapService.readProjectMap({
+      conversationId: cid,
+    });
+
+    expect(read.workspace).toEqual({
+      conversationId: cid,
+      workingDir: "/workspace",
+    });
+    expect(read.absolutePath).toBe(`/workspace/${PROJECT_MAP_FILE_PATH}`);
+    expect(paths).toContain(
+      `/api/conversations/${cid}/file/download?path=${encodeURIComponent(read.absolutePath)}`,
+    );
+
+    await ProjectMapService.writeProjectMap("{}\n", { conversationId: cid });
+    expect(paths).toContain(
+      `/api/conversations/${cid}/file/upload?path=${encodeURIComponent(read.absolutePath)}`,
+    );
+    // Nothing was asked of the agent server's own filesystem.
+    expect(paths).not.toContain(
+      `/api/file/download?path=${encodeURIComponent(read.absolutePath)}`,
+    );
+  });
+
+  it("reads the host workspace for a map with no conversation", async () => {
+    // The `/map` page opened from the sidebar has no conversation to follow,
+    // so it reads the backend's configured working directory — host-level,
+    // with no conversation prefix and no `cid`.
+    const read = await ProjectMapService.readProjectMap();
+
+    expect(read.workspace.conversationId).toBeNull();
+    expect(read.absolutePath.startsWith("/home/agent/")).toBe(true);
+    expect(paths).toContain(
+      `/api/file/download?path=${encodeURIComponent(read.absolutePath)}`,
     );
   });
 

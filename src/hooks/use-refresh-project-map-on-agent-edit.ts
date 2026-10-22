@@ -73,10 +73,11 @@ function pathsFromACPEdit(event: OHEvent): string[] {
 /**
  * True when this event is the agent reporting that it just wrote the map.
  *
- * The path is compared by suffix because the two ends resolve it differently:
- * the page reads the backend's working directory, while the conversation runs
- * in a subdirectory of it, so the agent's absolute path is longer than — but
- * ends with — `.openhands/project-map.json`.
+ * The path is compared by suffix because the two ends name it differently: the
+ * agent reports an absolute path in whichever workspace it is working in — a
+ * directory on the host, or `/workspace` inside its own container — and all
+ * the page needs to know is that the file it wrote was the map, which is to
+ * say that the path ends with `.openhands/project-map.json`.
  */
 function wroteTheProjectMap(event: OHEvent): boolean {
   const paths = [...pathsFromObservation(event), ...pathsFromACPEdit(event)];

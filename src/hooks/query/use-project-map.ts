@@ -1,8 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import ProjectMapService, {
   projectMapReadErrorPath,
+  projectMapUnavailableRuntimeConversation,
   projectMapUnsupportedReasonFor,
   type ProjectMapUnsupportedReason,
+  type ProjectMapWorkspace,
 } from "#/api/project-map-service/project-map-service.api";
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import { PROJECT_MAP_QUERY_KEYS } from "#/hooks/query/query-keys";
@@ -21,6 +23,8 @@ import type { PlacedProjectMapDocument } from "#/types/project-map";
  * readable complaint, or the empty state without inventing a fourth state.
  */
 export interface ProjectMapView {
+  /** The workspace this view was read from, which the page names on screen. */
+  workspace: ProjectMapWorkspace;
   absolutePath: string;
   /**
    * Identity of the file revision this view was read from, for the editor
@@ -37,7 +41,13 @@ export interface ProjectMapView {
 }
 
 /**
- * The project map for the active workspace.
+ * The project map of one workspace: the conversation's when the page is bound
+ * to one, the backend's own working directory when it is not.
+ *
+ * The conversation is passed in rather than read from the route, because the
+ * `/map` page can hold a conversation the URL does not name (see
+ * `project-map-page.tsx`). It is part of the query key, so switching workspace
+ * is a different cache entry rather than a stale document from somewhere else.
  *
  * Parsing happens in the query function rather than in the component so the
  * page re-renders against a stable object, and so a malformed document is a
@@ -61,6 +71,7 @@ export function useProjectMap(conversationId: string | null = null) {
       const revision = projectMapRevision(file.absolutePath, file.raw);
       if (file.raw === null) {
         return {
+          workspace: file.workspace,
           absolutePath: file.absolutePath,
           revision,
           missing: true,
@@ -72,6 +83,7 @@ export function useProjectMap(conversationId: string | null = null) {
       const result = parseProjectMap(file.raw);
       if (!result.ok) {
         return {
+          workspace: file.workspace,
           absolutePath: file.absolutePath,
           revision,
           missing: false,
@@ -81,6 +93,7 @@ export function useProjectMap(conversationId: string | null = null) {
         };
       }
       return {
+        workspace: file.workspace,
         absolutePath: file.absolutePath,
         revision,
         missing: false,
@@ -100,6 +113,18 @@ export function useProjectMap(conversationId: string | null = null) {
   return {
     ...query,
     unsupportedReason,
+    /**
+     * The workspace on screen, once a read has resolved one. Null while the
+     * first read is in flight and when it failed before resolving one.
+     */
+    workspace: query.data?.workspace ?? null,
+    /**
+     * The conversation whose runtime could not be reached, so the page says
+     * the sandbox is gone instead of drawing an empty canvas for it.
+     */
+    unavailableRuntimeConversationId: projectMapUnavailableRuntimeConversation(
+      query.error,
+    ),
     /**
      * The file the page is looking at, whether or not reading it worked, so a
      * failure can name it. Null only when the path itself never resolved.

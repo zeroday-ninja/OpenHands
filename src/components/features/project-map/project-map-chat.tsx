@@ -56,6 +56,14 @@ export interface ProjectMapChatProps {
    * has to start one.
    */
   conversationId: string | null;
+  /**
+   * Workspace a first send should open its conversation in: the one the map
+   * was read from, so the agent and the page share a filesystem and the map
+   * does not change under the user when the conversation binds. Null on a
+   * backend whose conversations get their own isolated sandbox, where the
+   * workspace is the conversation's to choose and the page follows it.
+   */
+  launchWorkingDir: string | null;
   /** Called with the id of the conversation a send just created. */
   onConversationStarted: (conversationId: string) => void;
 }
@@ -64,6 +72,7 @@ export function ProjectMapChat({
   document: map,
   mapPath,
   conversationId,
+  launchWorkingDir,
   onConversationStarted,
 }: ProjectMapChatProps) {
   const { t } = useTranslation("openhands");
@@ -110,6 +119,7 @@ export function ProjectMapChat({
     try {
       const conversation = await createConversation.mutateAsync({
         query: message,
+        ...(launchWorkingDir === null ? {} : { workingDir: launchWorkingDir }),
       });
       setQuestion("");
       onConversationStarted(conversation.conversation_id);

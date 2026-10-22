@@ -25,15 +25,17 @@ export interface ProjectMapContextOptions {
   /** The commit the open document was generated against, when it says. */
   commit: string | null;
   /**
-   * Where the open map is, absolute on the agent server.
+   * Where the open map is, absolute in the workspace the page read it from.
    *
-   * It has to be absolute and it has to be passed in, because the conversation
-   * this message starts does not run where the page is reading: the page reads
-   * the backend's own working directory, and a new conversation gets a
-   * subdirectory of it. A relative `.openhands/project-map.json` would send
-   * the agent looking in its own directory, where there is no map — so the one
+   * It has to be absolute and it has to be passed in, because the page and the
+   * conversation need not share a working directory: an unbound page reads the
+   * backend's own, and a conversation gets its own directory or its own
+   * container. A relative `.openhands/project-map.json` would send the agent
+   * looking wherever it happens to be, where there may be no map — so the one
    * thing this feature cannot do without, the agent and the user editing the
-   * same file, would quietly not happen.
+   * same file, would quietly not happen. The page keeps both ends on one
+   * workspace (see `project-map-page.tsx`); this path is what names the file
+   * inside it.
    */
   mapPath: string;
 }

@@ -10,22 +10,47 @@
  *
  * The chat beside the canvas is a real conversation, not a launcher. A live
  * transcript needs the conversation WebSocket, which used to be reachable only
- * from a route that names a conversation; `ProjectMapConversation` binds one to
- * the pane explicitly instead, so the first send opens a conversation and the
- * answer arrives here rather than on another page. Asking what something is,
- * being told, and pointing at it on the drawing are then one activity instead
- * of three.
+ * from a route that names a conversation; this page binds one explicitly
+ * instead, so the first send opens a conversation and the answer arrives here
+ * rather than on another page. Asking what something is, being told, and
+ * pointing at it on the drawing are then one activity instead of three.
+ *
+ * **Which workspace the page is looking at.** The bound conversation is also
+ * the answer to that, and this component is its one owner and writer. A
+ * conversation under `OH_CONVERSATION_RUNTIME=docker` runs in its own
+ * container, so the repository it cloned — and the only copy of
+ * `.openhands/project-map.json` that exists — is inside that sandbox and
+ * invisible to the agent server's own filesystem. The map therefore follows
+ * the conversation: reads, writes, the analysis prompt and the chat's context
+ * block all name the workspace of the bound conversation, and only an unbound
+ * page falls back to the backend's configured working directory. Either way
+ * the workspace is named on screen, because the failure this feature actually
+ * has is not an error message — it is a plausible-looking empty map of
+ * somewhere else.
  */
 
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { Crosshair, Eye, RefreshCw, Save, Sparkles } from "lucide-react";
+import {
+  Crosshair,
+  Eye,
+  Maximize2,
+  RefreshCw,
+  Save,
+  Sparkles,
+} from "lucide-react";
 import { I18nKey } from "#/i18n/declaration";
+import type { ProjectMapWorkspace } from "#/api/project-map-service/project-map-service.api";
 import { useNavigation } from "#/context/navigation-context";
+import { ScopedConversationIdProvider } from "#/context/scoped-conversation-id-context";
+import { useActiveBackend } from "#/contexts/active-backend-context";
+import { WebSocketProviderWrapper } from "#/contexts/websocket-provider-wrapper";
 import { useCreateConversation } from "#/hooks/mutation/use-create-conversation";
 import { useSaveProjectMap } from "#/hooks/mutation/use-save-project-map";
+import { useConversationWorkspace } from "#/hooks/query/use-conversation-workspace";
 import { useProjectMap } from "#/hooks/query/use-project-map";
 import { useRefreshProjectMapOnAgentEdit } from "#/hooks/use-refresh-project-map-on-agent-edit";
+import { EventHandler } from "#/wrapper/event-handler";
 import {
   PROJECT_MAP_MAX_SCALE,
   PROJECT_MAP_MIN_SCALE,
@@ -57,11 +82,30 @@ const ICON_SIZE = 14;
 export function ProjectMapPage() {
   const { t } = useTranslation("openhands");
   const { navigate } = useNavigation();
+  const { backend } = useActiveBackend();
   const frameRef = React.useRef<SVGSVGElement | null>(null);
-  const { data, isLoading, error, unsupportedReason, attemptedPath, refetch } =
-    useProjectMap();
-  const saveProjectMap = useSaveProjectMap();
+  // The conversation this page is bound to, which is also the workspace the
+  // map is read from and written to. One owner, one writer: every other piece
+  // of the page receives it as a prop or as a hook argument.
+  const [mapConversationId, setMapConversationId] = React.useState<
+    string | null
+  >(null);
+  const {
+    data,
+    isLoading,
+    error,
+    unsupportedReason,
+    workspace,
+    unavailableRuntimeConversationId,
+    attemptedPath,
+    refetch,
+  } = useProjectMap(mapConversationId);
+  const saveProjectMap = useSaveProjectMap(mapConversationId);
   const createConversation = useCreateConversation();
+  // Whether a conversation gets its own container. It decides what the
+  // analysis can be told: a sandbox cannot see the directory this page reads
+  // when it is unbound, so there is no absolute path worth naming.
+  const { isolated } = useConversationWorkspace();
   // The pane's conversation can rewrite the file this page is reading, so the
   // page re-reads it when that happens. Nothing polls.
   useRefreshProjectMapOnAgentEdit();
@@ -107,17 +151,36 @@ export function ProjectMapPage() {
     );
   }, [document_, data?.absolutePath, setViewport]);
 
-  // The map is named by its absolute path so the analysis writes the file the
-  // page reads: a conversation's working directory is a subdirectory of the
-  // one this page looks in.
+  // The map is named by its absolute path so what the agent is told and what
+  // the page reads are the same file, even when the agent's own working
+  // directory is somewhere else.
   const mapPath = attemptedPath ?? PROJECT_MAP_FILE_PATH;
 
+  /**
+   * Starts the analysis and binds it to the page.
+   *
+   * It does not navigate away any more. The map is written by this
+   * conversation, in this conversation's workspace when that workspace is a
+   * sandbox, so leaving the page is how the user ends up back here afterwards
+   * looking at a different filesystem — the reported symptom. Staying also
+   * means the page is watching the conversation that writes the file, so the
+   * drawing appears on its own (`useRefreshProjectMapOnAgentEdit`).
+   */
   const generate = async () => {
     try {
       const conversation = await createConversation.mutateAsync({
-        query: buildProjectMapAnalysisPrompt(mapPath),
+        // An isolated conversation owns its workspace and the page follows it,
+        // so the only file it can write is the one in its own working
+        // directory — there is no absolute path to name, and naming this
+        // page's would send it somewhere its container does not have.
+        // Otherwise the conversation joins the workspace the map is already
+        // in and is told that file's absolute path. `attemptedPath` rather
+        // than `mapPath`: a path the page never resolved is not an absolute
+        // one, and claiming it is would be the same mistake again.
+        query: buildProjectMapAnalysisPrompt(isolated ? null : attemptedPath),
+        ...(isolated || !workspace ? {} : { workingDir: workspace.workingDir }),
       });
-      navigate(`/conversations/${conversation.conversation_id}`);
+      setMapConversationId(conversation.conversation_id);
     } catch {
       // The mutation's own toast covers the request; this keeps a thrown
       // launch from leaving an unhandled rejection behind.
@@ -144,7 +207,7 @@ export function ProjectMapPage() {
     markSaved();
   };
 
-  return (
+  const page = (
     <div
       data-testid="project-map-page"
       className="flex h-full min-h-0 flex-col gap-3 p-4 lg:px-8"
@@ -157,6 +220,7 @@ export function ProjectMapPage() {
           <p className="text-sm text-tertiary-light">
             {t(I18nKey.PROJECT_MAP$SUBTITLE)}
           </p>
+          <WorkspaceLabel workspace={workspace} backendName={backend.name} />
         </div>
         {document_ !== null && (
           <div className="flex flex-wrap items-center gap-1.5">
@@ -265,6 +329,15 @@ export function ProjectMapPage() {
         <Notice testId="project-map-loading">
           {t(I18nKey.PROJECT_MAP$LOADING)}
         </Notice>
+      ) : unavailableRuntimeConversationId !== null ? (
+        // A sandbox that has been archived, cannot start, or belongs to a
+        // conversation that no longer exists. Saying so is the difference
+        // between a map that is missing and a map that cannot be reached.
+        <Notice testId="project-map-runtime-unavailable">
+          {t(I18nKey.PROJECT_MAP$RUNTIME_UNAVAILABLE, {
+            conversation: unavailableRuntimeConversationId,
+          })}
+        </Notice>
       ) : error ? (
         <Notice testId="project-map-read-error">
           {/* The path comes from the error, not from the data a failed query
@@ -279,7 +352,14 @@ export function ProjectMapPage() {
       ) : data?.missing || document_ === null ? (
         <EmptyState
           pending={createConversation.isPending}
+          conversationId={mapConversationId}
+          workspace={workspace}
+          backendName={backend.name}
           onGenerate={() => void generate()}
+          onRefresh={() => void refetch()}
+          onOpenConversation={(conversationId) =>
+            navigate(`/conversations/${conversationId}`)
+          }
         />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
@@ -293,12 +373,73 @@ export function ProjectMapPage() {
               </span>
               <ProjectMapInspector document={document_} />
             </div>
-            <ProjectMapConversation document={document_} mapPath={mapPath} />
+            <ProjectMapConversation
+              document={document_}
+              mapPath={mapPath}
+              conversationId={mapConversationId}
+              launchWorkingDir={
+                isolated ? null : (workspace?.workingDir ?? null)
+              }
+              onConversationStarted={setMapConversationId}
+              onDetach={() => setMapConversationId(null)}
+            />
             <ProjectMapLegend document={document_} />
           </aside>
         </div>
       )}
     </div>
+  );
+
+  if (mapConversationId === null) return page;
+
+  // The transport for the bound conversation, mounted around the whole page
+  // rather than around the chat pane: the pane only exists once there is a
+  // drawing, and the page needs the socket before that — the conversation
+  // generating the very first map is the one whose write makes it appear.
+  return (
+    <ScopedConversationIdProvider conversationId={mapConversationId}>
+      <WebSocketProviderWrapper conversationId={mapConversationId}>
+        <EventHandler>{page}</EventHandler>
+      </WebSocketProviderWrapper>
+    </ScopedConversationIdProvider>
+  );
+}
+
+/**
+ * Which workspace the drawing on screen belongs to.
+ *
+ * Rendered as soon as a read resolves one, including the read that found no
+ * file: an empty map of a named directory is a fact the user can act on, and
+ * an empty map of nowhere in particular is the bug report "it doesn't work".
+ */
+function WorkspaceLabel({
+  workspace,
+  backendName,
+  testId = "project-map-workspace",
+}: {
+  workspace: ProjectMapWorkspace | null;
+  backendName: string;
+  /** Distinct per place it is rendered, so an assertion names one of them. */
+  testId?: string;
+}) {
+  const { t } = useTranslation("openhands");
+  if (workspace === null) return null;
+  return (
+    <p
+      data-testid={testId}
+      data-conversation-id={workspace.conversationId ?? undefined}
+      className="font-mono text-micro text-muted"
+    >
+      {workspace.conversationId === null
+        ? t(I18nKey.PROJECT_MAP$WORKSPACE_ON_BACKEND, {
+            backend: backendName,
+            path: workspace.workingDir,
+          })
+        : t(I18nKey.PROJECT_MAP$WORKSPACE_IN_CONVERSATION, {
+            conversation: workspace.conversationId,
+            path: workspace.workingDir,
+          })}
+    </p>
   );
 }
 
@@ -361,10 +502,21 @@ function InvalidNotice({
 
 function EmptyState({
   pending,
+  conversationId,
+  workspace,
+  backendName,
   onGenerate,
+  onRefresh,
+  onOpenConversation,
 }: {
   pending: boolean;
+  /** The conversation the page is bound to, which is writing the map. */
+  conversationId: string | null;
+  workspace: ProjectMapWorkspace | null;
+  backendName: string;
   onGenerate: () => void;
+  onRefresh: () => void;
+  onOpenConversation: (conversationId: string) => void;
 }) {
   const { t } = useTranslation("openhands");
   return (
@@ -378,6 +530,51 @@ function EmptyState({
       <p className="text-sm leading-relaxed text-text-secondary">
         {t(I18nKey.PROJECT_MAP$EMPTY_BODY)}
       </p>
+      {/* Which empty workspace this is. The same sentence as the header's,
+          repeated here because this is the state in which it matters: nothing
+          else on screen says where the page just looked. */}
+      <WorkspaceLabel
+        workspace={workspace}
+        backendName={backendName}
+        testId="project-map-empty-workspace"
+      />
+      {conversationId !== null && workspace !== null && (
+        <p
+          data-testid="project-map-analysis-running"
+          className="text-sm leading-relaxed text-text-secondary"
+        >
+          {t(I18nKey.PROJECT_MAP$ANALYSIS_RUNNING, {
+            conversation: conversationId,
+            path: workspace.workingDir,
+          })}
+        </p>
+      )}
+      {conversationId !== null && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {/* The drawing arrives on its own when the agent reports the write,
+              but a write it does not report — a shell redirect, say — would
+              otherwise leave this state with no way out but a reload, which
+              also drops the conversation this page is bound to. */}
+          <button
+            type="button"
+            data-testid="project-map-empty-refresh"
+            className={PROJECT_MAP_BUTTON_CLASS}
+            onClick={onRefresh}
+          >
+            <RefreshCw size={ICON_SIZE} aria-hidden />
+            {t(I18nKey.PROJECT_MAP$REFRESH)}
+          </button>
+          <button
+            type="button"
+            data-testid="project-map-empty-open-conversation"
+            className={PROJECT_MAP_BUTTON_CLASS}
+            onClick={() => onOpenConversation(conversationId)}
+          >
+            <Maximize2 size={ICON_SIZE} aria-hidden />
+            {t(I18nKey.PROJECT_MAP$OPEN_CONVERSATION)}
+          </button>
+        </div>
+      )}
       <button
         type="button"
         data-testid="project-map-generate"
