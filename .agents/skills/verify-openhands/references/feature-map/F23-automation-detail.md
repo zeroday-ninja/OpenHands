@@ -6,7 +6,9 @@ Automations** link, a header with the name, an **Active**/**Inactive** badge,
 Delete); a **Why this is paused** banner when it was turned off; the Prompt (or,
 for a script automation, the Script bundle); Configuration (repositories,
 trigger, schedule or event source/type/filter, LLM profile); a **Plugins** card
-when it has plugins; an Activity card (Created, Last run);
+when it has plugins; an **Improvement program** card with a link to the
+program's rotation and cycles when the automation is one (F31 owns that page and
+the link); an Activity card (Created, Last run);
 and the **Activity Log** of runs with status, summary, cost, a logs dialog, a
 link to each run's conversation and JSON/CSV export. Kebab **Edit** opens the
 setup page in edit mode (`/automations/setup?automationId=<id>`, since #17688),
