@@ -319,6 +319,8 @@ BAD_AUTHOR = f"--author='Someone <{OTHER}>'"
         f"{{ git commit -q --allow-empty -m x {BAD_AUTHOR}; }}",
         f"for i in 1; do git commit -q --allow-empty -m x {BAD_AUTHOR}; done",
         f"git --attr-source HEAD commit -q --allow-empty -m x {BAD_AUTHOR}",
+        # A comment ends at the newline even after a backslash.
+        f"# note \\\ngit commit -q --allow-empty -m x {BAD_AUTHOR}",
     ],
 )
 def test_continued_lines_reserved_words_and_global_options_are_parsed(repo, command):
@@ -331,6 +333,47 @@ def test_continued_lines_reserved_words_and_global_options_are_parsed(repo, comm
 
     assert_blocked(result, "author email", OTHER, "--author")
     assert recorded(repo) == before
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        f">/dev/null git commit -q --allow-empty -m x {BAD_AUTHOR}",
+        f"2>/dev/null git commit -q --allow-empty -m x {BAD_AUTHOR}",
+        f"</dev/null git commit -q --allow-empty -m x {BAD_AUTHOR}",
+        f"git 2>&1 commit -q --allow-empty -m x {BAD_AUTHOR}",
+        f"true;>/dev/null git commit -q --allow-empty -m x {BAD_AUTHOR}",
+        f"true;\ngit commit -q --allow-empty -m x {BAD_AUTHOR}",
+    ],
+)
+def test_redirections_do_not_hide_the_git_call(repo, command):
+    git(repo, "config", "user.name", "Required")
+    git(repo, "config", "user.email", REQUIRED)
+    commit_as(repo, REQUIRED)
+    before = recorded(repo)
+
+    result = agent_runs(repo, command)
+
+    assert_blocked(result, "author email", OTHER, "--author")
+    assert recorded(repo) == before
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "cat > s.sh <<'EOF'\nif git commit -q --allow-empty -m x; then :; fi\nEOF",
+        "cat > s.sh <<EOF\ngit add -A \\\n  && git commit -q --allow-empty -m x\nEOF",
+        "'if' git commit -q --allow-empty -m x > s.sh",  # runs a command named `if`
+    ],
+)
+def test_commands_that_do_not_run_git_are_allowed(repo, command):
+    git(repo, "config", "user.email", OTHER)
+
+    result = agent_runs(repo, command)
+
+    assert result.returncode == 0, result.stdout
+    assert (repo / "s.sh").exists()
+    assert recorded(repo) is None
 
 
 @pytest.mark.parametrize(

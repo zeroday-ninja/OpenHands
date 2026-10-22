@@ -23,7 +23,6 @@ import argparse
 import json
 import os
 import re
-import shlex
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -134,12 +133,16 @@ GLOBAL_OPTS_WITH_VALUE = {
     "--attr-source",
 }
 
-CONTROL_OPERATORS = {"&&", "||", ";", ";;", "|", "|&", "&", "(", ")", "\n"}
+# Shell operators, longest first so `&&` is not read as two `&`.
+CONTROL_OPERATORS = ["&&", "||", ";;&", ";;", ";&", "|&", ";", "|", "&", "(", ")", "\n"]
+REDIRECT_OPERATORS = ["&>>", "<<<", "<<-", "<<", ">>", "<&", ">&", "<>", ">|", "&>", "<", ">"]
+OPERATORS = sorted(CONTROL_OPERATORS + REDIRECT_OPERATORS, key=len, reverse=True)
+OPERATOR_CHARS = set("&|;()<>\n")
 # Reserved words that can stand before a command (`if git commit ...; then`).
+# Quoted, they are ordinary words (`'if' git ...` runs a command named `if`).
 RESERVED_WORDS = {"!", "{", "if", "then", "elif", "else", "while", "until", "do"}
-# A backslash-newline is a line continuation, removed before tokenizing. An
-# even run of backslashes before it escapes itself and leaves the newline.
-LINE_CONTINUATION_RE = re.compile(r"(?<!\\)((?:\\\\)*)\\\n")
+# The fd in `2>file`, or bash's `{fd}>file`, when written right before `<`/`>`.
+IO_NUMBER_RE = re.compile(r"^(?:[0-9]+|\{[A-Za-z_][A-Za-z0-9_]*\})$")
 ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 EMAIL_RE = re.compile(r"<([^<>]*)>")
 
@@ -153,28 +156,136 @@ class GitCall:
     args: list[str] = field(default_factory=list)
 
 
+@dataclass
+class Token:
+    text: str
+    operator: bool = False
+    quoted: bool = False
+
+
+def tokenize(command: str) -> list[Token]:
+    """Split a command into words and operators the way POSIX sh does.
+
+    It follows the token rules closely enough to place every word: quotes, a
+    backslash-newline continuation (not inside single quotes or a comment),
+    `#` comments, redirections with their fd numbers, and here-document
+    bodies, which are data and are skipped. It does not expand anything.
+    Raises ValueError on an unterminated quote.
+    """
+    tokens: list[Token] = []
+    heredocs: list[tuple[str, bool]] = []
+    index, end = 0, len(command)
+    while index < end:
+        char = command[index]
+        if command.startswith("\\\n", index):
+            index += 2
+        elif char in " \t\r":
+            index += 1
+        elif char == "#":
+            while index < end and command[index] != "\n":
+                index += 1
+        elif char in OPERATOR_CHARS:
+            operator = next(op for op in OPERATORS if command.startswith(op, index))
+            index += len(operator)
+            tokens.append(Token(operator, operator=True))
+            if operator == "\n" and heredocs:
+                index = skip_heredoc_bodies(command, index, heredocs)
+                heredocs = []
+        else:
+            index, word = read_word(command, index)
+            before_redirect = index < end and command[index] in "<>"
+            if before_redirect and not word.quoted and IO_NUMBER_RE.match(word.text):
+                continue
+            tokens.append(word)
+            if len(tokens) > 1 and tokens[-2].operator and tokens[-2].text in {"<<", "<<-"}:
+                heredocs.append((word.text, tokens[-2].text == "<<-"))
+    return tokens
+
+
+def read_word(command: str, index: int) -> tuple[int, Token]:
+    word = Token("")
+    end = len(command)
+    while index < end:
+        char = command[index]
+        if command.startswith("\\\n", index):
+            index += 2
+        elif char == "\\" and index + 1 < end:
+            word.text += command[index + 1]
+            word.quoted = True
+            index += 2
+        elif char == "'":
+            close = command.find("'", index + 1)
+            if close < 0:
+                raise ValueError("unterminated single quote")
+            word.text += command[index + 1 : close]
+            word.quoted = True
+            index = close + 1
+        elif char == '"':
+            index += 1
+            while index < end and command[index] != '"':
+                if command[index] == "\\" and index + 1 < end and command[index + 1] in '$`"\\\n':
+                    if command[index + 1] != "\n":
+                        word.text += command[index + 1]
+                    index += 2
+                else:
+                    word.text += command[index]
+                    index += 1
+            if index >= end:
+                raise ValueError("unterminated double quote")
+            word.quoted = True
+            index += 1
+        elif char in " \t\r" or char in OPERATOR_CHARS:
+            break
+        else:
+            word.text += char
+            index += 1
+    return index, word
+
+
+def skip_heredoc_bodies(command: str, index: int, heredocs: list[tuple[str, bool]]) -> int:
+    """Index just past the here-document bodies that start at `index`."""
+    for delimiter, strip_tabs in heredocs:
+        while index < len(command):
+            newline = command.find("\n", index)
+            line_end = len(command) if newline < 0 else newline
+            line = command[index:line_end]
+            index = line_end + 1
+            if (line.lstrip("\t") if strip_tabs else line) == delimiter:
+                break
+    return min(index, len(command))
+
+
 def split_segments(command: str) -> list[list[str]]:
-    """Split a shell command into simple commands on control operators."""
-    command = LINE_CONTINUATION_RE.sub(r"\1", command)
-    lexer = shlex.shlex(command, posix=True, punctuation_chars="();<>|&\n")
-    lexer.whitespace = " \t\r"
-    lexer.whitespace_split = True
-    segments: list[list[str]] = [[]]
-    for token in lexer:
-        if token in CONTROL_OPERATORS:
+    """Split a shell command into simple commands, without their redirections.
+
+    Each segment starts at its command name: leading unquoted reserved words
+    (`if`, `!`, `{` ...) are dropped.
+    """
+    segments: list[list[Token]] = [[]]
+    redirecting = False
+    for token in tokenize(command):
+        if token.operator and token.text in CONTROL_OPERATORS:
             segments.append([])
+            redirecting = False
+        elif token.operator:
+            redirecting = True
+        elif redirecting:
+            # A redirection's target is not part of the command's argv.
+            redirecting = False
         else:
             segments[-1].append(token)
-    return [segment for segment in segments if segment]
+    argvs = []
+    for segment in segments:
+        while segment and not segment[0].quoted and segment[0].text in RESERVED_WORDS:
+            segment = segment[1:]
+        if segment:
+            argvs.append([token.text for token in segment])
+    return argvs
 
 
 def find_git_calls(command: str, cwd: str) -> list[GitCall]:
     calls: list[GitCall] = []
     for argv in split_segments(command):
-        while argv and argv[0] in RESERVED_WORDS:
-            argv = argv[1:]
-        if not argv:
-            continue
         if argv[0] == "cd" and len(argv) == 2:
             cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(argv[1])))
             continue
