@@ -1,6 +1,6 @@
 {
   "name": "fork-identity-guard",
   "version": "1.1.1",
-  "description": "A reminder, not a boundary: blocks a terminal command when a commit-writing git call it recognises would record an author or committer email other than the one this fork requires, judged from the state before the command runs. It catches common direct cases only. The author of a replayed commit (rebase, cherry-pick, am, pull --rebase) is not checked. Check the resulting commits with git log --format='%ae %ce' before pushing.",
+  "description": "A reminder, not a boundary: blocks a terminal command when a commit-writing git call it recognises would record an author or committer email other than the one this fork requires, judged from the state before the command runs. It catches common direct cases only. The author of a replayed commit (rebase, cherry-pick, am, pull --rebase) is not checked. Check the resulting commits with git log --format='%h %ae %ce' origin/main..HEAD before pushing; the range limits it to the outgoing commits, so each email can be read against its commit.",
   "author": "Leander Metcalf"
 }
