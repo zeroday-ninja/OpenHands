@@ -169,6 +169,9 @@ const MOCK_CYCLES: ImproveCycle[] = [
           "No coverage for the rollback path.",
         ],
         stale_sources: ["https://git-scm.com/docs/git-ls-remote"],
+        updates_checked:
+          "Compared against git 2.47, the current release; nothing in its " +
+          "changelog or the ls-remote docs supersedes this approach.",
       },
     ],
     soul_suggestions: [
