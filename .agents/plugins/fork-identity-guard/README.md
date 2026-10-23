@@ -5,10 +5,16 @@ checks the git calls in it that write commits. It blocks the command when one
 of them would record an author or committer email other than
 `tentpegbob@gmail.com`.
 
-It is a best-effort check, not a guarantee. It judges the repository as it is
+It is a reminder, not a boundary. It catches the common, direct cases named
+under [What it checks](#what-it-checks). It judges the repository as it is
 before the command starts, and it reads only the git calls it can see in the
-command text. The [Limits](#limits) section lists what it misses. Check
-`git log --format='%ae %ce'` before you push.
+command text. Git has many ways to write a commit, so some wrong-author commits
+will get past it. The only reliable check is on the commits that result. Before
+you push, run this and read the emails of the commits you are about to push:
+
+```sh
+git log --format='%ae %ce'
+```
 
 ## Why
 
@@ -33,8 +39,8 @@ redirections (`>/dev/null git commit` is a git call) and skips here-document
 bodies, which are data. Like `sh`, it keeps `$(...)`, `${...}`, `$((...))`,
 backquotes, `$'...'` and an array assignment `name=(...)` inside the word they
 appear in. It looks past a
-leading unquoted reserved word (`if`, `then`, `do`, `!`, `{` and similar) and
-finds each `git` call that writes a commit object:
+leading unquoted reserved word (`if`, `then`, `do`, `!`, `{` and similar). It
+then looks for `git` calls of these kinds, which write a commit object:
 
 - `commit`, `commit-tree`, `merge`, `pull` and `revert`, whose author and
   committer both come from the current identity;
@@ -61,47 +67,47 @@ similar) and all other commands are allowed.
 
 ## Limits
 
-These commands can still record another email without being blocked:
+The hook is not a complete check, and this section is not a complete list of
+what it misses. It catches the direct cases above. A Git repository has too
+many ways to write a commit object for any list of gaps to be complete. The
+entries below are examples of what gets past it.
+
+Anything that replays or reuses an existing commit's author is not checked,
+apart from the `git commit` options described above. Examples are
+`cherry-pick`, `rebase`, `am`, `git pull --rebase`, and a `git commit` that
+concludes one of them. If a local commit already carries the wrong author,
+these keep it.
+
+Some other examples:
 
 - **An earlier segment of the same command.** The hook runs once, before any
   of the command runs. In `git config user.email X && git commit`, or
   `export GIT_AUTHOR_EMAIL=X && git commit`, the commit is judged against the
-  state before the first segment ran. A hook that inspects a command before it
-  runs cannot know what an earlier segment will change. Pinning `-c user.email`
-  on the commit defeats an earlier `git config user.email`, but not an earlier
+  state before the first segment ran. Pinning `-c user.email` on the commit
+  defeats an earlier `git config user.email`, but not an earlier
   `export GIT_AUTHOR_EMAIL` or `git config author.email`, which outrank it.
-- **Earlier commands.** The hook sees the agent-server environment and the
-  conversation's working directory. It does not see variables that a previous
+- **Earlier commands.** The hook does not see variables that a previous
   command exported in the agent's terminal session, or a directory that a
   previous command changed to.
 - **Hidden git calls.** Commits made inside `bash -c`, backquotes, scripts, git
   aliases, editors, `rebase --exec`, or text sent to a running process
   (`is_input`) are not parsed. Neither is git started by another command, such
-  as `command`, `exec`, `time`, `timeout`, `nice`, `sudo`, `xargs` or `env`
-  with options (`env -u X git commit`).
+  as `command`, `exec`, `time`, `timeout`, `nice`, `sudo`, `xargs` or
+  `env -u X git commit`.
 - **Command substitutions.** The hook reads some git calls inside `$(...)`,
-  but not all of them. It misses a commit inside `$((...))`, such as
-  `x=$(( $(git commit ...; echo 1) ))`, and a commit in a `case` branch two
-  substitutions deep. Do not rely on the hook for a git call inside `$(...)`.
-  Run the commit as its own command.
-- **Here-document bodies.** They are skipped as data, so `cat > x.sh <<'EOF'`
-  is not mistaken for a commit. That also skips a body that a shell runs
-  (`bash <<'EOF'`) and `$(...)` inside an unquoted body.
-- **Arithmetic `<<`.** In bash's `((...))` and `for ((...))`, the hook reads a
-  `<<` shift as the start of a here-document. It then skips every later line
-  as the body. A commit on the line after `(( y = 1 << 2 ))` is not checked. A
-  commit later on the same line is still checked, and `$((...))` is not
-  affected.
-- **Replayed authors.** `cherry-pick`, `rebase` and `am`, and a `git commit`
-  that concludes one of them, keep the original author, which is not checked.
+  but not all of them. Examples are `x=$(( $(git commit ...; echo 1) ))` and
+  a commit in a `case` branch two substitutions deep.
+- **Here-document bodies.** They are skipped as data, including a body that a
+  shell runs (`bash <<'EOF'`) and `$(...)` inside an unquoted body.
+- **Arithmetic `<<`.** After `(( y = 1 << 2 ))`, the hook reads the following
+  lines as a here-document body and does not check them.
 - **Other objects and writers.** Annotated tags (the tagger), `git replace`,
   `filter-branch`, `fast-import` and other plumbing are not covered.
 - **Fail-open.** If `python3` or the script cannot be found, the command runs.
 - It checks the email only, not the name.
 
 The test `test_known_limit_an_earlier_segment_can_change_the_identity_unseen`
-pins the first limit against real commits, so the README and the hook cannot
-drift apart silently.
+pins the earlier-segment example against real commits.
 
 ## Changing the required address
 
