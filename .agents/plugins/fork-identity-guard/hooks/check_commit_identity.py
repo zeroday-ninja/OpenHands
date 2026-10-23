@@ -2,8 +2,8 @@
 """PreToolUse hook: refuse a git command that would record the wrong email.
 
 The OpenHands hook executor sends the pending tool call as JSON on stdin and
-treats exit code 2 as "block". This script finds every git invocation in a
-terminal command that writes a commit object, asks git itself which author and
+treats exit code 2 as "block". This script finds the commit-writing git
+invocations it recognises in a terminal command, asks git itself which author and
 committer identity that invocation would record (honouring `-c user.email=`,
 `-C`, `VAR=value` prefixes, repository config, `--author`, `--amend` and the
 authorship-reusing `-C`/`-c` commit options), and blocks the call when either
@@ -11,7 +11,9 @@ email differs from the one this fork requires.
 
 It judges every call against the state that exists before the command runs. It
 cannot know what an earlier segment of the same command (`git config ... &&`,
-`export ... &&`) will change, so it is a best-effort check, not a guarantee.
+`export ... &&`) will change, and it does not check the author of a replayed
+commit (`rebase`, `cherry-pick`, `am`, `pull --rebase`), so it is a reminder,
+not a boundary. The README explains.
 
 Anything it cannot recognise as a commit-writing git call is allowed: the hook
 must never stand between the agent and unrelated commands.
