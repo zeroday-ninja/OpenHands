@@ -1,0 +1,128 @@
+# fork-identity-guard
+
+An OpenHands plugin for this fork. Before an agent's terminal command runs, it
+checks the git calls in it that write commits. It blocks the command when one
+of them would record an author or committer email other than
+`tentpegbob@gmail.com`.
+
+It is a reminder, not a boundary. It catches the common, direct cases named
+under [What it checks](#what-it-checks). It judges the repository as it is
+before the command starts, and it reads only the git calls it can see in the
+command text. Git has many ways to write a commit, so some wrong-author commits
+will get past it. The only reliable check is on the commits that result. Before
+you push, run this and read the emails of the commits you are about to push:
+
+```sh
+git log --format='%h %ae %ce' origin/main..HEAD
+```
+
+The range is what makes the check readable: it lists only your outgoing
+commits, each with its hash, and not the upstream history before them.
+
+## Why
+
+This machine has no global git identity on purpose, and a wrong address has
+already had to be scrubbed from this fork's history. Agents are told to pass
+the identity per command (`git -c user.name=... -c user.email=...`). This hook
+turns that instruction into a check that runs before the command does.
+
+## How it loads
+
+The SDK discovers project plugins in `.agents/plugins/` under a conversation's
+working directory and its git root, and merges their `hooks/hooks.json` into
+the conversation. Any conversation working inside this repository gets the
+hook. You do not need to install anything.
+
+## What it checks
+
+`hooks/hooks.json` registers a `PreToolUse` hook on the terminal tool. The hook
+splits the command into words and operators the way `sh` does. It honours
+quotes and comments, joins `\`-continued lines outside single quotes, drops
+redirections (`>/dev/null git commit` is a git call) and skips here-document
+bodies, which are data. Like `sh`, it keeps `$(...)`, `${...}`, `$((...))`,
+backquotes, `$'...'` and an array assignment `name=(...)` inside the word they
+appear in. It looks past a
+leading unquoted reserved word (`if`, `then`, `do`, `!`, `{` and similar). It
+then looks for `git` calls of these kinds, which write a commit object:
+
+- `commit`, `commit-tree`, `merge`, `pull` and `revert`, whose author and
+  committer both come from the current identity;
+- `stash` (bare, `push`, `save` or `create`), because a stash entry is a commit;
+- `notes` (`add`, `append`, `copy`, `edit`, `merge`, `remove` or `prune`),
+  because notes are stored as commits;
+- `cherry-pick`, `rebase` and `am`, which keep each replayed commit's original
+  author, so only the committer is checked.
+
+For each of these calls, the hook does these steps:
+
+- It asks git for the identity it would record (`git var GIT_AUTHOR_IDENT` and
+  `GIT_COMMITTER_IDENT`). It runs this with the same `cd`, `-C`, `-c` and
+  `VAR=value` prefixes and repository config as the real command.
+- For `git commit` it follows git's own author precedence: `--author`, then
+  `--reset-author`, then the commit that `-C`/`--reuse-message` or
+  `-c`/`--reedit-message` reuses, then `HEAD` for `--amend`. It reads options
+  the way git does, including abbreviations (`--reuse`), clustered short
+  options (`-qC HEAD`) and values that look like options (`-m --dry-run`).
+- It exits with code 2, and a reason the agent sees, when an email differs.
+
+Calls that write nothing (`--abort`, `--ff-only`, `--dry-run`, `stash list` and
+similar) and all other commands are allowed.
+
+## Limits
+
+The hook is not a complete check, and this section is not a complete list of
+what it misses. It catches the direct cases above. A Git repository has too
+many ways to write a commit object for any list of gaps to be complete. The
+entries below are examples of what gets past it.
+
+Anything that replays or reuses an existing commit's author is not checked,
+apart from the `git commit` options described above. Examples are
+`cherry-pick`, `rebase`, `am`, `git pull --rebase`, and a `git commit` that
+concludes one of them. If a local commit already carries the wrong author,
+these keep it.
+
+Some other examples:
+
+- **An earlier segment of the same command.** The hook runs once, before any
+  of the command runs. In `git config user.email X && git commit`, or
+  `export GIT_AUTHOR_EMAIL=X && git commit`, the commit is judged against the
+  state before the first segment ran. Pinning `-c user.email` on the commit
+  defeats an earlier `git config user.email`, but not an earlier
+  `export GIT_AUTHOR_EMAIL` or `git config author.email`, which outrank it.
+- **Earlier commands.** The hook does not see variables that a previous
+  command exported in the agent's terminal session, or a directory that a
+  previous command changed to.
+- **Hidden git calls.** Commits made inside `bash -c`, backquotes, scripts, git
+  aliases, editors, `rebase --exec`, or text sent to a running process
+  (`is_input`) are not parsed. Neither is git started by another command, such
+  as `command`, `exec`, `time`, `timeout`, `nice`, `sudo`, `xargs` or
+  `env -u X git commit`.
+- **Command substitutions.** The hook reads some git calls inside `$(...)`,
+  but not all of them. Examples are `x=$(( $(git commit ...; echo 1) ))` and
+  a commit in a `case` branch two substitutions deep.
+- **Here-document bodies.** They are skipped as data, including a body that a
+  shell runs (`bash <<'EOF'`) and `$(...)` inside an unquoted body.
+- **Arithmetic `<<`.** After `(( y = 1 << 2 ))`, the hook reads the following
+  lines as a here-document body and does not check them.
+- **Other objects and writers.** Annotated tags (the tagger), `git replace`,
+  `filter-branch`, `fast-import` and other plumbing are not covered.
+- **Fail-open.** If `python3` or the script cannot be found, the command runs.
+- It checks the email only, not the name.
+
+The test `test_known_limit_an_earlier_segment_can_change_the_identity_unseen`
+pins the earlier-segment example against real commits.
+
+## Changing the required address
+
+Edit `--require-email` in `hooks/hooks.json`.
+
+## Tests
+
+```sh
+python -m pytest .agents/plugins/fork-identity-guard/tests
+```
+
+The tests run the real hook against temporary repositories. Each bypass
+regression also runs the allowed command and asserts on the commit object git
+wrote. The last test loads the plugin through `openhands.sdk`. It is skipped
+when the SDK is not installed.
