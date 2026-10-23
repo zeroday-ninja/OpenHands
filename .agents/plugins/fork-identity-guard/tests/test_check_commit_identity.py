@@ -347,6 +347,12 @@ def test_continued_lines_reserved_words_and_global_options_are_parsed(repo, comm
         # A substitution belongs to the redirection's target word.
         f"2>$(mktemp -d)/err git commit -q --allow-empty -m x {BAD_AUTHOR}",
         f">`mktemp -d`/out git commit -q --allow-empty -m x {BAD_AUTHOR}",
+        # A quoted or substituted `{` in `${...}` does not open a brace level.
+        '>${x:-"{"} git commit -q --allow-empty -m x ' + BAD_AUTHOR + "; : }",
+        ">${x:-'{'} git commit -q --allow-empty -m x " + BAD_AUTHOR + "; : }",
+        ">${x:-$(echo {)} git commit -q --allow-empty -m x " + BAD_AUTHOR + "; : }",
+        # A `$(...)` inside `${...}` is a command too.
+        ">${x:-$(git commit -q --allow-empty -m x " + BAD_AUTHOR + ")} true",
     ],
 )
 def test_redirections_do_not_hide_the_git_call(repo, command):
@@ -372,6 +378,9 @@ def test_redirections_do_not_hide_the_git_call(repo, command):
         'echo "$(echo "it\'s") git commit -q --allow-empty -m x" > s.sh',
         "printf $'it\\'s git commit -q --allow-empty -m x\\n' > s.sh",
         'cmd=(git commit -q --allow-empty -m x) && echo "${cmd[@]}" > s.sh',
+        # A quoted `}` or `{` in `${...}` is data and does not end or nest it.
+        'printf "%s\\n" "${close:-"}"}" "git commit -q --allow-empty -m x" > s.sh',
+        "echo ${open:-'{'} \"it's git commit -q --allow-empty -m x\" > s.sh",
     ],
 )
 def test_commands_that_do_not_run_git_are_allowed(repo, command):
