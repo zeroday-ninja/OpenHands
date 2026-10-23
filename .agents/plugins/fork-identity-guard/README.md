@@ -13,8 +13,11 @@ will get past it. The only reliable check is on the commits that result. Before
 you push, run this and read the emails of the commits you are about to push:
 
 ```sh
-git log --format='%ae %ce'
+git log --format='%h %ae %ce' origin/main..HEAD
 ```
+
+The range is what makes the check readable: it lists only your outgoing
+commits, each with its hash, and not the upstream history before them.
 
 ## Why
 
