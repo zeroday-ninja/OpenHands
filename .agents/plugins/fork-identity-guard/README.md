@@ -32,7 +32,7 @@ quotes and comments, joins `\`-continued lines outside single quotes, drops
 redirections (`>/dev/null git commit` is a git call) and skips here-document
 bodies, which are data. Like `sh`, it keeps `$(...)`, `${...}`, `$((...))`,
 backquotes, `$'...'` and an array assignment `name=(...)` inside the word they
-appear in, and it checks the commands inside each `$(...)`. It looks past a
+appear in. It looks past a
 leading unquoted reserved word (`if`, `then`, `do`, `!`, `{` and similar) and
 finds each `git` call that writes a commit object:
 
@@ -77,6 +77,11 @@ These commands can still record another email without being blocked:
   (`is_input`) are not parsed. Neither is git started by another command, such
   as `command`, `exec`, `time`, `timeout`, `nice`, `sudo`, `xargs` or `env`
   with options (`env -u X git commit`).
+- **Command substitutions.** The hook reads some git calls inside `$(...)`,
+  but not all of them. It misses a commit inside `$((...))`, such as
+  `x=$(( $(git commit ...; echo 1) ))`, and a commit in a `case` branch two
+  substitutions deep. Do not rely on the hook for a git call inside `$(...)`.
+  Run the commit as its own command.
 - **Here-document bodies.** They are skipped as data, so `cat > x.sh <<'EOF'`
   is not mistaken for a commit. That also skips a body that a shell runs
   (`bash <<'EOF'`) and `$(...)` inside an unquoted body.
