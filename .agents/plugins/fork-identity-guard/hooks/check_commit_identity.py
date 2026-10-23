@@ -582,19 +582,49 @@ def first_action(args: list[str], options_with_value: set[str]) -> str | None:
     return None
 
 
+def takes_a_separate_value(arg: str | None) -> bool:
+    """True when `arg` is an option whose value is the next argument.
+
+    Only an option that really takes a value can swallow the one after it.
+    Treating *every* option that way refused ordinary commands that write
+    nothing: in `git rebase --verbose --abort`, `--verbose` is a flag, so
+    `--abort` is the real option and nothing is written — but the guard read
+    `--abort` as the value of `--verbose` and blocked the command. A guard
+    that blocks innocent commands gets switched off.
+
+    An option this file does not know is assumed to take a value, so an
+    unfamiliar spelling still errs towards checking the command rather than
+    waving it through.
+    """
+    if arg is None or not arg.startswith("-") or arg == "-" or "=" in arg:
+        return False
+    if arg in NON_WRITING_ARGS:
+        return False
+    if arg.startswith("--"):
+        resolved = resolve_long(arg[2:])
+        if resolved is None:
+            return True
+        return resolved.removeprefix("no-") in COMMIT_LONG_WITH_VALUE
+    # A short cluster takes a value only when its *last* letter does:
+    # `-am` ends in `-m`, which does; `-av` ends in `-v`, which does not.
+    name = COMMIT_SHORT.get(arg[-1])
+    if name is None:
+        return True
+    return name in COMMIT_LONG_WITH_VALUE
+
+
 def has_non_writing_arg(args: list[str]) -> bool:
     """True when an argument such as `--abort` really is an option.
 
     `git commit -m --dry-run` commits with the message "--dry-run", so an
-    argument right after a bare option may be that option's value. Such a
-    command is checked rather than waved through.
+    argument right after an option that takes a value may be that value. Such
+    a command is checked rather than waved through.
     """
     previous = None
     for arg in args:
         if arg == "--":
             return False
-        value_slot = previous is not None and previous.startswith("-") and "=" not in previous
-        if arg in NON_WRITING_ARGS and not value_slot:
+        if arg in NON_WRITING_ARGS and not takes_a_separate_value(previous):
             return True
         previous = arg
     return False

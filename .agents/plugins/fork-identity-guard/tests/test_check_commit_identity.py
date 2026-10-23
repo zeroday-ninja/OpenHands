@@ -370,6 +370,26 @@ def test_redirections_do_not_hide_the_git_call(repo, command):
 @pytest.mark.parametrize(
     "command",
     [
+        # A flag before the real option: the flag takes no value, so the
+        # option after it is the option and the command writes nothing.
+        "git rebase --verbose --abort",
+        "git cherry-pick --quiet --abort",
+        "git am --quiet --abort",
+        "git commit -v --dry-run --allow-empty -m x",
+    ],
+)
+def test_allows_non_writing_commands_after_a_flag(repo, command):
+    """A guard that refuses innocent commands is a guard people switch off."""
+    git(repo, "config", "user.email", OTHER)
+
+    result = run_hook(repo, command)
+
+    assert result.returncode == 0, result.stdout
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
         "cat > s.sh <<'EOF'\nif git commit -q --allow-empty -m x; then :; fi\nEOF",
         "cat > s.sh <<EOF\ngit add -A \\\n  && git commit -q --allow-empty -m x\nEOF",
         "'if' git commit -q --allow-empty -m x > s.sh",  # runs a command named `if`
