@@ -236,7 +236,7 @@ def read_expansion(command: str, index: int, word: Token) -> int | None:
         _, close = scan(command, index + 2, nested=True)
         word.substitutions.append(command[index + 2 : close - 1])
     elif command.startswith("${", index):
-        close = matching_close(command, index + 1, "{", "}")
+        close = read_parameter(command, index + 2, word)
     elif command[index] == "`":
         close = index + 1
         while close < len(command) and command[close] != "`":
@@ -248,6 +248,41 @@ def read_expansion(command: str, index: int, word: Token) -> int | None:
         return None
     word.text += command[index:close]
     return close
+
+
+def read_parameter(command: str, index: int, word: Token) -> int:
+    """Index past the `}` that closes a `${` whose body starts at `index`.
+
+    Like sh, it counts braces but skips quoted strings and nested expansions,
+    so the `}` in `${x:-"}"}` and the `{` in `${x:-'{'}` are data. The bodies
+    of `$(...)` found inside are added to `word`, to be checked.
+    """
+    inner = Token("")
+    depth = 1
+    end = len(command)
+    while index < end:
+        char = command[index]
+        if char == "\\":
+            index += 2
+        elif char == "'":
+            close = command.find("'", index + 1)
+            if close < 0:
+                raise ValueError("unterminated single quote")
+            index = close + 1
+        elif char == '"':
+            index = read_double_quoted(command, index, inner)
+        elif char in "$`" and (after := read_expansion(command, index, inner)) is not None:
+            index = after
+        else:
+            if char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    word.substitutions += inner.substitutions
+                    return index + 1
+            index += 1
+    raise ValueError("unterminated ${")
 
 
 def matching_close(command: str, index: int, opening: str, closing: str) -> int:
@@ -303,30 +338,33 @@ def read_word(command: str, index: int) -> tuple[int, Token]:
             word.quoted = True
             index = close + 1
         elif char == '"':
-            index += 1
-            while index < end and command[index] != '"':
-                if command[index] == "\\" and index + 1 < end and command[index + 1] in '$`"\\\n':
-                    if command[index + 1] != "\n":
-                        word.text += command[index + 1]
-                    index += 2
-                elif (
-                    command[index] in "$`"
-                    and (after := read_expansion(command, index, word)) is not None
-                ):
-                    index = after
-                else:
-                    word.text += command[index]
-                    index += 1
-            if index >= end:
-                raise ValueError("unterminated double quote")
-            word.quoted = True
-            index += 1
+            index = read_double_quoted(command, index, word)
         elif char in " \t\r" or char in OPERATOR_CHARS:
             break
         else:
             word.text += char
             index += 1
     return index, word
+
+
+def read_double_quoted(command: str, index: int, word: Token) -> int:
+    """Read the `"..."` string at `index` into `word`; return the index past it."""
+    end = len(command)
+    index += 1
+    while index < end and command[index] != '"':
+        if command[index] == "\\" and index + 1 < end and command[index + 1] in '$`"\\\n':
+            if command[index + 1] != "\n":
+                word.text += command[index + 1]
+            index += 2
+        elif command[index] in "$`" and (after := read_expansion(command, index, word)) is not None:
+            index = after
+        else:
+            word.text += command[index]
+            index += 1
+    if index >= end:
+        raise ValueError("unterminated double quote")
+    word.quoted = True
+    return index + 1
 
 
 def skip_heredoc_bodies(command: str, index: int, heredocs: list[tuple[str, bool]]) -> int:
