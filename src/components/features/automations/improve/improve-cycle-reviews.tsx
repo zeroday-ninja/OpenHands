@@ -72,6 +72,21 @@ function ReviewEntry({ review }: { review: ImproveCycleReview }) {
         </p>
       ) : null}
 
+      {/* Shown on every review, including when the answer is "nothing newer".
+          An absent line is indistinguishable from nobody having looked, and
+          telling those apart is the whole reason the question is asked every
+          cycle rather than only when something turns up. */}
+      <div data-testid="improve-review-updates-checked" className="mt-2">
+        <h6 className="text-xs font-semibold uppercase tracking-wide text-muted">
+          {t(I18nKey.AUTOMATIONS$IMPROVE$REVIEW_UPDATES_CHECKED)}
+        </h6>
+        <p className="mt-1 whitespace-pre-wrap text-xs text-content">
+          {review.updates_checked?.trim()
+            ? review.updates_checked
+            : t(I18nKey.AUTOMATIONS$IMPROVE$REVIEW_UPDATES_UNANSWERED)}
+        </p>
+      </div>
+
       {review.concerns.length > 0 ? (
         <div data-testid="improve-review-concerns" className="mt-2">
           <h6 className="text-xs font-semibold uppercase tracking-wide text-muted">

@@ -85,6 +85,12 @@ export interface ImproveCycleReview {
   concerns: string[];
   /** Sources the reviewer found outdated or superseded. */
   stale_sources: string[];
+  /**
+   * What this reviewer compared the change against to see whether anything
+   * supersedes it, and what it concluded — including an explicit "nothing
+   * newer", which is a different statement from having said nothing.
+   */
+  updates_checked: string | null;
 }
 
 /**

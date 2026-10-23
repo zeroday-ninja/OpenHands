@@ -163,6 +163,8 @@ const reviewedCycle: ImproveCycle = {
       summary: "The callback can fire twice for one phase.",
       concerns: ["No test covers a repeated phase callback."],
       stale_sources: ["https://docs.python.org/3/library/asyncio-task.html"],
+      updates_checked:
+        "Python 3.13 is current; TaskGroup does not replace the callback.",
     },
   ],
   soul_suggestions: [
@@ -431,6 +433,9 @@ describe("AutomationImprove cycle history", () => {
       within(review).getByTestId("improve-review-stale-sources"),
     ).toHaveTextContent(reviewedCycle.reviews[0].stale_sources[0]);
     expect(
+      within(review).getByTestId("improve-review-updates-checked"),
+    ).toHaveTextContent(reviewedCycle.reviews[0].updates_checked as string);
+    expect(
       within(review).getByTestId("improve-review-conversation-link"),
     ).toHaveAttribute("href", "/conversations/conv-review-1");
   });
@@ -456,6 +461,29 @@ describe("AutomationImprove cycle history", () => {
       within(review).getByTestId("improve-review-runtime"),
     ).toHaveTextContent("codex");
     expect(within(review).getAllByText("codex")).toHaveLength(1);
+  });
+
+  it("distinguishes a reviewer that said nothing from one that found nothing newer", async () => {
+    // Arrange: the reviewer never answered the supersession question.
+    const silent = structuredClone(reviewedCycle);
+    silent.reviews[0].updates_checked = null;
+    vi.mocked(AutomationService.listImproveCycles).mockResolvedValue({
+      cycles: [silent],
+      total: 1,
+    });
+
+    // Act
+    renderPage();
+    const [card] = await cycleCards();
+    const review = within(card).getByTestId("improve-cycle-review");
+
+    // Assert: the section still renders, saying the question went unanswered,
+    // which must not be mistaken for a reviewer reporting nothing newer.
+    expect(
+      within(review).getByTestId("improve-review-updates-checked"),
+    ).toHaveTextContent(
+      I18nKey.AUTOMATIONS$IMPROVE$REVIEW_UPDATES_UNANSWERED,
+    );
   });
 
   it("reads SINGLE_RUNTIME as nobody else having reviewed it, not as a pass", async () => {
