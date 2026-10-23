@@ -70,8 +70,10 @@ These commands can still record another email without being blocked:
   runs cannot know what an earlier segment will change. Pinning `-c user.email`
   on the commit defeats an earlier `git config user.email`, but not an earlier
   `export GIT_AUTHOR_EMAIL` or `git config author.email`, which outrank it.
-- **Earlier commands.** The hook sees the agent-server environment, not
-  variables exported in the agent's terminal session by a previous command.
+- **Earlier commands.** The hook sees the agent-server environment and the
+  conversation's working directory. It does not see variables that a previous
+  command exported in the agent's terminal session, or a directory that a
+  previous command changed to.
 - **Hidden git calls.** Commits made inside `bash -c`, backquotes, scripts, git
   aliases, editors, `rebase --exec`, or text sent to a running process
   (`is_input`) are not parsed. Neither is git started by another command, such
@@ -85,6 +87,11 @@ These commands can still record another email without being blocked:
 - **Here-document bodies.** They are skipped as data, so `cat > x.sh <<'EOF'`
   is not mistaken for a commit. That also skips a body that a shell runs
   (`bash <<'EOF'`) and `$(...)` inside an unquoted body.
+- **Arithmetic `<<`.** In bash's `((...))` and `for ((...))`, the hook reads a
+  `<<` shift as the start of a here-document. It then skips every later line
+  as the body. A commit on the line after `(( y = 1 << 2 ))` is not checked. A
+  commit later on the same line is still checked, and `$((...))` is not
+  affected.
 - **Replayed authors.** `cherry-pick`, `rebase` and `am`, and a `git commit`
   that concludes one of them, keep the original author, which is not checked.
 - **Other objects and writers.** Annotated tags (the tagger), `git replace`,
