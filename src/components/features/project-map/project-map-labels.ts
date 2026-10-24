@@ -47,6 +47,8 @@ export const PROJECT_MAP_WARNING_LABELS: Record<
   "duplicate-node": I18nKey.PROJECT_MAP$WARNING_DUPLICATE_NODE,
   "unknown-group": I18nKey.PROJECT_MAP$WARNING_UNKNOWN_GROUP,
   "orphan-note": I18nKey.PROJECT_MAP$WARNING_ORPHAN_NOTE,
+  "unresolved-anchor": I18nKey.PROJECT_MAP$WARNING_UNRESOLVED_ANCHOR,
+  "dangling-link": I18nKey.PROJECT_MAP$WARNING_DANGLING_LINK,
 };
 
 /** DOM id of a node's group, so keyboard navigation can move focus to it. */

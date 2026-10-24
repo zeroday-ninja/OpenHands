@@ -13,6 +13,7 @@ import type {
   ProjectMapDocument,
   ProjectMapNode,
 } from "#/types/project-map";
+import { defaultProjectMapCanvas } from "./project-map-authoring";
 
 /** Pitch of the drafting grid the canvas draws and snaps to. */
 export const PROJECT_MAP_GRID = 20;
@@ -168,6 +169,9 @@ export function ensureProjectMapLayout(
   );
   return {
     ...document,
+    // In memory the authored layer is always a value, so no component has to
+    // branch on a key the file is allowed to omit.
+    canvas: document.canvas ?? defaultProjectMapCanvas(),
     nodes: document.nodes.map((node) => {
       if (isPlaced(node)) return node;
       const position = positions.get(node.id) ?? { x: 0, y: 0 };

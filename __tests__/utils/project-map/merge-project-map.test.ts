@@ -4,6 +4,7 @@ import {
   PROJECT_MAP_VERSION,
   type ProjectMapDocument,
   type ProjectMapNode,
+  type ProjectMapShape,
 } from "#/types/project-map";
 import { projectMapNodeSize } from "#/utils/project-map/project-map-layout";
 
@@ -37,6 +38,26 @@ function document(
     nodes: [],
     edges: [],
     notes: [],
+    ...overrides,
+  };
+}
+
+function shape(
+  overrides: Partial<ProjectMapShape> & { id: string },
+): ProjectMapShape {
+  return {
+    kind: "box",
+    text: "",
+    x: 0,
+    y: 0,
+    width: 180,
+    height: 64,
+    accent: null,
+    parent: null,
+    anchor: null,
+    pinned: false,
+    collapsed: false,
+    tags: [],
     ...overrides,
   };
 }
@@ -230,5 +251,103 @@ describe("mergeProjectMap", () => {
 
     // Assert
     expect(merged.edges).toEqual(incoming.edges);
+  });
+
+  it("leaves the drawn layer alone when the analysis runs again", () => {
+    // Arrange: a map with a drawing on it, re-analysed.
+    const drawn = {
+      view: { mode: "both" as const, layout: "tree" as const },
+      shapes: [shape({ id: "shape-1", text: "Retry policy", x: 320, y: -180 })],
+      connectors: [
+        {
+          id: "conn-1",
+          from: { attach: "shape" as const, shape: "shape-1", side: null },
+          to: { attach: "free" as const, x: 10, y: 10 },
+          waypoints: [],
+          dash: "solid" as const,
+          head: "filled" as const,
+          label: null,
+          accent: null,
+        },
+      ],
+    };
+    const previous = document({ nodes: [node({ id: "a" })], canvas: drawn });
+    const incoming = document({ nodes: [node({ id: "a" }), node({ id: "b" })] });
+
+    // Act
+    const result = mergeProjectMap(previous, incoming);
+
+    // Assert: the analysis owns the nodes, the person owns the drawing.
+    expect(result.document.canvas).toEqual(drawn);
+    expect(result.addedNodeIds).toEqual(["b"]);
+  });
+
+  it("releases a shape anchored to a node the analysis dropped, and keeps the shape", () => {
+    // Arrange
+    const previous = document({
+      nodes: [node({ id: "gone" })],
+      canvas: {
+        view: { mode: "both", layout: "free" },
+        shapes: [
+          shape({
+            id: "shape-1",
+            x: 400,
+            y: 120,
+            anchor: { layer: "code", node: "gone", dx: 20, dy: 20 },
+          }),
+          shape({
+            id: "shape-2",
+            anchor: { layer: "work", node: "cycle:abc", dx: 0, dy: 0 },
+          }),
+        ],
+        connectors: [],
+      },
+    });
+    const incoming = document({ nodes: [node({ id: "kept" })] });
+
+    // Act
+    const result = mergeProjectMap(previous, incoming);
+
+    // Assert: released in place and reported, never deleted — and a reference
+    // into the live work layer is not "repaired", because it always looks
+    // missing from a committed file.
+    const shapes = result.document.canvas.shapes;
+    expect(shapes).toHaveLength(2);
+    expect(shapes[0].anchor).toBeNull();
+    expect(shapes[0].x).toBe(400);
+    expect(shapes[1].anchor).toEqual({
+      layer: "work",
+      node: "cycle:abc",
+      dx: 0,
+      dy: 0,
+    });
+    expect(result.releasedShapeIds).toEqual(["shape-1"]);
+  });
+
+  it("accepts a drawing from the analysis only when the user has drawn nothing", () => {
+    // Arrange: the agent was asked to sketch something.
+    const sketched = {
+      view: { mode: "freeform" as const, layout: "tree" as const },
+      shapes: [shape({ id: "shape-9", text: "proposed split" })],
+      connectors: [],
+    };
+    const blank = document({ nodes: [node({ id: "a" })] });
+    const drawnOn = document({
+      nodes: [node({ id: "a" })],
+      canvas: {
+        view: { mode: "both", layout: "free" },
+        shapes: [shape({ id: "shape-1", text: "mine" })],
+        connectors: [],
+      },
+    });
+    const incoming = document({ nodes: [node({ id: "a" })], canvas: sketched });
+
+    // Act
+    const ontoBlank = mergeProjectMap(blank, incoming);
+    const ontoDrawn = mergeProjectMap(drawnOn, incoming);
+
+    // Assert
+    expect(ontoBlank.document.canvas.shapes[0].text).toBe("proposed split");
+    expect(ontoDrawn.document.canvas.shapes[0].text).toBe("mine");
   });
 });
