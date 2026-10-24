@@ -14,7 +14,8 @@
     "url": "https://github.com/OpenHands/OpenHands/issues"
   },
   "bin": {
-    "agent-canvas": "bin/agent-canvas.mjs"
+    "agent-canvas": "bin/agent-canvas.mjs",
+    "oh": "bin/oh.mjs"
   },
   "engines": {
     "node": ">=24"

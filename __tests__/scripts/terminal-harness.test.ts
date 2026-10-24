@@ -1,0 +1,250 @@
+/**
+ * The terminal interface, where it can be held to something without a stack.
+ *
+ * The frame reader and the renderer are the two places a protocol detail went
+ * wrong while this was being built against a real conversation, so they are
+ * where the fixtures below come from: each one is a frame or an event captured
+ * from an actual turn, not an imagined shape.
+ */
+
+import { describe, expect, it } from "vitest";
+
+import {
+  colourEnabled,
+  renderEvent,
+  renderTranscript,
+} from "../../scripts/tui/render.mjs";
+import { readFrame, settledStatusOf } from "../../scripts/tui/stream.mjs";
+import { PARITY_ACTIONS, parityReport } from "../../scripts/tui/parity.mjs";
+import { hasAutomation, resolveApiKey } from "../../scripts/stack-discovery.mjs";
+
+const PLAIN = { colour: false };
+
+describe("reading the envelope protocol", () => {
+  it("takes the event out of a durable frame", () => {
+    const read = readFrame({
+      type: "durable",
+      seq: 7,
+      event: { kind: "MessageEvent", source: "agent", content: "done" },
+    });
+
+    expect(read.events).toHaveLength(1);
+    expect(read.delta).toBeNull();
+  });
+
+  it("reads a delta as streamed text, not as an event", () => {
+    // This is the bug the real conversation exposed: a delta carries
+    // `kind: "text"`, so reading `frame.kind` as an event kind printed the
+    // reply as the line "· text".
+    const read = readFrame({
+      type: "delta",
+      item_id: "efba7349",
+      order: 0,
+      kind: "text",
+      content: "ok",
+    });
+
+    expect(read.delta).toBe("ok");
+    expect(read.events).toEqual([]);
+  });
+
+  it("ignores the frames that are not work", () => {
+    for (const frame of [
+      { type: "sync", from_seq: -1 },
+      { type: "item_started", item_id: "x", attempt: 1, anchor_seq: 5 },
+      // A full-state snapshot: thousands of characters nobody asked for.
+      { type: "transient", event: { key: "full_state", value: {} } },
+    ]) {
+      const read = readFrame(frame);
+      expect(read.events).toEqual([]);
+      expect(read.delta).toBeNull();
+      expect(read.unknown).toBeNull();
+    }
+  });
+
+  it("names a frame type it has never seen rather than dropping it", () => {
+    // Silence reads as an idle agent.
+    expect(readFrame({ type: "something_new" }).unknown).toBe("something_new");
+  });
+
+  it("recognises the conversation saying it has stopped", () => {
+    const stopped = {
+      kind: "ConversationStateUpdateEvent",
+      key: "execution_status",
+      value: "finished",
+    };
+
+    // Read from the conversation's own state rather than a quiet socket: the
+    // socket stays open across a finished turn, so waiting for it to close
+    // means waiting forever.
+    expect(settledStatusOf(stopped)).toBe("finished");
+    expect(settledStatusOf({ ...stopped, value: "running" })).toBeNull();
+    expect(settledStatusOf({ ...stopped, key: "stats" })).toBeNull();
+  });
+});
+
+describe("rendering what an agent did", () => {
+  it("shows the answer rather than the tool that carried it", () => {
+    const finish = {
+      kind: "ActionEvent",
+      tool_name: "finish",
+      action: { kind: "FinishAction", message: "hello" },
+    };
+
+    // "⚙ finish" is the one line that tells the reader nothing about what
+    // they asked for.
+    expect(renderEvent(finish, PLAIN)).toEqual(["hello"]);
+  });
+
+  it("does not print an answer twice when it already streamed", () => {
+    const finish = {
+      kind: "ActionEvent",
+      id: "efba7349",
+      action: { kind: "FinishAction", message: "ok" },
+    };
+
+    expect(renderEvent(finish, { ...PLAIN, alreadyStreamed: true })).toEqual([]);
+  });
+
+  it("renders an ACP tool call from the runtime's own words", () => {
+    // Captured shape: one event per state, with `title` as the call.
+    const call = {
+      kind: "ACPToolCallEvent",
+      tool_call_id: "exec-1",
+      title: "git status -sb",
+      tool_kind: "execute",
+      status: "in_progress",
+    };
+
+    expect(renderEvent(call, PLAIN)).toEqual(["⚙ git status -sb"]);
+    expect(
+      renderEvent({ ...call, status: "failed", is_error: true }, PLAIN),
+    ).toEqual(["✗ git status -sb"]);
+  });
+
+  it("collapses a finished call to one line in a transcript", () => {
+    const events = [
+      { kind: "ACPToolCallEvent", tool_call_id: "e1", title: "pytest", status: "in_progress" },
+      { kind: "ACPToolCallEvent", tool_call_id: "e1", title: "pytest", status: "completed" },
+    ];
+
+    // Two lines is what a reader wants while work happens and not what they
+    // want afterwards, where it doubles the transcript for no information.
+    expect(renderTranscript(events, PLAIN)).toEqual(["✓ pytest"]);
+  });
+
+  it("shows a runtime switch as one notice and nothing more", () => {
+    const lines = renderEvent(
+      {
+        kind: "ACPRuntimeSwitchEvent",
+        from_server: "claude-code",
+        to_server: "codex",
+        to_model: "gpt-5.5",
+        reason: "usage_limit",
+        reset_hint: { at: "2026-10-29T20:00:00Z" },
+      },
+      PLAIN,
+    );
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("claude-code ran out of usage");
+    expect(lines[0]).toContain("continuing on codex");
+  });
+
+  it("names an event kind it has never seen", () => {
+    expect(renderEvent({ kind: "SomethingNewEvent" }, PLAIN)).toEqual([
+      "· SomethingNewEvent",
+    ]);
+  });
+
+  it("does not render a structured value as [object Object]", () => {
+    const lines = renderEvent(
+      {
+        kind: "ConversationStateUpdateEvent",
+        key: "stats",
+        value: { tokens: 12 },
+      },
+      { ...PLAIN, verbose: true },
+    );
+
+    expect(lines[0]).toContain('{"tokens":12}');
+  });
+
+  it("honours NO_COLOR", () => {
+    expect(colourEnabled({ NO_COLOR: "1" }, true)).toBe(false);
+    expect(colourEnabled({}, true)).toBe(true);
+    expect(colourEnabled({}, false)).toBe(false);
+  });
+});
+
+describe("the parity checklist", () => {
+  it("says what works here and what still needs a browser", () => {
+    const report = parityReport().join("\n");
+
+    expect(report).toContain("actions work here");
+    expect(report).toContain("Still needs a browser");
+  });
+
+  it("covers every action the milestone's MVP asks for", () => {
+    // start, stream, interrupt, approve a tool call, read history.
+    const inTerminal = new Set(
+      PARITY_ACTIONS.filter((item) => item.where === "terminal").map(
+        (item) => item.id,
+      ),
+    );
+
+    for (const id of ["start", "stream", "interrupt", "approve", "history"]) {
+      expect(inTerminal.has(id), id).toBe(true);
+    }
+  });
+
+  it("gives every web-only item a reason rather than a blank", () => {
+    // An item marked web_only is a gap with a reason, which is the honest
+    // thing to show someone deciding whether to open a browser.
+    PARITY_ACTIONS.filter((item) => item.where === "web_only").forEach(
+      (item) => {
+        expect(item.how.length, item.id).toBeGreaterThan(20);
+      },
+    );
+  });
+
+  it("has a unique id per action", () => {
+    const ids = PARITY_ACTIONS.map((item) => item.id);
+
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe("finding the stack", () => {
+  it("prefers an explicit key over the persisted one", async () => {
+    await expect(
+      resolveApiKey({ OH_STACK_API_KEY: "explicit" }),
+    ).resolves.toBe("explicit");
+    await expect(
+      resolveApiKey({ LOCAL_BACKEND_API_KEY: "pinned" }),
+    ).resolves.toBe("pinned");
+  });
+
+  it("reads the automation service off what the stack says it serves", () => {
+    // Read rather than probed: a probe that got a 404 cannot tell "not
+    // running" from "running, wrong path".
+    // The shape /server_info actually returns.
+    expect(
+      hasAutomation({
+        runtime_services: {
+          mode: "dev:automation",
+          services: { agent_server: {}, automation: { url_from_agent: "x" } },
+        },
+      }),
+    ).toBe(true);
+    // And the flatter one an older stack sends.
+    expect(
+      hasAutomation({ runtime_services: { automation: { url: "x" } } }),
+    ).toBe(true);
+    expect(
+      hasAutomation({ runtime_services: { services: { agent_server: {} } } }),
+    ).toBe(false);
+    expect(hasAutomation({})).toBe(false);
+    expect(hasAutomation(null)).toBe(false);
+  });
+});
