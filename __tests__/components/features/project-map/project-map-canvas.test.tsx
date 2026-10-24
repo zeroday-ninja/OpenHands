@@ -383,4 +383,158 @@ describe("ProjectMapCanvas", () => {
       projectMapNodeDomId("left"),
     );
   });
+
+  it("draws a box with the box tool where a plain drag would have panned", () => {
+    // Arrange
+    stubFrame();
+    renderCanvas();
+    act(() => {
+      useProjectMapStore.getState().setTool("box");
+    });
+    const canvas = screen.getByTestId("project-map-canvas");
+    const before = useProjectMapStore.getState().viewport;
+
+    // Act: the same gesture that pans under the Select tool.
+    fireEvent.pointerDown(canvas, { ...POINTER, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(canvas, { ...POINTER, clientX: 260, clientY: 220 });
+    fireEvent.pointerUp(canvas, { ...POINTER, clientX: 260, clientY: 220 });
+
+    // Assert: a box the size of the sweep, and the paper did not move.
+    const { document: open, tool } = useProjectMapStore.getState();
+    const [shape] = open?.canvas.shapes ?? [];
+    expect(shape).toMatchObject({ kind: "box", width: 160, height: 120 });
+    expect(useProjectMapStore.getState().viewport).toEqual(before);
+    // One shape per press: the tool goes back to Select so the next press
+    // does not quietly make another.
+    expect(tool).toBe("select");
+  });
+
+  it("still pans on a plain drag and sweeps on a shift-drag with the select tool", () => {
+    // Arrange
+    stubFrame();
+    renderCanvas();
+    const canvas = screen.getByTestId("project-map-canvas");
+
+    // Act: pan.
+    fireEvent.pointerDown(canvas, { ...POINTER, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(canvas, { ...POINTER, clientX: 160, clientY: 100 });
+    fireEvent.pointerUp(canvas, { ...POINTER, clientX: 160, clientY: 100 });
+
+    // Assert: the grammar the editor was built on top of is unchanged.
+    expect(useProjectMapStore.getState().viewport.x).toBe(-100);
+    expect(useProjectMapStore.getState().document?.canvas.shapes).toHaveLength(
+      0,
+    );
+
+    // Act: shift-drag sweeps a selection instead.
+    fireEvent.pointerDown(canvas, {
+      ...POINTER,
+      clientX: 0,
+      clientY: 0,
+      shiftKey: true,
+    });
+    fireEvent.pointerMove(canvas, { ...POINTER, clientX: 800, clientY: 500 });
+    fireEvent.pointerUp(canvas, { ...POINTER, clientX: 800, clientY: 500 });
+
+    // Assert
+    expect(useProjectMapStore.getState().selection.length).toBeGreaterThan(0);
+  });
+
+  it("connects an analysed plate to a drawn shape", () => {
+    // Arrange: one drawn box, and the connect tool in hand.
+    stubFrame();
+    renderCanvas();
+    act(() => {
+      const store = useProjectMapStore.getState();
+      store.addShape({ kind: "box", x: 600, y: 300 });
+      store.setTool("connect");
+    });
+    const canvas = screen.getByTestId("project-map-canvas");
+    const shapeId =
+      useProjectMapStore.getState().document?.canvas.shapes[0].id ?? "";
+
+    // Act: pull a line from the plate and release it over the box.
+    fireEvent.pointerDown(screen.getByTestId("project-map-node-left"), {
+      ...POINTER,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(canvas, { ...POINTER, clientX: 700, clientY: 380 });
+    fireEvent.pointerUp(canvas, { ...POINTER, clientX: 700, clientY: 380 });
+
+    // Assert: the two layers are joined, which is the point of sharing one
+    // canvas.
+    const [connector] =
+      useProjectMapStore.getState().document?.canvas.connectors ?? [];
+    expect(connector.from).toEqual({
+      attach: "derived",
+      layer: "code",
+      node: "left",
+      side: null,
+    });
+    expect(connector.to).toEqual({
+      attach: "shape",
+      shape: shapeId,
+      side: null,
+    });
+  });
+
+  it("opens a shape's text on double-click, and Escape leaves the text without clearing the selection", async () => {
+    // Arrange
+    stubFrame();
+    renderCanvas();
+    act(() => {
+      useProjectMapStore.getState().addShape({ kind: "box", x: 100, y: 100 });
+    });
+    const shapeId =
+      useProjectMapStore.getState().document?.canvas.shapes[0].id ?? "";
+    act(() => {
+      useProjectMapStore.getState().setEditingShape(null);
+      useProjectMapStore.getState().setSelection([shapeId]);
+    });
+
+    // Act
+    fireEvent.doubleClick(screen.getByTestId(`project-map-shape-${shapeId}`));
+    const field = await screen.findByTestId(
+      `project-map-shape-text-${shapeId}`,
+    );
+    await userEvent.type(field, "retry policy");
+    fireEvent.keyDown(field, { key: "Escape" });
+
+    // Assert: the words were kept, and Escape meant "done typing" rather than
+    // "put the selection down".
+    const [shape] = useProjectMapStore.getState().document?.canvas.shapes ?? [];
+    expect(shape.text).toBe("retry policy");
+    expect(useProjectMapStore.getState().selection).toEqual([shapeId]);
+  });
+
+  it("sweeps only what the current mode draws", () => {
+    // Arrange: freeform mode, where the analysis is not on the paper.
+    stubFrame();
+    renderCanvas();
+    act(() => {
+      const store = useProjectMapStore.getState();
+      store.addShape({ kind: "box", x: 100, y: 100 });
+      store.setMode("freeform");
+      store.clearSelection();
+    });
+    const canvas = screen.getByTestId("project-map-canvas");
+
+    // Act: a sweep across everything.
+    fireEvent.pointerDown(canvas, {
+      ...POINTER,
+      clientX: 0,
+      clientY: 0,
+      shiftKey: true,
+    });
+    fireEvent.pointerMove(canvas, { ...POINTER, clientX: 880, clientY: 580 });
+    fireEvent.pointerUp(canvas, { ...POINTER, clientX: 880, clientY: 580 });
+
+    // Assert: plates nobody can see cannot be selected.
+    const { selection, document: open } = useProjectMapStore.getState();
+    expect(selection).toEqual([open?.canvas.shapes[0].id]);
+    expect(
+      screen.queryByTestId("project-map-node-left"),
+    ).not.toBeInTheDocument();
+  });
 });

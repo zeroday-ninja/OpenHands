@@ -260,6 +260,10 @@ export function SidebarRailBody({
             testId="sidebar-map-link"
             collapsed={collapsed}
             icon={<Network width={ICON_SIZE} height={ICON_SIZE} />}
+            pinAction={buildPinAction(
+              PROJECT_MAP_ROUTE_PATH,
+              "sidebar-pin-home-toggle-map",
+            )}
           />
         )}
         {/* The interface manifest owns this entry's label, so an absent
