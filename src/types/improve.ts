@@ -89,6 +89,10 @@ export interface ImproveCycleReview {
    * What this reviewer compared the change against to see whether anything
    * supersedes it, and what it concluded — including an explicit "nothing
    * newer", which is a different statement from having said nothing.
+   *
+   * A reviewer that ran without answering is recorded with a sentence saying
+   * so, so this is empty only for a review that never finished or a cycle
+   * from before the question was asked.
    */
   updates_checked: string | null;
 }
