@@ -108,12 +108,11 @@ const PAGE_SIZE = 50;
  * looking for a page that was taken away from them without a word.
  */
 export const clientLoader = () => {
-  const rejection = automationInterfaceRejection();
-  if (rejection) return { rejection };
+  if (automationInterfaceRejection()) return null;
   if (!hasAutomationInterface()) {
     throw new Response(null, { status: 404, statusText: "Not Found" });
   }
-  return { rejection: null };
+  return null;
 };
 
 function withoutDraftAutomations(
