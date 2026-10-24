@@ -22,6 +22,17 @@ import {
   renderTranscript,
 } from "./render.mjs";
 import { unifiedDiff } from "./diff.mjs";
+import {
+  MAP_RELATIVE_PATH,
+  canvasOf,
+  describeCanvas,
+  emptyCanvas,
+  makeConnector,
+  makeShape,
+  nextFreeSpot,
+  readMap,
+  writeMap,
+} from "./map.mjs";
 import { followConversation } from "./stream.mjs";
 import { PARITY_ACTIONS, parityReport } from "./parity.mjs";
 
@@ -35,6 +46,10 @@ const USAGE = `oh — Agent Canvas from the terminal
                              answer a tool call it is waiting on
   oh history <id>            print the whole transcript
   oh diff [path] [ref]       what changed in a working tree, as a diff
+  oh map [path]              the drawn layer of a workspace's map
+  oh map add <kind> <label>  add a box | diamond | sticky | frame | branch
+  oh map link <from> <to>    connect two shapes
+  oh map rm <id>             remove a shape or a connector
   oh list                    conversations, newest first
   oh graph                   what every agent is doing
   oh programs [new <file>]   improvement programs, and create one from a
@@ -252,6 +267,9 @@ export async function main(argv = process.argv.slice(2), io = process) {
     case "programs":
       return await showPrograms(client, write, colour, rest);
 
+    case "map":
+      return await editMap(write, colour, rest, io.env ?? process.env);
+
     case "graph":
       return await showGraph(client, write, colour);
 
@@ -409,7 +427,9 @@ async function showPrograms(client, write, colour, rest) {
       return 2;
     }
     const created = await client.automation("POST", "/preset/improve", body);
-    write(`${paint(created?.id ?? "?", "dim", colour)}  ${created?.name ?? ""}`);
+    write(
+      `${paint(created?.id ?? "?", "dim", colour)}  ${created?.name ?? ""}`,
+    );
     return 0;
   }
 
@@ -444,6 +464,133 @@ async function showPrograms(client, write, colour, rest) {
     );
   });
   return 0;
+}
+
+/**
+ * Read and edit the map's drawn layer.
+ *
+ * Not the freeform editor — that is a pointer surface, and this is the other
+ * half of it: the drawn layer is a committed document, so adding a labelled
+ * box and connecting two of them are ordinary edits, and doing them from a
+ * terminal makes them scriptable, which the pointer surface is not.
+ *
+ * Local file access on purpose. The map belongs to a checkout, not to a
+ * conversation, and reaching it through a sandbox would make editing the map
+ * of a repository on this machine depend on a running agent.
+ */
+async function editMap(write, colour, rest, env) {
+  const [verb, ...args] = rest;
+  const explicit = verb && !["add", "link", "rm"].includes(verb);
+  const root = explicit ? verb : env.OH_WORKING_DIR || process.cwd();
+  const file = `${String(root).replace(/\/$/, "")}/${MAP_RELATIVE_PATH}`;
+
+  const { document, missing } = await readMap(file);
+  if (missing && (!verb || explicit)) {
+    // A workspace with no map is one nobody has analysed, which is a fact to
+    // report rather than an error to raise.
+    write(
+      `No map at ${file}. The agent writes one when it analyses the repository.`,
+    );
+    return 0;
+  }
+  const base = document ?? {};
+  const canvas = canvasOf(base);
+
+  if (!verb || explicit) {
+    describeCanvas(canvas).forEach(write);
+    return 0;
+  }
+
+  if (verb === "add") {
+    const [kind, ...label] = args;
+    if (!kind) {
+      write('Which kind? `oh map add box "a label"`');
+      return 2;
+    }
+    let shape;
+    try {
+      shape = makeShape(canvas.shapes, {
+        kind,
+        text: label.join(" "),
+        ...nextFreeSpot(canvas.shapes),
+      });
+    } catch (error) {
+      write(error.message);
+      return 2;
+    }
+    canvas.shapes = [...canvas.shapes, shape];
+    await writeMap(file, base, canvas);
+    write(`${paint(shape.id, "dim", colour)}  ${shape.kind}  ${shape.text}`);
+    return 0;
+  }
+
+  if (verb === "link") {
+    const [from, to, ...label] = args;
+    const ids = new Set(canvas.shapes.map((shape) => shape.id));
+    for (const id of [from, to]) {
+      if (!id || !ids.has(id)) {
+        // Named rather than written and left dangling: the document's own
+        // parser reports a dangling link as a warning, and producing one from
+        // here would be producing a known defect.
+        write(
+          `${id ?? "(nothing)"} is not a shape on this map. \`oh map\` lists them.`,
+        );
+        return 2;
+      }
+    }
+    const connector = makeConnector(
+      canvas.connectors,
+      from,
+      to,
+      label.join(" ") || null,
+    );
+    canvas.connectors = [...canvas.connectors, connector];
+    await writeMap(file, base, canvas);
+    write(`${paint(connector.id, "dim", colour)}  ${from} → ${to}`);
+    return 0;
+  }
+
+  if (verb === "rm") {
+    const [id] = args;
+    if (!id) {
+      write("Which one? `oh map` lists the ids.");
+      return 2;
+    }
+    const shapes = canvas.shapes.filter((shape) => shape.id !== id);
+    const connectors = canvas.connectors.filter(
+      (connector) =>
+        connector.id !== id &&
+        // A connector to a removed shape would be left dangling, so it goes
+        // with it. The document's parser would report it otherwise.
+        connector.from?.shape !== id &&
+        connector.to?.shape !== id,
+    );
+    if (
+      shapes.length === canvas.shapes.length &&
+      connectors.length === canvas.connectors.length
+    ) {
+      write(`${id} is not on this map.`);
+      return 2;
+    }
+    // Counted before the arrays are replaced: comparing against the updated
+    // ones always says nothing was removed.
+    const removedShapes = canvas.shapes.length - shapes.length;
+    const removedLinks = canvas.connectors.length - connectors.length;
+    canvas.shapes = shapes;
+    canvas.connectors = connectors;
+    await writeMap(file, base, canvas);
+    const alsoLinks = removedShapes > 0 && removedLinks > 0;
+    write(
+      `removed ${id}` +
+        (alsoLinks
+          ? ` and ${removedLinks} connector(s) that pointed at it`
+          : ""),
+    );
+    return 0;
+  }
+
+  write(`Unknown map command: ${verb}`);
+  return 2;
 }
 
 async function showGraph(client, write, colour) {

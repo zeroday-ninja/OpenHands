@@ -120,9 +120,12 @@ export const PARITY_ACTIONS = [
   },
   {
     id: "canvas",
-    action: "Draw on the canvas",
-    where: "web_only",
-    how: "A freeform diagram editor is not a terminal surface, and pretending otherwise would be worse than saying so.",
+    action: "Author the map's drawn layer",
+    where: "terminal",
+    // Not the freeform pointer editor — that is a pointer surface. This is
+    // the other half: the drawn layer is a committed document, and editing it
+    // from here makes it scriptable, which the pointer surface is not.
+    how: "oh map / oh map add <kind> <label> / oh map link <from> <to> / oh map rm <id>",
   },
 ];
 

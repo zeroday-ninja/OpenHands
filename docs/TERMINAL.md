@@ -62,10 +62,34 @@ defaults to the current directory.
 `oh parity` is the checklist, and it is asserted by a test rather than kept in
 prose, so an action that regresses to web-only shows up as a failure.
 
-**One** thing still needs a browser: drawing on the canvas. A freeform diagram
-editor is not a terminal surface, and pretending otherwise would be worse than
-saying so. A gap with a reason is the honest thing to show someone deciding
-whether to open one.
+All seventeen actions work here. The checklist is asserted by a test rather
+than kept in prose, so an action that regresses to web-only shows up as a
+failure.
+
+## The map
+
+Not the freeform editor — that is a pointer surface. This is its other half:
+the drawn layer is a committed document, so adding a labelled box and
+connecting two of them are ordinary edits, and making them from a terminal
+makes them **scriptable**, which the pointer surface is not.
+
+```sh
+oh map                              # what is drawn
+oh map add box "ingress :8000"
+oh map add diamond "docker?"
+oh map link shape-1 shape-2 "proxies /api"
+oh map rm shape-2                   # takes its connectors with it
+```
+
+`scripts/tui/map.mjs` edits the JSON directly: it runs as a plain Node script
+with no build step, so it cannot import the app's TypeScript serializer. That
+makes divergence the risk, so `__tests__/scripts/map-cli.test.ts` puts
+everything it writes back through `parseProjectMap` — the app's own parser —
+and requires no warnings, and pins the vocabularies it restates to the app's
+constants. That test caught two real divergences the first time it ran: a
+connector head of `arrow`, where the document's vocabulary is
+`none | open | filled | diamond`, and a minimum shape size of 24 where the
+editor's is 40. Both would have produced maps the canvas refuses to open.
 
 ## Diffs
 
