@@ -72,10 +72,16 @@ function ReviewEntry({ review }: { review: ImproveCycleReview }) {
         </p>
       ) : null}
 
-      {/* Shown on every review, including when the answer is "nothing newer".
-          An absent line is indistinguishable from nobody having looked, and
-          telling those apart is the whole reason the question is asked every
-          cycle rather than only when something turns up. */}
+      {/* Shown on every review, including when the answer is "nothing newer":
+          hiding the line would make a reviewer that looked and found nothing
+          indistinguishable from one that never looked, and telling those apart
+          is the whole reason the question is asked every cycle.
+
+          A reviewer that ran but skipped the question is recorded with the
+          service's own sentence saying so, so an empty field means something
+          else entirely: the review never finished, or the cycle predates the
+          question. The fallback copy says that rather than blaming the
+          reviewer for staying silent. */}
       <div data-testid="improve-review-updates-checked" className="mt-2">
         <h6 className="text-xs font-semibold uppercase tracking-wide text-muted">
           {t(I18nKey.AUTOMATIONS$IMPROVE$REVIEW_UPDATES_CHECKED)}
