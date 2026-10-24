@@ -14,8 +14,56 @@ import {
   startAccessGate,
 } from "../scripts/access-gate.mjs";
 import { discoverStack, StackNotFound } from "../scripts/stack-discovery.mjs";
+import { lanAddress, runGateSelfTest } from "../scripts/gate-self-test.mjs";
+
+async function selfTest() {
+  const host = lanAddress();
+  if (!host) {
+    console.error(
+      "This machine has no LAN address, so there is nothing to check: the " +
+        "claim being tested is that another machine can reach the gate.",
+    );
+    process.exit(2);
+  }
+
+  let stack;
+  try {
+    stack = await discoverStack();
+  } catch (error) {
+    if (error instanceof StackNotFound) {
+      console.error(error.message);
+      process.exit(2);
+    }
+    throw error;
+  }
+
+  console.log(`  checking the gate on ${host}, in front of ${stack.baseUrl}`);
+  const report = await runGateSelfTest({
+    upstream: stack.baseUrl,
+    sessionApiKey: stack.apiKey,
+    host,
+  });
+  console.log(`  listening on ${report.base}\n`);
+  for (const check of report.checks) {
+    console.log(`  ${check.ok ? "ok  " : "FAIL"}  ${check.name}`);
+    console.log(`          ${check.detail}`);
+  }
+  console.log(
+    report.ok
+      ? "\nThe gate holds. The identity was minted by a loopback stub, because " +
+          "a\nGoogle client belongs to a Google account; everything the gate does " +
+          "with\nthat identity is the production path."
+      : "\nThe gate did not hold. See the FAIL lines above.",
+  );
+  process.exit(report.ok ? 0 : 1);
+}
 
 async function run() {
+  if (process.argv.includes("--self-test")) {
+    await selfTest();
+    return;
+  }
+
   let config;
   try {
     config = readGateConfig();

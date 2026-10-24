@@ -43,6 +43,9 @@ const NODE_ENV_PILOT_TESTS = [
   // nothing unauthenticated reaches the ingress passed through a mock instead
   // of through the gate. It has to run where nothing is intercepting.
   "__tests__/scripts/access-gate.test.ts",
+  // Same reason as the gate above: this one stands up the gate, a stub
+  // issuer and an upstream on real sockets and drives them with `fetch`.
+  "__tests__/scripts/gate-self-test.test.ts",
 ];
 
 const normalizeBasePath = (value?: string) => {
