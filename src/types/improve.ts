@@ -307,6 +307,16 @@ export interface ImproveRotationResponse {
   next_index: number | null;
   last_cycle: ImproveCycle | null;
   config: ImproveProgramConfig;
+  /**
+   * Whether the program's packaged runner is the code the service would
+   * package now. A program's runner is packaged once, when the program is
+   * created, so a fix to the preset reaches only programs created afterwards.
+   * Optional because an older automation service does not answer; absent is
+   * read as "nothing to say", never as "out of date".
+   */
+  preset_code_is_current?: boolean;
+  preset_code_digest?: string | null;
+  service_preset_code_digest?: string | null;
 }
 
 /** A page of cycle history, newest first, from `GET /{id}/cycles`. */
