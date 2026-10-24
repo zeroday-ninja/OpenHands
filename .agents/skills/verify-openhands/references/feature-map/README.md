@@ -231,18 +231,18 @@ How to write and prove new entries: [../mapping.md](../mapping.md).
 | ID | Family | What it covers | Entry points | Needs | Sub-features |
 |---|---|---|---|---|---|
 | F01 | [First run, onboarding and sign-in](F01-first-run-and-sign-in.md) | telemetry consent, onboarding modal, public-mode backend step and API-key screen, route error page | any URL on a fresh browser profile; `launch --public` | fresh run or `browser reset`; LLM for say-hello | 22 |
-| F02 | [App shell, sidebar and command menu](F02-app-shell.md) | rail and phone drawer, collapse, home pinning, getting-started checklist, command menu, toasts | every page; `Control+k` / `Meta+k` | baseline; LLM for checklist progress | 28 |
+| F02 | [App shell, sidebar and command menu](F02-app-shell.md) | rail and phone drawer, collapse, home pinning, getting-started checklist, command menu, toasts | every page; `Control+k` / `Meta+k` | baseline; LLM for checklist progress | 29 |
 | F03 | [Home and starting work](F03-home.md) | home composer, workspace picker, plugin picker, recommended automations rail, no-LLM banner | `/`, **New Chat**, command menu | runs before and after `llm preset`; fixture repo | 45 |
 | F04 | [Conversation list and folders](F04-conversation-list.md) | sidebar list, View presets, workspace folders, tags, rename/pin/archive/delete, load more | sidebar on every page | several conversations; fixture repos | 41 |
 | F05 | [Composer, slash commands and plan mode](F05-composer.md) | send, drafts, attachments, model pill, slash commands, `/goal`, plan mode, dictation | home and conversation composer | LLM | 26 |
 | F06 | [Agent activity](F06-agent-activity.md) | messages, tool events, thinking, empty state, confirmation mode, stop/resume, errors, branching | `/conversations/<id>` | LLM | 37 |
-| F07 | [Conversation page, header and menu](F07-conversation-page.md) | title rename, status menu, ⋯ menu (skills, hooks, tools, export, download, cost, stop, delete), git bar, overview | sidebar row, URL, `/panel` | LLM; fixture repo; Cloud items blocked | 25 |
-| F08 | [Workspace drawer: files and changes](F08-workspace-files-and-changes.md) | Files tab, Commits and uncommitted changes, diff viewer, file links in chat | panel toggle, file links | LLM; fixture repo | 34 |
+| F07 | [Conversation page, header and menu](F07-conversation-page.md) | title rename, status menu, ⋯ menu (skills, hooks, tools, export, download, cost, stop, delete), git bar, overview | sidebar row, URL, `/panel` | LLM; fixture repo; Cloud items blocked | 26 |
+| F08 | [Workspace drawer: files and changes](F08-workspace-files-and-changes.md) | Files tab, Commits and uncommitted changes, diff viewer, file links in chat | panel toggle, file links | LLM; fixture repo | 35 |
 | F09 | [Settings shell and navigation](F09-settings-shell.md) | settings navigation, phone hub, deep links, update card, backend note | gear, command menu, URLs | baseline; deep links before `llm preset` | 26 |
 | F10 | [LLM profiles](F10-llm-profiles.md) | list, add, edit, rename, duplicate, delete, default, advanced fields, validation | `/settings/llm` | fresh run; DeepSeek key | 34 |
 | F11 | [Provider connections](F11-provider-connections.md) | add, edit, rotate key, delete connections; profiles from a connection | `/settings/llm` | fresh run; DeepSeek key | 21 |
 | F12 | [Model router](F12-model-router.md) | meta-profiles, templates, run on first message, routing effect | `/settings/meta-llm` | LLM profiles | 25 |
-| F13 | [Agent profiles](F13-agent-profiles.md) | OpenHands and ACP profiles, editor, name rules, active profile, MCP and secret scoping | `/settings/agents` | fresh run; LLM | 25 |
+| F13 | [Agent profiles](F13-agent-profiles.md) | OpenHands and ACP profiles, editor, name rules, active profile, MCP and secret scoping | `/settings/agents` | fresh run; LLM | 26 |
 | F14 | [Secrets](F14-secrets.md) | list, add, edit, rename, delete, agent access | `/settings/secrets` | LLM for agent access | 12 |
 | F15 | [Condenser, agent context and verification](F15-agent-behavior-settings.md) | condenser fields, agent context, confirmation mode and critic, their effect on runs | `/settings/condenser`, `/agent-context`, `/verification` | LLM for the effects | 24 |
 | F16 | [Application settings](F16-application-settings.md) | language, theme, analytics, sound, checklist, title model, voice input, git identity | `/settings/app` | LLM for title and git checks | 21 |
@@ -257,13 +257,13 @@ How to write and prove new entries: [../mapping.md](../mapping.md).
 | F25 | [Backends, Cloud and sharing](F25-backends-and-cloud.md) | add, edit, remove and switch backends, per-backend consent, Cloud login, shared pages | backend selector | a second stack; Cloud account (blocked) | 33 |
 | F26 | [Launcher modes, Docker, desktop and library](F26-runtime-variants.md) | launcher flags, partial stacks, LAN bind, Docker, Electron, embeddable library | a terminal | Docker/Electron where available | 35 |
 | F27 | [Workspace tools](F27-workspace-tools.md) | terminal, browser, planner, task list, usage, `canvas_ui_control` | drawer tabs | LLM | 30 |
-| F28 | [Automation setup page](F28-automation-setup-page.md) | blank form, kind toggle, schedule presets, event fields, timeout, draft save and validation, draft Test, Create | **Add Automation → Create Automation**, `/automations/setup`, draft Resume, kebab Edit | automation service; no LLM | 13 |
+| F28 | [Automation setup page](F28-automation-setup-page.md) | blank form, kind toggle, schedule presets, event fields, timeout, draft save and validation, draft Test, Create | **Add Automation → Create Automation**, `/automations/setup`, draft Resume, kebab Edit | automation service; no LLM | 15 |
 | F29 | [Git Sync repositories](F29-git-sync-repositories.md) | add, sync, configure, promote and remove repositories, per-automation assignment, empty and no-default states, fallback to F24 | `/automations/git-sync` | an automation backend with `git-sync/remotes` (`launch --automation-path`); `fixture git-remote` | 16 |
-| F30 | [SOUL.md standing preferences](F30-soul-settings.md) | the user's `SOUL.md`: default vs own file, save, revert, limits, unsupported backends | `/settings/soul`, settings nav, command menu | an Agent Server with `GET /api/soul` (`launch --sdk-path`); no LLM | 11 |
+| F30 | [SOUL.md and the identity documents](F30-soul-settings.md) | the identity set: what belongs in each document, what is written, per-document save and clear, limits, unsupported backends | `/settings/soul`, settings nav, command menu | an Agent Server with `GET /api/soul/documents` (`launch --sdk-path`); no LLM | 11 |
 | F31 | [Improvement programs](F31-improvement-programs.md) | rotation and up-next, cycle history, verdicts, cited sources, adversarial reviews, SOUL.md proposals | a program's detail page, `/automations/improve/<id>` | an automation backend with the improve API and an Agent Server with `GET /api/soul` (both from checkouts); no LLM | 20 |
 | F32 | [Project map](F32-project-map.md) | the `/map` drawing of the repository, its editor buffer and explicit save, the regeneration merge, and the chat that launches conversations from a selection | `/map`, sidebar **Project map**, command menu | `fixture project-map`; an LLM profile for the launcher buttons; Cloud unsupported state blocked | 34 |
 
-32 families, 876 sub-features. `control-openhands map ids` lists every ID with its file.
+32 families, 882 sub-features. `control-openhands map ids` lists every ID with its file.
 
 ### Neighbouring families
 
