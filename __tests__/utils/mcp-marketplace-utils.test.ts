@@ -203,21 +203,79 @@ describe("getInstallableMcpConnectionOption", () => {
 });
 
 describe("getInstallableMcpConnectionOptions", () => {
-  it("offers Sentry's OAuth and personal-token options, OAuth first", () => {
-    const sentry = MCP_MARKETPLACE.find((e) => e.id === "sentry")!;
-    const options = getInstallableMcpConnectionOptions(sentry);
+  it("offers every installable option in catalog order", () => {
+    // Synthetic, not a catalog entry. This asserts the rule, and the rule
+    // does not depend on who ships two options today: pinning it to one
+    // library entry meant the catalog reshaping that entry failed a test
+    // about this function, which is what `@openhands/extensions` 0.34.0 did.
+    const entry = {
+      ...slackEntry,
+      connectionOptions: [
+        {
+          id: "oauth",
+          provider: "mcp",
+          // No provider endpoints: this is the MCP server's own OAuth, which
+          // is the only kind either backend can actually run.
+          auth: { strategy: "oauth2", oauth: { clientAuthentication: "none" } },
+          transport: { kind: "shttp", url: "https://mcp.example.com/mcp" },
+        },
+        {
+          id: "token",
+          provider: "mcp",
+          auth: { strategy: "api_key" },
+          transport: {
+            kind: "stdio",
+            serverName: "example",
+            command: "npx",
+            args: ["-y", "example-mcp"],
+          },
+        },
+      ],
+    } as typeof slackEntry;
 
-    expect(options.map((option) => option.id)).toEqual(["mcp", "api"]);
-    expect(options[0]).toMatchObject({
-      transport: { kind: "shttp", url: "https://mcp.sentry.dev/mcp" },
-      auth: { strategy: "oauth2" },
-    });
-    expect(options[1].transport).toMatchObject({
-      kind: "stdio",
-      command: "npx",
-      args: ["-y", "@sentry/mcp-server"],
-    });
-    expect(getInstallableMcpConnectionOption(sentry)).toBe(options[0]);
+    const options = getInstallableMcpConnectionOptions(entry);
+
+    // Catalog order, and the first is what the dialog opens on.
+    expect(options.map((option) => option.id)).toEqual(["oauth", "token"]);
+    expect(getInstallableMcpConnectionOption(entry)).toBe(options[0]);
+  });
+
+  it("leaves out an option whose OAuth the backends cannot run", () => {
+    // Provider endpoints describe a hosted flow neither backend runs, so an
+    // entry carrying one alongside a token option offers only the token —
+    // which is the whole reason the list is not just "every mcp option".
+    const entry = {
+      ...slackEntry,
+      connectionOptions: [
+        {
+          id: "hosted-oauth",
+          provider: "mcp",
+          auth: {
+            strategy: "oauth2",
+            oauth: {
+              authorizationUrl: "https://example.com/oauth/authorize",
+              tokenUrl: "https://example.com/oauth/token",
+            },
+          },
+          transport: { kind: "shttp", url: "https://mcp.example.com/mcp" },
+        },
+        {
+          id: "token",
+          provider: "mcp",
+          auth: { strategy: "api_key" },
+          transport: {
+            kind: "stdio",
+            serverName: "example",
+            command: "npx",
+            args: ["-y", "example-mcp"],
+          },
+        },
+      ],
+    } as typeof slackEntry;
+
+    expect(
+      getInstallableMcpConnectionOptions(entry).map((option) => option.id),
+    ).toEqual(["token"]);
   });
 
   it("keeps a single option for entries with one installable option", () => {

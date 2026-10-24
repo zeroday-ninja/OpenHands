@@ -575,7 +575,54 @@ describe("InstallServerModal", () => {
   });
 
   describe("entries with several installable options", () => {
-    const sentry = MCP_MARKETPLACE.find((e) => e.id === "sentry")!;
+    // Synthetic, not a catalog entry. This is about the modal: that it offers
+    // every installable option, prefers the OAuth one, and keeps each
+    // option's fields to itself. Pinning it to whichever library entry
+    // happened to ship two options meant the catalog reshaping that entry
+    // broke tests about the modal — which is what `@openhands/extensions`
+    // 0.34.0 did, leaving three of these red on `main`.
+    const sentry: MarketplaceEntry = {
+      id: "sentry",
+      name: "Two-option Server",
+      description: "An MCP server reachable by OAuth or by a personal token.",
+      docsUrl: "https://example.com/docs",
+      iconBg: "#362D59",
+      connectionOptions: [
+        {
+          id: "mcp",
+          provider: "mcp",
+          transport: { kind: "shttp", url: "https://mcp.example.com/mcp" },
+          auth: { strategy: "oauth2", oauth: { clientAuthentication: "none" } },
+        },
+        {
+          id: "api",
+          provider: "mcp",
+          transport: {
+            kind: "stdio",
+            serverName: "sentry",
+            command: "npx",
+            args: ["-y", "@sentry/mcp-server"],
+            envFields: [
+              {
+                key: "SENTRY_ACCESS_TOKEN",
+                label: "Access token",
+                type: "password",
+                required: true,
+              },
+              {
+                key: "SENTRY_HOST",
+                label: "Host",
+                type: "text",
+                required: false,
+              },
+            ],
+          },
+          // A personal token, which is what makes this the "API key" tab
+          // rather than the "local" one.
+          auth: { strategy: "api_key" },
+        },
+      ],
+    };
 
     it("selects the preferred OAuth option and offers the token option", async () => {
       renderWith(
