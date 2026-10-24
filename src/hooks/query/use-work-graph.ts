@@ -1,16 +1,17 @@
 import React from "react";
 import { useQueries } from "@tanstack/react-query";
 import AutomationService from "#/api/automation-service/automation-service.api";
-import { isNoBackend } from "#/api/backend-registry/active-store";
+import {
+  getRegisteredBackends,
+  isNoBackend,
+  subscribeActiveBackend,
+} from "#/api/backend-registry/active-store";
 import {
   getHealthSnapshot,
   subscribeBackendHealth,
 } from "#/api/backend-registry/health-store";
 import type { Backend } from "#/api/backend-registry/types";
-import {
-  useActiveBackend,
-  useActiveBackendContext,
-} from "#/contexts/active-backend-context";
+import { useActiveBackend } from "#/contexts/active-backend-context";
 import { WORK_GRAPH_QUERY_KEYS } from "#/hooks/query/query-keys";
 import {
   WORK_GRAPH_BACKEND_NODE_KIND,
@@ -88,7 +89,14 @@ export function useWorkGraph(
     enabled = true,
   } = options;
 
-  const { backends } = useActiveBackendContext();
+  // Read from the store rather than the context: the context's list throws
+  // outside a provider, which would make any surface that draws work graphs
+  // unmountable in an embedded host — and this hook only ever reads.
+  const backends = React.useSyncExternalStore(
+    subscribeActiveBackend,
+    getRegisteredBackends,
+    getRegisteredBackends,
+  );
   const active = useActiveBackend();
   const healthMap = React.useSyncExternalStore(
     subscribeBackendHealth,

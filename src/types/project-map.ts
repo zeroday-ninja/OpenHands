@@ -312,6 +312,16 @@ export type ProjectMapLayoutKind = (typeof PROJECT_MAP_LAYOUT_KINDS)[number];
 export interface ProjectMapView {
   mode: ProjectMapMode;
   layout: ProjectMapLayoutKind;
+  /**
+   * Which derived layer is on the paper: the committed analysis of the code,
+   * or the live graph of what the agents are doing.
+   *
+   * Absent means `code`, which is what every document written before the work
+   * layer existed meant. It is stored with the view for the same reason the
+   * mode is: a map someone opens to watch work should open that way on every
+   * machine they use.
+   */
+  layer?: ProjectMapLayerId;
 }
 
 /**
