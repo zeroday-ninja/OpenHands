@@ -224,6 +224,10 @@ export const CONTENT_ADDRESSED_KEY_TOKENS = [
   "repository",
   "source",
   "pr",
+  // A branch key carries the repository URL, so two deployments pushing the
+  // same branch to the same repository are talking about one thing. Leaving
+  // it backend-scoped would draw that branch twice.
+  "branch",
 ] as const;
 
 /**
