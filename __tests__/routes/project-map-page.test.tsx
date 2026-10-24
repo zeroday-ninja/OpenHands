@@ -1,8 +1,26 @@
 import React from "react";
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "../../test-utils";
+
+/**
+ * Chat is behind a dock now: the canvas is the work, and a panel over it is
+ * something you open. Everything below that talks to the agent opens it first,
+ * the way a person would.
+ */
+async function openChat() {
+  const toggle = await screen.findByTestId("project-map-chat-dock-toggle");
+  // Fired rather than typed: a second `userEvent.setup()` inside a test that
+  // already has one fights the first over pointer state, and opening a panel
+  // is not the behaviour any of these tests are about.
+  if (toggle.getAttribute("aria-expanded") !== "true") fireEvent.click(toggle);
+  // The panel is lazily imported, and the first test in a file to open it pays
+  // for the import — which is longer than the default wait.
+  await screen.findByTestId("project-map-composer", undefined, {
+    timeout: 5000,
+  });
+}
 import MapRoute from "#/routes/map";
 import { http, HttpResponse } from "msw";
 import { server } from "#/mocks/node";
@@ -514,6 +532,7 @@ describe("the project map page", () => {
     const user = userEvent.setup();
     renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
     await screen.findByTestId("project-map-canvas");
+    await openChat();
 
     // Act
     await user.click(
@@ -699,6 +718,7 @@ describe("the project map page", () => {
     const user = userEvent.setup();
     renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
     await screen.findByTestId("project-map-canvas");
+    await openChat();
     await user.click(
       screen.getByTestId("project-map-node-src/stores/events.ts"),
     );
@@ -728,6 +748,7 @@ describe("the project map page", () => {
     const user = userEvent.setup();
     renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
     await screen.findByTestId("project-map-canvas");
+    await openChat();
 
     // Act
     await user.click(
@@ -754,6 +775,7 @@ describe("the project map page", () => {
       navigation: { currentPath: "/map", conversationId: null, navigate },
     });
     await screen.findByTestId("project-map-canvas");
+    await openChat();
 
     // Act
     await user.type(
@@ -803,6 +825,7 @@ describe("the project map page", () => {
       },
     });
     await screen.findByTestId("project-map-canvas");
+    await openChat();
 
     // Act
     await user.type(screen.getByTestId("project-map-composer"), "what is it?");
@@ -832,6 +855,7 @@ describe("the project map page", () => {
       },
     });
     await screen.findByTestId("project-map-canvas");
+    await openChat();
     await user.type(
       screen.getByTestId("project-map-composer"),
       "what is slow?",
@@ -882,6 +906,7 @@ describe("the project map page", () => {
       },
     });
     await screen.findByTestId("project-map-canvas");
+    await openChat();
     await user.type(
       screen.getByTestId("project-map-composer"),
       "who reads it?",
