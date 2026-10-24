@@ -194,11 +194,36 @@ describe("rendering what an agent did", () => {
 });
 
 describe("the parity checklist", () => {
-  it("says what works here and what still needs a browser", () => {
+  it("reports no action as needing a browser", () => {
+    // This is the milestone's own measure: zero items requiring a drop to the
+    // web interface. Asserted on the report a person actually reads, so an
+    // action that regresses to web-only fails here rather than going quiet.
     const report = parityReport().join("\n");
 
-    expect(report).toContain("actions work here");
-    expect(report).toContain("Still needs a browser");
+    expect(report).toContain(
+      `${PARITY_ACTIONS.length} of ${PARITY_ACTIONS.length} actions work here.`,
+    );
+    expect(report).not.toContain("Still needs a browser");
+  });
+
+  it("names a gap and its reason when there is one", () => {
+    // The branch that renders a gap still has to work: an item regressing to
+    // web-only must print with its reason, not vanish from the list.
+    const report = parityReport([
+      { id: "start", action: "Start work", where: "terminal", how: "oh work" },
+      {
+        id: "draw",
+        action: "Draw on the canvas",
+        where: "web_only",
+        how: "the editor is a pointer surface with no terminal equivalent",
+      },
+    ]).join("\n");
+
+    expect(report).toContain("1 of 2 actions work here.");
+    expect(report).toContain("Still needs a browser:");
+    expect(report).toContain(
+      "· Draw on the canvas — the editor is a pointer surface with no terminal equivalent",
+    );
   });
 
   it("covers every action the milestone's MVP asks for", () => {
@@ -317,6 +342,36 @@ describe("computing a diff the server does not send", () => {
     expect(lines.join("\n")).toContain("too large to diff here");
   });
 
+  it("keeps a context line between the changes it sits between", () => {
+    // The real case that exposed this: one unchanged line between two runs of
+    // additions. It was buffered as trailing context and printed after both,
+    // which reads as the additions going somewhere they did not.
+    const lines = unifiedDiff(
+      "calc.py",
+      "def add(a, b):\n    return a + b\n",
+      'def add(a, b):\n    """Sum."""\n    return a + b\n\n\ndef sub(a, b):\n    return a - b\n',
+    );
+
+    const body = lines.slice(
+      lines.findIndex((line) => line.startsWith("@@")) + 1,
+    );
+    expect(body[0]).toBe(" def add(a, b):");
+    expect(body[1]).toBe('+    """Sum."""');
+    expect(body[2]).toBe("     return a + b");
+  });
+
+  it("produces a hunk that applies back to the new file", () => {
+    // The contract of a diff is that applying it reproduces the file. Checked
+    // directly, because a hunk can be internally consistent, carry the right
+    // counts in its header, and still describe a different file.
+    const before = "one\ntwo\nthree\nfour\nfive\n";
+    const after = "one\nTWO\nthree\nfour\nFIVE\nsix\n";
+
+    const applied = applyUnified(before, unifiedDiff("x.txt", before, after));
+
+    expect(applied).toBe(after);
+  });
+
   it("keeps the operations in the order the file reads", () => {
     const operations = diffLines(["a", "b"], ["a", "c", "b"]);
 
@@ -327,3 +382,43 @@ describe("computing a diff the server does not send", () => {
     ]);
   });
 });
+
+/**
+ * Apply a unified diff to its "before", so a hunk can be checked against the
+ * only thing that makes it correct.
+ *
+ * Only what `unifiedDiff` emits: one file, hunk headers with 1-based starts.
+ */
+function applyUnified(before: string, lines: string[]): string {
+  const source = before.endsWith("\n")
+    ? before.slice(0, -1).split("\n")
+    : before.split("\n");
+  const out: string[] = [];
+  let cursor = 0;
+  let index = 0;
+  while (index < lines.length) {
+    const header = /^@@ -(\d+),\d+ \+\d+,\d+ @@/.exec(lines[index]);
+    if (!header) {
+      index += 1;
+      continue;
+    }
+    const start = Number(header[1]) - 1;
+    out.push(...source.slice(cursor, start));
+    cursor = start;
+    index += 1;
+    while (index < lines.length && !lines[index].startsWith("@@")) {
+      const line = lines[index];
+      if (line.startsWith(" ")) {
+        out.push(source[cursor]);
+        cursor += 1;
+      } else if (line.startsWith("-")) {
+        cursor += 1;
+      } else if (line.startsWith("+")) {
+        out.push(line.slice(1));
+      }
+      index += 1;
+    }
+  }
+  out.push(...source.slice(cursor));
+  return out.length ? `${out.join("\n")}\n` : "";
+}
