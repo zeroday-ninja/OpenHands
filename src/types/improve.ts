@@ -240,6 +240,14 @@ export interface ImproveCycle {
   /** Where each gate sent the work, oldest first. */
   gate_decisions?: ImproveGateDecision[] | null;
   judge_attestation?: ImproveJudgeAttestation | null;
+  /**
+   * When the change landed, and the commit it became. The publish gate's
+   * route says a merge was authorised, which is a decision; these say it
+   * happened. Absent means "not recorded", which a service from before this
+   * landed also reports — so absence is never rendered as "did not merge".
+   */
+  merged_at?: string | null;
+  merge_commit_sha?: string | null;
   /** What this cycle needs a person to answer, when it is PARKED. */
   parked_question?: string | null;
   parked_phase?: string | null;

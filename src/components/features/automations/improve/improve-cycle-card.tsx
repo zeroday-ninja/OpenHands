@@ -1,12 +1,15 @@
 import { useTranslation } from "react-i18next";
-import { ExternalLink, GitBranch } from "lucide-react";
+import { ExternalLink, GitBranch, GitMerge } from "lucide-react";
 import { I18nKey } from "#/i18n/declaration";
 import type { ImproveCycle } from "#/types/improve";
 import {
   formatRelativeTime,
   isInvalidTimestamp,
 } from "#/utils/format-relative-time";
-import { improveRepositoryDisplayName } from "#/utils/improve-program";
+import {
+  improveCommitUrl,
+  improveRepositoryDisplayName,
+} from "#/utils/improve-program";
 import { ImproveCitedSources } from "./improve-cited-sources";
 import { ImproveConversationLink } from "./improve-conversation-link";
 import { ImproveCycleReviews } from "./improve-cycle-reviews";
@@ -33,6 +36,15 @@ export function ImproveCycleCard({ cycle }: { cycle: ImproveCycle }) {
   const startedAt = isInvalidTimestamp(cycle.created_at)
     ? null
     : cycle.created_at;
+  // Only a recorded merge is shown. A service from before the merge was
+  // recorded sends neither field, and absence there means "not known", not
+  // "did not merge" — so nothing is rendered rather than something false.
+  const mergedSha = cycle.merged_at
+    ? cycle.merge_commit_sha?.trim()
+    : undefined;
+  const commitUrl = mergedSha
+    ? improveCommitUrl(cycle.repository.url, mergedSha)
+    : null;
 
   return (
     <li
@@ -87,7 +99,7 @@ export function ImproveCycleCard({ cycle }: { cycle: ImproveCycle }) {
         </p>
       ) : null}
 
-      {cycle.branch || cycle.pr_url ? (
+      {cycle.branch || cycle.pr_url || cycle.merged_at ? (
         <div className="flex flex-wrap items-center gap-3 text-xs">
           {cycle.branch ? (
             <span className="inline-flex min-w-0 items-center gap-1 rounded-full border border-border bg-surface-raised px-2.5 py-0.5 text-muted">
@@ -106,6 +118,40 @@ export function ImproveCycleCard({ cycle }: { cycle: ImproveCycle }) {
               {t(I18nKey.AUTOMATIONS$IMPROVE$PULL_REQUEST)}
               <ExternalLink className="size-3" aria-hidden />
             </a>
+          ) : null}
+          {/* An additive change merges without asking, so the one place the
+              user finds out it happened is here. */}
+          {cycle.merged_at ? (
+            <span
+              data-testid="improve-cycle-merged"
+              className="inline-flex min-w-0 items-center gap-1 text-feedback-success"
+            >
+              <GitMerge className="size-3 shrink-0" aria-hidden />
+              {t(I18nKey.AUTOMATIONS$IMPROVE$MERGED)}
+              {mergedSha ? (
+                <>
+                  {" "}
+                  {commitUrl ? (
+                    <a
+                      data-testid="improve-cycle-merge-commit"
+                      href={commitUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono hover:underline"
+                    >
+                      {mergedSha.slice(0, 7)}
+                    </a>
+                  ) : (
+                    <span
+                      data-testid="improve-cycle-merge-commit"
+                      className="font-mono"
+                    >
+                      {mergedSha.slice(0, 7)}
+                    </span>
+                  )}
+                </>
+              ) : null}
+            </span>
           ) : null}
         </div>
       ) : null}

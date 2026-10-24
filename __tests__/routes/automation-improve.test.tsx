@@ -440,6 +440,71 @@ describe("AutomationImprove cycle history", () => {
     ).toHaveAttribute("href", "/conversations/conv-review-1");
   });
 
+  it("says a change merged, and links the commit it became", async () => {
+    // Arrange: an additive change that merged itself, which is the one case
+    // the user never confirmed and so never saw happen.
+    const merged = structuredClone(reviewedCycle);
+    merged.verdict = ImproveVerdict.ACCEPTED;
+    merged.merged_at = "2026-10-24T18:01:17Z";
+    merged.merge_commit_sha = "666481f3154c7f6ce6551a674b9d3205dd724297";
+    vi.mocked(AutomationService.listImproveCycles).mockResolvedValue({
+      cycles: [merged],
+      total: 1,
+    });
+
+    // Act
+    renderPage();
+    const [card] = await cycleCards();
+
+    // Assert
+    expect(within(card).getByTestId("improve-cycle-merged")).toHaveTextContent(
+      "666481f",
+    );
+    expect(
+      within(card).getByTestId("improve-cycle-merge-commit"),
+    ).toHaveAttribute(
+      "href",
+      "https://github.com/zeroday-ninja/HAZARD/commit/666481f3154c7f6ce6551a674b9d3205dd724297",
+    );
+  });
+
+  it("stays silent about merging when the service never said", async () => {
+    // A service from before the merge was recorded sends neither field, and
+    // that is not the same as "did not merge": claiming either way would be
+    // inventing an answer.
+    renderPage();
+    const [, reviewed] = await cycleCards();
+
+    expect(
+      within(reviewed).queryByTestId("improve-cycle-merged"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows the commit as text when the forge's commit path is unknown", async () => {
+    // Arrange: a self-hosted forge. A guessed path that 404s is worse than
+    // the SHA alone, which is still enough to run `git show`.
+    const merged = structuredClone(reviewedCycle);
+    merged.repository = {
+      ...merged.repository,
+      url: "https://git.example.test/me/app",
+    };
+    merged.merged_at = "2026-10-24T18:01:17Z";
+    merged.merge_commit_sha = "666481f3154c7f6ce6551a674b9d3205dd724297";
+    vi.mocked(AutomationService.listImproveCycles).mockResolvedValue({
+      cycles: [merged],
+      total: 1,
+    });
+
+    // Act
+    renderPage();
+    const [card] = await cycleCards();
+
+    // Assert
+    const commit = within(card).getByTestId("improve-cycle-merge-commit");
+    expect(commit).toHaveTextContent("666481f");
+    expect(commit).not.toHaveAttribute("href");
+  });
+
   it("does not repeat the runtime as the profile name", async () => {
     // Arrange: a profile named after its own runtime, which is the common
     // case on a local stack ("codex", "claude-code").
@@ -481,9 +546,7 @@ describe("AutomationImprove cycle history", () => {
     // which must not be mistaken for a reviewer reporting nothing newer.
     expect(
       within(review).getByTestId("improve-review-updates-checked"),
-    ).toHaveTextContent(
-      I18nKey.AUTOMATIONS$IMPROVE$REVIEW_UPDATES_UNANSWERED,
-    );
+    ).toHaveTextContent(I18nKey.AUTOMATIONS$IMPROVE$REVIEW_UPDATES_UNANSWERED);
   });
 
   it("reads SINGLE_RUNTIME as nobody else having reviewed it, not as a pass", async () => {

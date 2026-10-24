@@ -57,3 +57,32 @@ export function lastVerdictByRepository(
   }
   return verdicts;
 }
+
+/**
+ * Where a merge commit can be read, when the forge is one we know the path for.
+ *
+ * Only GitHub: every forge spells a commit path differently, and a guessed
+ * link that 404s is worse than the SHA on its own, which is still enough to
+ * run `git show`. A SHA with nowhere to point is rendered as text.
+ */
+export function improveCommitUrl(
+  repositoryUrl: string,
+  sha: string,
+): string | null {
+  if (!sha.trim()) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(repositoryUrl);
+  } catch {
+    return null;
+  }
+  if (
+    parsed.hostname !== "github.com" &&
+    parsed.hostname !== "www.github.com"
+  ) {
+    return null;
+  }
+  const path = parsed.pathname.replace(/\.git$/, "").replace(/\/+$/, "");
+  if (!path || path === "/") return null;
+  return `https://github.com${path}/commit/${encodeURIComponent(sha.trim())}`;
+}
