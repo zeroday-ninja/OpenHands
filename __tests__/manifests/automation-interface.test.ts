@@ -181,4 +181,23 @@ describe("the automation interface seam", () => {
     }).toEqual({ available: false, warned: 1 });
     expect(() => seam.getInterfaceCopy()).toThrow();
   });
+
+  it("tells a package defect apart from a deployment with no interface", async () => {
+    // Both close the surface, and a browser-console warning is the only thing
+    // that distinguished them — so the pages they would have rendered could
+    // only 404, sending someone to look for a page that was taken away from
+    // them. The reason has to be answerable.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const absent = await loadSeam(undefined);
+    expect(absent.automationInterfaceRejection()).toBeNull();
+
+    const rejected = await loadSeam(
+      createInterfaceManifest({ version: "2.0" as "1.0" }),
+    );
+    expect(rejected.automationInterfaceRejection()).toMatch(/version/i);
+
+    const admitted = await loadSeam(createInterfaceManifest());
+    expect(admitted.automationInterfaceRejection()).toBeNull();
+  });
 });

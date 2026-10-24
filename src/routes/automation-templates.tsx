@@ -7,21 +7,30 @@ import {
   type TemplateFilters,
 } from "#/components/features/automations/template-filter-chips";
 import { ManifestSubpageLayout } from "#/components/features/manifest/manifest-subpage-layout";
-import { getTemplatesPageSpec } from "#/manifests/automation-interface";
+import {
+  automationInterfaceRejection,
+  getTemplatesPageSpec,
+} from "#/manifests/automation-interface";
+import { RejectedManifestNotice } from "#/components/features/automations/rejected-manifest-notice";
 
 /**
  * The templates sub-page. It exists only while the admitted interface
  * manifest declares it — like a setup route for an id no entry claims, an
  * undeclared page is a 404 rendered by the layout's error boundary.
+ *
+ * Not for a manifest that was published and refused, though: that is a defect
+ * in the pinned package, and "not found" sends someone looking for a page
+ * that was taken away from them without a word.
  */
 export const clientLoader = () => {
+  if (automationInterfaceRejection()) return null;
   if (!getTemplatesPageSpec()) {
     throw new Response(null, { status: 404, statusText: "Not Found" });
   }
   return null;
 };
 
-export default function AutomationTemplates() {
+function AutomationTemplatesPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filters, setFilters] = useState<TemplateFilters>(
     EMPTY_TEMPLATE_FILTERS,
@@ -52,4 +61,17 @@ export default function AutomationTemplates() {
       />
     </ManifestSubpageLayout>
   );
+}
+
+/**
+ * The page, or why there is no page.
+ *
+ * A wrapper rather than an early return inside the page itself: everything in
+ * there reads the admitted manifest, which by definition is not there when the
+ * published one was refused.
+ */
+export default function AutomationTemplates() {
+  const rejection = automationInterfaceRejection();
+  if (rejection) return <RejectedManifestNotice reason={rejection} />;
+  return <AutomationTemplatesPage />;
 }

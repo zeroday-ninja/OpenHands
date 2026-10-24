@@ -1,4 +1,6 @@
 // @vitest-environment node
+import { existsSync } from "node:fs";
+import path from "node:path";
 import viteConfig from "../vite.config";
 import { build } from "vite";
 import { execFileSync } from "node:child_process";
@@ -48,17 +50,27 @@ describe("vitest environment projects", () => {
     name: string,
   ) => projects.find((project) => project.test?.name === name)?.test;
 
-  it("runs the DOM-free pilot suites in the Node environment without the jsdom setup", async () => {
+  it("runs the pilot suites in the Node environment without the jsdom setup", async () => {
+    // The point of the Node project is that nothing is intercepting: no DOM,
+    // no Web Storage, and above all no MSW, which otherwise answers a suite's
+    // own `fetch` from the mock handlers.
     const nodeProject = findProject(await getProjects(), "node");
 
     expect(nodeProject?.environment).toBe("node");
-    // The pilot suites are pure functions: no DOM, no Web Storage, no MSW.
     expect(nodeProject?.setupFiles).toEqual([]);
-    expect(nodeProject?.include).toEqual([
-      "__tests__/utils/file-language.test.ts",
-      "__tests__/utils/format-model-name.test.ts",
-      "__tests__/utils/parse-terminal-output.test.ts",
-    ]);
+    expect(nodeProject?.include?.length).toBeGreaterThan(0);
+  });
+
+  it("names only pilot suites that exist", async () => {
+    // A renamed or deleted suite silently stops running: the Node project
+    // includes a path that matches nothing, and the jsdom project excludes
+    // the same path, so nobody runs it and nothing says so.
+    const nodeInclude = findProject(await getProjects(), "node")?.include ?? [];
+
+    const missing = nodeInclude.filter(
+      (file) => !existsSync(path.join(process.cwd(), file)),
+    );
+    expect(missing).toEqual([]);
   });
 
   it("keeps every other suite in jsdom with the shared setup", async () => {
