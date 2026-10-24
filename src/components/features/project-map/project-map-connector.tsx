@@ -160,7 +160,7 @@ export function ProjectMapConnectorDraft({
     <path
       data-testid="project-map-connector-draft"
       d={projectMapConnectorPath(from, to, [])}
-      className="fill-none stroke-border-strong"
+      className="fill-none stroke-border"
       strokeWidth={1.5}
       strokeDasharray="4 4"
       vectorEffect="non-scaling-stroke"

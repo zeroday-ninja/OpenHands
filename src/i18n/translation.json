@@ -58480,5 +58480,23 @@
     "tr": "Sil",
     "uk": "Видалити",
     "id": "Hapus"
+  },
+  "PROJECT_MAP$CONNECTORS_HIDDEN": {
+    "en": "Some lines join the analysis, which this view hides.",
+    "ja": "一部の線は、この表示では隠れている解析結果に繋がっています。",
+    "zh-CN": "部分连线通向此视图隐藏的分析结果。",
+    "zh-TW": "部分連線通向此檢視隱藏的分析結果。",
+    "ko-KR": "일부 선은 이 보기에서 숨겨진 분석에 연결되어 있습니다。",
+    "no": "Noen linjer går til analysen, som denne visningen skjuler.",
+    "ar": "بعض الخطوط تصل إلى التحليل الذي يخفيه هذا العرض.",
+    "de": "Einige Linien führen zur Analyse, die diese Ansicht ausblendet.",
+    "fr": "Certains traits rejoignent l'analyse, que cette vue masque.",
+    "it": "Alcune linee raggiungono l'analisi, che questa vista nasconde.",
+    "pt": "Algumas linhas ligam-se à análise, que esta vista oculta.",
+    "es": "Algunas líneas conectan con el análisis, que esta vista oculta.",
+    "ca": "Algunes línies connecten amb l'anàlisi, que aquesta vista amaga.",
+    "tr": "Bazı çizgiler, bu görünümün gizlediği analize bağlanıyor.",
+    "uk": "Деякі лінії ведуть до аналізу, який цей вигляд приховує.",
+    "id": "Beberapa garis terhubung ke analisis yang disembunyikan tampilan ini."
   }
 }

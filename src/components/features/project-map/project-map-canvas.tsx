@@ -402,20 +402,36 @@ export function ProjectMapCanvas({
     [rects, map.nodes],
   );
 
-  /** Where a connector end lands, resolving whatever it is attached to. */
+  /**
+   * Where a connector end lands, or null when its subject is not on the paper.
+   *
+   * Null rather than a fallback point: a line drawn to the origin because the
+   * thing it joins is hidden looks exactly like a line someone drew to the
+   * origin, and a reader has no way to tell them apart. The caller leaves
+   * those lines out and says how many, which is the honest version of the
+   * same thing.
+   */
   const endpointPoint = React.useCallback(
-    (endpoint: ProjectMapEndpoint, towards: Point): Point => {
+    (endpoint: ProjectMapEndpoint, towards: Point): Point | null => {
       if (endpoint.attach === "free") return { x: endpoint.x, y: endpoint.y };
       const id = endpoint.attach === "shape" ? endpoint.shape : endpoint.node;
       const rect = rectOf(id);
-      // An end whose subject is not on the paper right now — hidden, or in a
-      // layer this mode does not draw — is parked at the origin rather than
-      // dropping the line, so nothing silently disappears.
-      if (rect === null) return { x: 0, y: 0 };
+      if (rect === null) return null;
       const side = endpoint.side ?? projectMapFacingSide(rect, towards);
       return projectMapSidePoint(rect, side);
     },
     [rectOf],
+  );
+
+  /** Lines this view cannot draw, because what they join is not on screen. */
+  const hiddenConnectors = React.useMemo(
+    () =>
+      connectors.filter(
+        (connector) =>
+          endpointPoint(connector.from, { x: 0, y: 0 }) === null ||
+          endpointPoint(connector.to, { x: 0, y: 0 }) === null,
+      ).length,
+    [connectors, endpointPoint],
   );
 
   /** Pointer position in diagram coordinates. */
@@ -890,6 +906,17 @@ export function ProjectMapCanvas({
       }}
     >
       <desc>{t(I18nKey.PROJECT_MAP$CANVAS_HELP)}</desc>
+      {hiddenConnectors > 0 && (
+        <text
+          data-testid="project-map-hidden-connectors"
+          x={12}
+          y={20}
+          className="fill-muted"
+          fontSize={11}
+        >
+          {t(I18nKey.PROJECT_MAP$CONNECTORS_HIDDEN)}
+        </text>
+      )}
       <defs>
         <pattern
           id="project-map-grid"
@@ -1059,7 +1086,7 @@ export function ProjectMapCanvas({
                 key={`branch-${shape.id}`}
                 data-testid={`project-map-branch-${shape.id}`}
                 d={projectMapBranchPath(parent, child)}
-                className="fill-none stroke-border-strong"
+                className="fill-none stroke-border"
                 strokeWidth={1.5}
                 vectorEffect="non-scaling-stroke"
               />
@@ -1068,14 +1095,16 @@ export function ProjectMapCanvas({
         </g>
 
         {connectors.map((connector) => {
-          const to = endpointPoint(connector.to, { x: 0, y: 0 });
-          const from = endpointPoint(connector.from, to);
+          const roughTo = endpointPoint(connector.to, { x: 0, y: 0 });
+          const from = endpointPoint(connector.from, roughTo ?? { x: 0, y: 0 });
+          const to = from === null ? null : endpointPoint(connector.to, from);
+          if (from === null || to === null) return null;
           return (
             <ProjectMapConnectorMark
               key={connector.id}
               connector={connector}
               from={from}
-              to={endpointPoint(connector.to, from)}
+              to={to}
               selected={selection.includes(connector.id)}
               onPointerDown={(event) => {
                 event.stopPropagation();
@@ -1136,7 +1165,7 @@ export function ProjectMapCanvas({
           <rect
             data-testid="project-map-create-preview"
             {...dragBox(drag.from, drag.to)}
-            className="fill-transparent stroke-border-strong"
+            className="fill-transparent stroke-border"
             strokeWidth={1.5}
             strokeDasharray="4 4"
             vectorEffect="non-scaling-stroke"
