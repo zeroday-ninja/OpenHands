@@ -75,12 +75,20 @@ export const IMPROVE_QUERY_KEYS = {
 } as const;
 
 /**
- * The user's SOUL.md on the active agent server. Keyed by backend so
- * switching backends never shows another server's file.
+ * The user's identity on the active agent server: SOUL.md on its own
+ * (`byBackend`) and the whole document set (`documents`). Keyed by backend and
+ * org so switching either never shows another server's files.
+ *
+ * `documents` is nested under `all` on purpose — the set contains SOUL.md, so
+ * the two views overlap and a write to either must be able to invalidate both.
+ * The literal segment comes first so a backend id can never be mistaken for
+ * it.
  */
 export const SOUL_QUERY_KEYS = {
   all: ["soul"] as const,
   byBackend: (backendId: string) => ["soul", backendId] as const,
+  documents: (backendId: string, orgId: string | null | undefined) =>
+    ["soul", "documents", backendId, orgId] as const,
 } as const;
 
 /**

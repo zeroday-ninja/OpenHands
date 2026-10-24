@@ -8,8 +8,9 @@ import SoulService, {
   SoulUnsupportedError,
 } from "#/api/soul-service/soul-service.api";
 import {
-  MAX_SOUL_LENGTH,
-  type SoulResponse,
+  MAX_IDENTITY_DOCUMENT_LENGTH,
+  type IdentityDocumentResponse,
+  type IdentitySetResponse,
 } from "#/api/soul-service/soul.types";
 import {
   __resetActiveStoreForTests,
@@ -30,7 +31,7 @@ vi.mock("#/api/soul-service/soul-service.api", async (importOriginal) => {
     >();
   return {
     ...actual,
-    default: { getSoul: vi.fn(), saveSoul: vi.fn() },
+    default: { getIdentityDocuments: vi.fn(), saveIdentityDocument: vi.fn() },
   };
 });
 
@@ -58,12 +59,53 @@ const cloudBackend: Backend = {
   kind: "cloud",
 };
 
-const ownSoul: SoulResponse = {
-  content: "# Soul\n\nAsk before refactoring something I did not mention.\n",
-  exists: true,
-  path: "/home/leander/.openhands/SOUL.md",
-  size_bytes: 58,
+const IDENTITY_DIRECTORY = "/home/leander/.openhands/soul";
+
+function makeDocument(
+  name: string,
+  relativePath: string,
+  purpose: string,
+  content = "",
+): IdentityDocumentResponse {
+  return {
+    name,
+    relative_path: relativePath,
+    purpose,
+    content,
+    exists: content !== "",
+    path: `${IDENTITY_DIRECTORY}/${relativePath}`,
+    size_bytes: content.length,
+  };
+}
+
+const soulDocument = makeDocument(
+  "soul",
+  "SOUL.md",
+  "Who you are: background, worldview, opinions by domain.",
+  "# Soul\n\nAsk before refactoring something I did not mention.\n",
+);
+const styleDocument = makeDocument(
+  "style",
+  "STYLE.md",
+  "How you write and work: voice, words you use and never use.",
+);
+const memoryDocument = makeDocument(
+  "memory",
+  "MEMORY.md",
+  "Continuity across sessions.",
+);
+
+/** The server's order is the order a prompt reads the documents in. */
+const identitySet: IdentitySetResponse = {
+  documents: [soulDocument, styleDocument, memoryDocument],
+  directory: IDENTITY_DIRECTORY,
 };
+
+function sectionFor(name: string): HTMLElement {
+  return screen
+    .getAllByTestId("identity-document-section")
+    .find((section) => section.getAttribute("data-name") === name)!;
+}
 
 function renderPage() {
   const queryClient = new QueryClient({
@@ -85,8 +127,8 @@ function renderPage() {
 beforeEach(() => {
   window.localStorage.clear();
   __resetActiveStoreForTests();
-  vi.mocked(SoulService.getSoul).mockResolvedValue(ownSoul);
-  vi.mocked(SoulService.saveSoul).mockResolvedValue(ownSoul);
+  vi.mocked(SoulService.getIdentityDocuments).mockResolvedValue(identitySet);
+  vi.mocked(SoulService.saveIdentityDocument).mockResolvedValue(styleDocument);
   setRegisteredBackends([localBackend]);
   setActiveSelection({ backendId: localBackend.id });
 });
@@ -98,89 +140,159 @@ afterEach(() => {
 });
 
 describe("SoulSettingsScreen", () => {
-  it("shows the user's own file with its path, and saves an edit", async () => {
-    const edited = `${ownSoul.content}Never force-push my branches.\n`;
-    vi.mocked(SoulService.saveSoul).mockResolvedValue({
-      ...ownSoul,
-      content: edited,
-      size_bytes: edited.length,
-    });
+  it("lists every document in the order the agent reads them, with what belongs in each", async () => {
     renderPage();
 
-    const editor = await screen.findByTestId("soul-content-input");
-    expect(editor).toHaveValue(ownSoul.content);
-    expect(screen.getByTestId("soul-origin")).toHaveAttribute(
-      "data-exists",
-      "true",
+    await screen.findByTestId("identity-documents-editor");
+    const sections = screen.getAllByTestId("identity-document-section");
+    expect(
+      sections.map((section) => section.getAttribute("data-name")),
+    ).toEqual(["soul", "style", "memory"]);
+    sections.forEach((section, index) => {
+      const expected = identitySet.documents[index];
+      expect(
+        within(section).getByTestId("identity-document-path"),
+      ).toHaveTextContent(expected.relative_path);
+      expect(
+        within(section).getByTestId("identity-document-purpose"),
+      ).toHaveTextContent(expected.purpose);
+    });
+    expect(screen.getByTestId("identity-directory")).toHaveTextContent(
+      IDENTITY_DIRECTORY,
     );
-    expect(screen.getByTestId("soul-path")).toHaveTextContent(ownSoul.path);
-    // Nothing is dirty yet, so there is nothing to save.
-    expect(screen.getByTestId("soul-save-button")).toBeDisabled();
+  });
 
-    fireEvent.change(editor, { target: { value: edited } });
+  it("says which documents have nothing written yet", async () => {
+    renderPage();
+
+    await screen.findByTestId("identity-documents-editor");
+    expect(
+      within(sectionFor("soul")).getByTestId("identity-document-status"),
+    ).toHaveAttribute("data-exists", "true");
+    const unwritten = within(sectionFor("style")).getByTestId(
+      "identity-document-status",
+    );
+    expect(unwritten).toHaveAttribute("data-exists", "false");
+    expect(unwritten).toHaveTextContent(
+      I18nKey.SETTINGS$IDENTITY_DOCUMENT_NOT_WRITTEN,
+    );
+    // Nothing is dirty yet, so there is nothing to save.
+    expect(
+      within(sectionFor("style")).getByTestId("identity-document-save-button"),
+    ).toBeDisabled();
+  });
+
+  it("writes only the document that was edited", async () => {
+    const written = "Short sentences. No exclamation marks.";
+    vi.mocked(SoulService.saveIdentityDocument).mockResolvedValue(
+      makeDocument(
+        styleDocument.name,
+        styleDocument.relative_path,
+        styleDocument.purpose,
+        `${written}\n`,
+      ),
+    );
+    renderPage();
+
+    await screen.findByTestId("identity-documents-editor");
+    const style = sectionFor("style");
+    fireEvent.change(within(style).getByTestId("identity-document-input"), {
+      target: { value: written },
+    });
     await act(async () => {
-      fireEvent.click(screen.getByTestId("soul-save-button"));
+      fireEvent.click(
+        within(style).getByTestId("identity-document-save-button"),
+      );
     });
 
-    expect(SoulService.saveSoul).toHaveBeenCalledWith(edited);
+    expect(SoulService.saveIdentityDocument).toHaveBeenCalledExactlyOnceWith(
+      "style",
+      written,
+    );
     expect(displaySuccessToast).toHaveBeenCalledWith(
       I18nKey.SETTINGS$SOUL_SAVED,
     );
-    // The editor now reflects what the server stored, not the draft.
-    expect(await screen.findByTestId("soul-content-input")).toHaveValue(edited);
+    // The editor now reflects what the server stored, not the draft, and the
+    // documents nobody edited are untouched.
+    expect(
+      within(sectionFor("style")).getByTestId("identity-document-input"),
+    ).toHaveValue(`${written}\n`);
+    expect(
+      within(sectionFor("soul")).getByTestId("identity-document-input"),
+    ).toHaveValue(soulDocument.content);
   });
 
-  it("shows the built-in default, with nothing to revert, when the user has no file", async () => {
-    vi.mocked(SoulService.getSoul).mockResolvedValue({
-      ...ownSoul,
-      content: "# Soul\n\nBuilt-in default.\n",
-      exists: false,
-    });
-    renderPage();
-
-    await screen.findByTestId("soul-content-input");
-    expect(screen.getByTestId("soul-origin")).toHaveAttribute(
-      "data-exists",
-      "false",
+  it("clears a written document that was emptied, and says that is what saving does", async () => {
+    vi.mocked(SoulService.saveIdentityDocument).mockResolvedValue(
+      makeDocument(
+        soulDocument.name,
+        soulDocument.relative_path,
+        soulDocument.purpose,
+      ),
     );
-    // There is no file to delete, so the revert action has nothing to do.
-    expect(screen.getByTestId("soul-revert-button")).toBeDisabled();
-  });
-
-  it("deletes the file only after confirmation, by saving empty content", async () => {
     renderPage();
 
-    fireEvent.click(await screen.findByTestId("soul-revert-button"));
-    const modal = screen.getByTestId("confirmation-modal");
-    expect(modal).toHaveTextContent(I18nKey.SETTINGS$SOUL_REVERT_CONFIRM);
-    expect(SoulService.saveSoul).not.toHaveBeenCalled();
+    await screen.findByTestId("identity-documents-editor");
+    const soul = sectionFor("soul");
+    fireEvent.change(within(soul).getByTestId("identity-document-input"), {
+      target: { value: "" },
+    });
+
+    // Emptying a written document is a clear, and is named one before the
+    // button is pressed.
+    expect(
+      within(soul).getByTestId("identity-document-clear-note"),
+    ).toHaveTextContent(I18nKey.SETTINGS$IDENTITY_DOCUMENT_CLEAR_NOTE);
+    expect(
+      within(soul).queryByTestId("identity-document-save-button"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(within(soul).getByTestId("identity-document-clear-button"));
+    expect(screen.getByTestId("confirmation-modal")).toHaveTextContent(
+      I18nKey.SETTINGS$IDENTITY_DOCUMENT_CLEAR_CONFIRM,
+    );
+    expect(SoulService.saveIdentityDocument).not.toHaveBeenCalled();
 
     await act(async () => {
-      fireEvent.click(within(modal).getByTestId("confirm-button"));
+      fireEvent.click(
+        within(screen.getByTestId("confirmation-modal")).getByTestId(
+          "confirm-button",
+        ),
+      );
     });
 
-    expect(SoulService.saveSoul).toHaveBeenCalledWith("");
-    expect(displaySuccessToast).toHaveBeenCalledWith(
-      I18nKey.SETTINGS$SOUL_REVERTED,
+    // Blank content is how the server is told to remove the file.
+    expect(SoulService.saveIdentityDocument).toHaveBeenCalledExactlyOnceWith(
+      "soul",
+      "",
     );
+    expect(displaySuccessToast).toHaveBeenCalledWith(
+      I18nKey.SETTINGS$IDENTITY_DOCUMENT_CLEARED,
+    );
+    expect(
+      within(sectionFor("soul")).getByTestId("identity-document-status"),
+    ).toHaveAttribute("data-exists", "false");
   });
 
   it("refuses to save content past the length the server accepts", async () => {
     renderPage();
 
-    const editor = await screen.findByTestId("soul-content-input");
+    await screen.findByTestId("identity-documents-editor");
+    const style = sectionFor("style");
+    const editor = within(style).getByTestId("identity-document-input");
     fireEvent.change(editor, {
-      target: { value: "x".repeat(MAX_SOUL_LENGTH + 1) },
+      target: { value: "x".repeat(MAX_IDENTITY_DOCUMENT_LENGTH + 1) },
     });
 
-    expect(screen.getByTestId("soul-too-long")).toBeInTheDocument();
+    expect(
+      within(style).getByTestId("identity-document-too-long"),
+    ).toBeInTheDocument();
     expect(editor).toHaveAttribute("aria-invalid", "true");
-    fireEvent.click(screen.getByTestId("soul-save-button"));
-    expect(SoulService.saveSoul).not.toHaveBeenCalled();
+    fireEvent.click(within(style).getByTestId("identity-document-save-button"));
+    expect(SoulService.saveIdentityDocument).not.toHaveBeenCalled();
   });
 
   it("explains an agent server without the route instead of failing", async () => {
-    vi.mocked(SoulService.getSoul).mockRejectedValue(
+    vi.mocked(SoulService.getIdentityDocuments).mockRejectedValue(
       new SoulUnsupportedError("missing-api"),
     );
     renderPage();
@@ -190,16 +302,18 @@ describe("SoulSettingsScreen", () => {
     expect(unsupported).toHaveTextContent(
       I18nKey.SETTINGS$SOUL_UNSUPPORTED_MISSING_API,
     );
-    expect(screen.queryByTestId("soul-content-input")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("identity-document-section"),
+    ).not.toBeInTheDocument();
   });
 
-  it("never asks a cloud backend, which has no SOUL.md", async () => {
+  it("never asks a cloud backend, which has no identity documents", async () => {
     setRegisteredBackends([localBackend, cloudBackend]);
     setActiveSelection({ backendId: cloudBackend.id });
     renderPage();
 
     const unsupported = await screen.findByTestId("soul-unsupported");
     expect(unsupported).toHaveAttribute("data-reason", "cloud-backend");
-    expect(SoulService.getSoul).not.toHaveBeenCalled();
+    expect(SoulService.getIdentityDocuments).not.toHaveBeenCalled();
   });
 });

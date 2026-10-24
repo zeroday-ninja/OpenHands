@@ -14,7 +14,7 @@ import { SOUL_QUERY_KEYS } from "#/hooks/query/query-keys";
  */
 export function useSaveSoul() {
   const queryClient = useQueryClient();
-  const { backend } = useActiveBackend();
+  const { backend, orgId } = useActiveBackend();
 
   return useMutation({
     mutationFn: (content: string) => SoulService.saveSoul(content),
@@ -24,6 +24,14 @@ export function useSaveSoul() {
       // after it and overwrite the response we just seeded.
       await queryClient.cancelQueries({ queryKey });
       queryClient.setQueryData(queryKey, data);
+      // The identity set holds the same file as its first document, so the
+      // settings page would otherwise keep showing the text this save
+      // replaced. The response cannot be seeded into it: this route reports
+      // the built-in default when no file exists, which is not what the set
+      // says about an unwritten document.
+      await queryClient.invalidateQueries({
+        queryKey: SOUL_QUERY_KEYS.documents(backend.id, orgId),
+      });
     },
     // The page reports success and failure itself, so the global mutation
     // toast would only stack a raw one on top.
