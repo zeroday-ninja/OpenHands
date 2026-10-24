@@ -336,3 +336,64 @@ export interface CreateImprovementProgramRequest {
   keep_alive?: boolean | null;
   enabled?: boolean;
 }
+
+/** Who a correction applies to. */
+export type LessonScope = "user" | "project" | "runtime" | "surface";
+
+/**
+ * What produced a correction. Every one is something that already happens:
+ * nothing asks the user to write a lesson.
+ */
+export type LessonTrigger =
+  | "parked_resolution"
+  | "change_requested"
+  | "thumbs_down"
+  | "comment"
+  | "chat_instruction"
+  | "rejected_approach";
+
+/** Which stage of the pipeline let a repeated correction through. */
+export type LessonFailureStage =
+  | "never_captured"
+  | "out_of_scope"
+  | "not_injected"
+  | "ignored"
+  | "not_mechanisable";
+
+export interface CaptureLessonRequest {
+  scope: LessonScope;
+  subject?: string | null;
+  trigger: LessonTrigger;
+  /** The user's words, verbatim. */
+  text: string;
+  why?: string | null;
+  source?: Record<string, unknown> | null;
+}
+
+export interface Lesson {
+  id: string;
+  scope: LessonScope;
+  subject: string | null;
+  trigger: LessonTrigger;
+  text: string;
+  why: string | null;
+  mechanised: boolean;
+  check_ref: string | null;
+  status: "active" | "retired";
+  created_at: string;
+  /** How many times this correction has had to be given again. */
+  repeats: number;
+}
+
+export interface CaptureLessonResult {
+  lesson: Lesson;
+  /** True when this correction had already been given. */
+  repeat: boolean;
+  failed_stage: LessonFailureStage | null;
+  failure_detail: string | null;
+}
+
+export interface LessonListResponse {
+  lessons: Lesson[];
+  total: number;
+}

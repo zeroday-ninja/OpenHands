@@ -26,6 +26,7 @@ import {
   type ImproveCycle,
   type ImproveRoute,
 } from "#/types/improve";
+import { useFeatureTrial } from "#/hooks/use-feature-trial";
 import { PROJECT_MAP_BUTTON_CLASS } from "./project-map-controls";
 
 const ICON_SIZE = 14;
@@ -81,10 +82,15 @@ export function ProjectMapWaiting() {
 function ParkedCycle({ cycle }: { cycle: ImproveCycle }) {
   const { t } = useTranslation("openhands");
   const resolve = useResolveImproveCycle();
+  const trial = useFeatureTrial("map-waiting-on-you");
   const [reason, setReason] = React.useState("");
   const reasonId = `parked-reason-${cycle.id}`;
 
   const answer = (route: ImproveRoute) => {
+    // Answering is what using this panel means. Rendering is not: a panel
+    // that appeared is not a panel anybody acted on, and counting a render
+    // would make an ignored feature look used.
+    trial.markUsed();
     // The service requires a reason and so does this: an answer with no
     // reasoning behind it has to be guessed at again next time, which is the
     // repetition this whole surface exists to end.
