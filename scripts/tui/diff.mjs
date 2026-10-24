@@ -102,17 +102,21 @@ export function unifiedDiff(path, before, after) {
     `+++ b/${path}`,
   ];
 
-  // Walk the operations, emitting hunks. `keep` is the run of context since
-  // the last change; a run longer than 2×CONTEXT means the hunks are separate.
+  // Walk the operations, emitting hunks. `pending` is the run of unchanged
+  // lines since the last change: ahead of a hunk it is the context to open
+  // with, inside one it is context that belongs where it sits, and after the
+  // last change it is the context to close with.
   let hunk = [];
-  let keep = [];
-  let beforeAt = 1;
-  let afterAt = 1;
+  let pending = [];
   let hunkBefore = 1;
   let hunkAfter = 1;
+  // 1-based numbers of the next line each side still has to account for.
+  let beforeAt = 1;
+  let afterAt = 1;
 
-  const flush = () => {
+  const flush = (trailing) => {
     if (hunk.length === 0) return;
+    hunk.push(...trailing);
     const beforeCount = hunk.filter((line) => line[0] !== "+").length;
     const afterCount = hunk.filter((line) => line[0] !== "-").length;
     lines.push(
@@ -124,33 +128,33 @@ export function unifiedDiff(path, before, after) {
 
   operations.forEach((entry) => {
     if (entry.op === " ") {
-      keep.push(` ${entry.text}`);
+      pending.push(` ${entry.text}`);
       beforeAt += 1;
       afterAt += 1;
-      if (hunk.length > 0 && keep.length === CONTEXT) {
-        hunk.push(...keep);
-        keep = [];
-        flush();
-      }
-      if (keep.length > CONTEXT) keep.shift();
       return;
     }
-    if (hunk.length === 0) {
-      // Opening a hunk: the context already collected becomes its head, and
-      // the line numbers start that many lines back.
-      hunkBefore = Math.max(1, beforeAt - keep.length);
-      hunkAfter = Math.max(1, afterAt - keep.length);
-      hunk.push(...keep);
-      keep = [];
+    // A gap wider than context on both sides is two hunks: close this one
+    // with its trailing context and start another above the next change.
+    if (hunk.length > 0 && pending.length > CONTEXT * 2) {
+      flush(pending.slice(0, CONTEXT));
     }
+    if (hunk.length === 0) {
+      const head = pending.slice(-CONTEXT);
+      hunkBefore = Math.max(1, beforeAt - head.length);
+      hunkAfter = Math.max(1, afterAt - head.length);
+      hunk.push(...head);
+    } else {
+      // Interior context. It goes in where it is: held back as trailing
+      // context it would print after the change that follows it, and a hunk
+      // whose lines are out of order describes a different file.
+      hunk.push(...pending);
+    }
+    pending = [];
     hunk.push(`${entry.op}${entry.text}`);
     if (entry.op === "-") beforeAt += 1;
     else afterAt += 1;
   });
-  if (hunk.length > 0) {
-    hunk.push(...keep.slice(0, CONTEXT));
-    flush();
-  }
+  flush(pending.slice(0, CONTEXT));
   return lines;
 }
 
