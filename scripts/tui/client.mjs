@@ -32,7 +32,12 @@ export function createClient(stack) {
     });
     if (!response.ok) {
       const text = await response.text().catch(() => "");
-      throw new StackRequestFailed(method, path, response.status, text.slice(0, 300));
+      throw new StackRequestFailed(
+        method,
+        path,
+        response.status,
+        text.slice(0, 300),
+      );
     }
     if (response.status === 204) return null;
     const text = await response.text();
@@ -160,6 +165,29 @@ export function createClient(stack) {
       // tail reads as a conversation that ended there.
       return { events: collected, truncated: true };
     },
+
+    /**
+     * What has changed in a working tree, and the diff itself.
+     *
+     * The agent server's own git surface rather than shelling out: the work
+     * happens in a sandbox, so the files are not on this machine, and a
+     * terminal that could only diff local checkouts would be lying about
+     * which tree it is showing.
+     */
+    gitChanges: (path, ref) =>
+      request(
+        "GET",
+        `/api/git/changes?path=${encodeURIComponent(path)}` +
+          (ref ? `&ref=${encodeURIComponent(ref)}` : ""),
+      ),
+
+    gitDiff: (path, { ref, commit } = {}) =>
+      request(
+        "GET",
+        `/api/git/diff?path=${encodeURIComponent(path)}` +
+          (ref ? `&ref=${encodeURIComponent(ref)}` : "") +
+          (commit ? `&commit=${encodeURIComponent(commit)}` : ""),
+      ),
 
     /**
      * The automation service, through the same ingress.

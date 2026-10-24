@@ -43,7 +43,9 @@ function clamp(text, limit = MAX_LINE) {
   // An object stringifies to "[object Object]", which tells the reader
   // nothing. Several of these fields carry structured values.
   const raw =
-    text !== null && typeof text === "object" ? safeJson(text) : String(text ?? "");
+    text !== null && typeof text === "object"
+      ? safeJson(text)
+      : String(text ?? "");
   const flat = raw.replace(/\s+$/, "");
   return flat.length > limit ? `${flat.slice(0, limit)}…` : flat;
 }
@@ -148,7 +150,9 @@ export function renderEvent(event, options = {}) {
       // The notice the plan asks for: a runtime change is visible and the
       // conversation carries on. Nothing about it interrupts the work.
       const reason =
-        event.reason === "usage_limit" ? "ran out of usage" : "switched by hand";
+        event.reason === "usage_limit"
+          ? "ran out of usage"
+          : "switched by hand";
       const reset = event.reset_hint?.at
         ? `, back at ${event.reset_hint.at}`
         : "";
@@ -193,7 +197,14 @@ function actionDetail(event) {
   if (!action || typeof action !== "object") return "";
   // The one field that says what a call is about, per tool. Chosen rather
   // than dumping the arguments: a terminal line is one line.
-  for (const field of ["command", "path", "file_path", "url", "query", "pattern"]) {
+  for (const field of [
+    "command",
+    "path",
+    "file_path",
+    "url",
+    "query",
+    "pattern",
+  ]) {
     const value = action[field];
     if (typeof value === "string" && value) return clamp(value, 160);
   }
@@ -242,12 +253,36 @@ export function renderTranscript(events, options = {}) {
       // The final state, rendered where the call *started*, so the order
       // still reads as the order the work happened in.
       const last = finalState.get(event.tool_call_id);
-      lines.push(
-        ...renderEvent(last, { ...options, verbose: true }),
-      );
+      lines.push(...renderEvent(last, { ...options, verbose: true }));
       return;
     }
     lines.push(...renderEvent(event, options));
   });
   return lines;
+}
+
+/**
+ * A unified diff, coloured the way every diff reader colours one.
+ *
+ * Hand-rolled for the same reason the rest of this is: a syntax-highlighting
+ * dependency to put three colours on three prefixes is not a trade worth
+ * making, and the three prefixes are the whole of what a reader needs.
+ */
+export function renderDiff(diff, colour = true) {
+  // Accepts the lines `unifiedDiff` produces, or a diff as one string.
+  const lines = Array.isArray(diff)
+    ? diff
+    : typeof diff === "string" && diff.trim()
+      ? diff.split("\n")
+      : [];
+  return lines.map((line) => {
+    if (line.startsWith("+++") || line.startsWith("---")) {
+      return paint(line, "bold", colour);
+    }
+    if (line.startsWith("+")) return paint(line, "green", colour);
+    if (line.startsWith("-")) return paint(line, "red", colour);
+    if (line.startsWith("@@")) return paint(line, "cyan", colour);
+    if (line.startsWith("diff --git")) return paint(line, "bold", colour);
+    return line;
+  });
 }
