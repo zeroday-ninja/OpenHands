@@ -24,9 +24,45 @@ export enum ImproveCycleStatus {
   CLAIMED = "CLAIMED",
   BUILDING = "BUILDING",
   REVIEWING = "REVIEWING",
+  /**
+   * Waiting for a person. Not terminal and not a failure: the work is intact
+   * on its branch, the cycle holds the phase it stopped at, and answering the
+   * question resumes it from there. A breaking change always ends up here.
+   */
+  PARKED = "PARKED",
   COMPLETED = "COMPLETED",
   FAILED = "FAILED",
 }
+
+/**
+ * Where a gate sent the work, as opposed to what it thought of it.
+ *
+ * A verdict says whether a change is good; a route says what happens next. The
+ * service records one of these at every gate, so a failed gate sends work
+ * somewhere rather than ending it.
+ */
+export type ImproveRoute =
+  | "approve"
+  | "cycle"
+  | "return"
+  | "archive"
+  | "escalate";
+
+/** The routes a person may answer a parked cycle with. */
+export const IMPROVE_RESOLVE_ROUTES: readonly ImproveRoute[] = [
+  "approve",
+  "cycle",
+  "return",
+  // `escalate` is absent on purpose: answering *is* the escalation, so
+  // escalating again would park the cycle on the person who just unparked it.
+  "archive",
+];
+
+/**
+ * What a change does to anyone relying on the code, computed from its diff
+ * rather than claimed by its builder. It is what decides who may publish.
+ */
+export type ImproveChangeClass = "additive" | "deleting" | "breaking";
 
 /**
  * What the adversarial review concluded.
@@ -45,11 +81,69 @@ export enum ImproveVerdict {
   NO_CHANGE = "NO_CHANGE",
 }
 
-/** Statuses a cycle never leaves, so the dashboard can stop polling. */
+/** Statuses a cycle never leaves. */
 export const TERMINAL_IMPROVE_CYCLE_STATUSES: readonly ImproveCycleStatus[] = [
   ImproveCycleStatus.COMPLETED,
   ImproveCycleStatus.FAILED,
 ];
+
+/**
+ * Statuses that move on their own, which is what polling is for.
+ *
+ * `PARKED` is not terminal but belongs outside this list: it changes only when
+ * a person answers, and whoever answers invalidates the query themselves.
+ * Polling a parked cycle is a request every five seconds for as long as it
+ * waits, which can be days.
+ */
+export const SELF_ADVANCING_IMPROVE_CYCLE_STATUSES: readonly ImproveCycleStatus[] =
+  [
+    ImproveCycleStatus.CLAIMED,
+    ImproveCycleStatus.BUILDING,
+    ImproveCycleStatus.REVIEWING,
+  ];
+
+/** One routing decision, with the reason it was taken. */
+export interface ImproveGateDecision {
+  phase?: string;
+  route?: ImproveRoute;
+  trigger?: string;
+  rationale?: string;
+  verdict?: string | null;
+  change_class?: string | null;
+  recommends?: string | null;
+  decided_by?: string | null;
+  at?: string | null;
+  /**
+   * Set when the service could not read the decision. Kept rather than
+   * dropped: a client with a bug must not look like one that never decided.
+   */
+  unreadable?: boolean;
+  problem?: string;
+}
+
+/** The judge's verdict on a cycle's removals. */
+export interface ImproveJudgeAttestation {
+  attested: boolean;
+  runtime: string;
+  summary: string;
+  removals: {
+    path: string;
+    symbol: string | null;
+    finding: string;
+    where: string;
+  }[];
+  conversation_id: string | null;
+  at?: string;
+}
+
+/** What a person needs in order to answer a breaking change. */
+export interface ImproveChangeoverPlan {
+  breaks?: string[];
+  consumers?: string[];
+  sequence?: string[];
+  rollback?: string;
+  branch?: string;
+}
 
 /** One repository in a program's rotation. */
 export interface ImproveCycleRepository {
@@ -129,6 +223,31 @@ export interface ImproveCycle {
   reviews: ImproveCycleReview[];
   /** Proposals for the user's SOUL.md, from either stage of the cycle. */
   soul_suggestions: ImproveSoulSuggestion[];
+  // The change-risk gate. Optional because the automation service is
+  // versioned separately from this app: a deployment running a service from
+  // before the gate landed sends none of these, and a type that claimed
+  // otherwise would turn that into undefined reads at render time.
+  /**
+   * Computed from the diff, never claimed by the builder. Null when the diff
+   * could not be read — which is not the same as additive.
+   */
+  change_class?: ImproveChangeClass | null;
+  /**
+   * What the builder said it was. A claim below the computed class is a
+   * finding, which is why both are kept.
+   */
+  claimed_change_class?: string | null;
+  /** Where each gate sent the work, oldest first. */
+  gate_decisions?: ImproveGateDecision[] | null;
+  judge_attestation?: ImproveJudgeAttestation | null;
+  /** What this cycle needs a person to answer, when it is PARKED. */
+  parked_question?: string | null;
+  parked_phase?: string | null;
+  parked_plan?: ImproveChangeoverPlan | null;
+  parked_at?: string | null;
+  /** The person's answer, once they have given one. */
+  resolution?: string | null;
+  resolved_at?: string | null;
   error: string | null;
   created_at: string;
   updated_at: string;

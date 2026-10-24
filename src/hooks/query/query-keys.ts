@@ -72,6 +72,13 @@ export const IMPROVE_QUERY_KEYS = {
       backendId,
       orgId,
     ] as const,
+  /**
+   * Work waiting for a person, org-wide rather than per program: the question
+   * is "what is waiting on me", not "which of this program's cycles are
+   * parked", so it is not keyed by automation.
+   */
+  parked: (backendId: string, orgId: string | null, limit: number) =>
+    ["improve-program", "parked", backendId, orgId, limit] as const,
 } as const;
 
 /**

@@ -61,6 +61,65 @@ const REPOSITORIES = [
   },
 ] as const;
 
+/**
+ * A cycle waiting for a person, with the changeover plan the question cannot
+ * be answered without.
+ *
+ * The empty `consumers` and `sequence` entries are the sentences the service
+ * writes when the builder supplied neither: a plan with a blank rollback reads
+ * as a change that needs no rollback, so absence is stated rather than left
+ * out. The mock carries them for the same reason the real one does.
+ */
+export const MOCK_PARKED_CYCLE: ImproveCycle = {
+  id: "cccccccc-0000-0000-0000-000000000009",
+  automation_id: MOCK_IMPROVE_AUTOMATION_ID,
+  run_id: "dddddddd-0000-0000-0000-000000000009",
+  status: ImproveCycleStatus.PARKED,
+  verdict: ImproveVerdict.ACCEPTED,
+  repository: REPOSITORIES[0],
+  builder_profile_id: MOCK_IMPROVE_CONFIG.builder_profile_id,
+  builder_runtime: "claude-code",
+  builder_conversation_id: "conv-improve-9",
+  summary:
+    "Renamed the conversation socket's event envelope so every event carries its own kind.",
+  branch: "improve/event-envelope",
+  pr_url: "https://github.com/OpenHands/OpenHands/pull/412",
+  sources: [],
+  reviews: [],
+  soul_suggestions: [],
+  change_class: "breaking",
+  claimed_change_class: "breaking",
+  gate_decisions: [
+    {
+      phase: "publish",
+      route: "escalate",
+      trigger: "the diff is a breaking change",
+      rationale: "A wire contract changed, which is never mine to publish.",
+      change_class: "breaking",
+      at: "2026-10-24T07:40:00Z",
+    },
+  ],
+  judge_attestation: null,
+  parked_phase: "publish",
+  parked_question:
+    "This renames the conversation socket's event envelope. Publish it now, or wait for the client release?",
+  parked_plan: {
+    breaks: ["removed_export in src/types/events.ts: -export type Envelope"],
+    consumers: ["The builder did not say who depends on this."],
+    sequence: ["The builder proposed no changeover sequence."],
+    rollback:
+      "Not stated by the builder. Reverting the branch `improve/event-envelope` is the fallback, which only works while nothing depends on it yet.",
+    branch: "improve/event-envelope",
+  },
+  parked_at: "2026-10-24T07:40:00Z",
+  resolution: null,
+  resolved_at: null,
+  error: null,
+  created_at: "2026-10-24T07:10:00Z",
+  updated_at: "2026-10-24T07:40:00Z",
+  completed_at: null,
+};
+
 const MOCK_CYCLES: ImproveCycle[] = [
   {
     id: "cccccccc-0000-0000-0000-000000000003",
