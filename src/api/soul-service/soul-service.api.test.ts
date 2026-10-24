@@ -9,7 +9,11 @@ import SoulService, {
   SoulUnsupportedError,
   isSoulUnsupportedError,
 } from "./soul-service.api";
-import type { SoulResponse } from "./soul.types";
+import type {
+  IdentityDocumentResponse,
+  IdentitySetResponse,
+  SoulResponse,
+} from "./soul.types";
 
 const getMock = vi.hoisted(() => vi.fn());
 const putMock = vi.hoisted(() => vi.fn());
@@ -46,6 +50,21 @@ const soul: SoulResponse = {
   exists: true,
   path: "/home/user/.openhands/SOUL.md",
   size_bytes: 36,
+};
+
+const styleDocument: IdentityDocumentResponse = {
+  name: "style",
+  relative_path: "STYLE.md",
+  purpose: "How you write and work.",
+  content: "Short sentences.\n",
+  exists: true,
+  path: "/home/user/.openhands/soul/STYLE.md",
+  size_bytes: 17,
+};
+
+const identitySet: IdentitySetResponse = {
+  documents: [styleDocument],
+  directory: "/home/user/.openhands/soul",
 };
 
 /** What the SDK client throws for a non-2xx response. */
@@ -114,6 +133,37 @@ describe("SoulService", () => {
     );
 
     expect(isSoulUnsupportedError(error)).toBe(false);
+  });
+
+  it("reads the whole identity set from the documents route", async () => {
+    getMock.mockResolvedValue(identitySet);
+
+    const result = await SoulService.getIdentityDocuments();
+
+    expect(result).toEqual(identitySet);
+    expect(getMock).toHaveBeenCalledWith("/api/soul/documents");
+    expect(closeMock).toHaveBeenCalled();
+  });
+
+  it("writes one document to the route named after it", async () => {
+    putMock.mockResolvedValue(styleDocument);
+
+    await SoulService.saveIdentityDocument("style", "Short sentences.");
+
+    expect(putMock).toHaveBeenCalledWith("/api/soul/documents/style", {
+      content: "Short sentences.",
+    });
+    expect(closeMock).toHaveBeenCalled();
+  });
+
+  it("reports an agent server without the documents route as unsupported", async () => {
+    getMock.mockRejectedValue(httpError(404));
+
+    const error = await SoulService.getIdentityDocuments().catch(
+      (caught: unknown) => caught,
+    );
+
+    expect((error as SoulUnsupportedError).reason).toBe("missing-api");
   });
 
   it("never calls a cloud backend, which has no such route", async () => {

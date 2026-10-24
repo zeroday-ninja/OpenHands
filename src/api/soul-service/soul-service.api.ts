@@ -1,6 +1,7 @@
 /**
- * Reads and writes the user's `SOUL.md` through the agent server's
- * `/api/soul` resource (software-agent-sdk `soul_router.py`).
+ * Reads and writes the user's identity through the agent server's `/api/soul`
+ * resource (software-agent-sdk `soul_router.py`): `SOUL.md` on its own, and
+ * the document set under `/api/soul/documents`.
  *
  * The pinned `@openhands/typescript-client` has no `SoulClient`: the route is
  * newer than the client release. Transport therefore goes through
@@ -23,9 +24,25 @@ import {
   isNoBackend,
 } from "#/api/backend-registry/active-store";
 import type { Backend } from "#/api/backend-registry/types";
-import type { SoulResponse, SoulUnsupportedReason } from "./soul.types";
+import type {
+  IdentityDocumentResponse,
+  IdentitySetResponse,
+  SoulResponse,
+  SoulUnsupportedReason,
+} from "./soul.types";
 
 const SOUL_PATH = "/api/soul";
+const IDENTITY_DOCUMENTS_PATH = `${SOUL_PATH}/documents`;
+
+/**
+ * A document's own route. The name is a stable id the server declared in the
+ * set (`soul`, `style`, …), not user input, so it needs no escaping — but it
+ * is encoded anyway so a name the server adds later cannot build a path that
+ * reaches somewhere else.
+ */
+function identityDocumentPath(name: string): string {
+  return `${IDENTITY_DOCUMENTS_PATH}/${encodeURIComponent(name)}`;
+}
 
 export class SoulUnsupportedError extends Error {
   readonly reason: SoulUnsupportedReason;
@@ -104,6 +121,40 @@ class SoulService {
   static saveSoul(content: string): Promise<SoulResponse> {
     return withClient((client) =>
       client.put<SoulResponse>(SOUL_PATH, { content }),
+    );
+  }
+
+  /**
+   * Every identity document the agent server declares, in the order a prompt
+   * reads them. Documents nobody has written are included, with empty
+   * `content` and `exists: false`, because the point of the page is to show
+   * what could be written as much as what has been.
+   */
+  static getIdentityDocuments(): Promise<IdentitySetResponse> {
+    return withClient((client) =>
+      client.get<IdentitySetResponse>(IDENTITY_DOCUMENTS_PATH),
+    );
+  }
+
+  /**
+   * Replace one document and return it as it now stands. Empty or
+   * whitespace-only content deletes it instead of writing an empty file, so
+   * clearing a document is the same state as never having written one — which
+   * is how the page's "clear" action is expressed.
+   *
+   * A 404 here means the same thing it means for the set: this agent server
+   * does not serve identity documents. It would also be the answer for a name
+   * the server does not declare, but Canvas only ever writes names the server
+   * itself just listed.
+   */
+  static saveIdentityDocument(
+    name: string,
+    content: string,
+  ): Promise<IdentityDocumentResponse> {
+    return withClient((client) =>
+      client.put<IdentityDocumentResponse>(identityDocumentPath(name), {
+        content,
+      }),
     );
   }
 }
