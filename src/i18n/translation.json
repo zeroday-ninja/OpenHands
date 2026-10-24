@@ -51929,6 +51929,24 @@
     "uk": "Запит на злиття",
     "id": "Pull request"
   },
+  "AUTOMATIONS$IMPROVE$MERGED": {
+    "en": "Merged",
+    "ja": "マージ済み",
+    "zh-CN": "已合并",
+    "zh-TW": "已合併",
+    "ko-KR": "병합됨",
+    "no": "Slått sammen",
+    "ar": "مدمج",
+    "de": "Zusammengeführt",
+    "fr": "Fusionné",
+    "it": "Unito",
+    "pt": "Mesclado",
+    "es": "Fusionado",
+    "ca": "Fusionat",
+    "tr": "Birleştirildi",
+    "uk": "Злито",
+    "id": "Digabungkan"
+  },
   "AUTOMATIONS$IMPROVE$NO_SUMMARY": {
     "en": "No summary reported yet.",
     "ja": "概要はまだ報告されていません。",

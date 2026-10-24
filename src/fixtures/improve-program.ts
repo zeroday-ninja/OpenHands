@@ -121,6 +121,40 @@ export const MOCK_PARKED_CYCLE: ImproveCycle = {
 };
 
 const MOCK_CYCLES: ImproveCycle[] = [
+  // Additive and accepted, so it merged itself without being asked. Mock mode
+  // has to carry that case: it is the one the user never confirmed, and the
+  // card is the only place they find out it happened.
+  {
+    id: "cccccccc-0000-0000-0000-000000000004",
+    automation_id: MOCK_IMPROVE_AUTOMATION_ID,
+    run_id: "dddddddd-0000-0000-0000-000000000004",
+    status: ImproveCycleStatus.COMPLETED,
+    verdict: ImproveVerdict.ACCEPTED,
+    repository: REPOSITORIES[2],
+    builder_profile_id: MOCK_IMPROVE_CONFIG.builder_profile_id,
+    builder_runtime: "codex",
+    builder_conversation_id: "conv-improve-4",
+    summary:
+      "Recorded the runtime each reviewer finished on, so a review that failed over is not filed under the runtime that started it.",
+    branch: "improve/reviewer-runtime",
+    pr_url: "https://github.com/OpenHands/automation/pull/57",
+    merged_at: "2026-10-23T09:14:00Z",
+    merge_commit_sha: "9c1f0a7b4d2e6358af0119e73c5b8d2a4f6e0b31",
+    change_class: "additive",
+    sources: [
+      {
+        url: "https://agentclientprotocol.com/protocol/schema",
+        title: "Agent Client Protocol schema",
+        note: "The protocol carries no credit balance, so a switch is the only signal.",
+      },
+    ],
+    reviews: [],
+    soul_suggestions: [],
+    error: null,
+    created_at: "2026-10-23T08:40:00Z",
+    updated_at: "2026-10-23T09:14:00Z",
+    completed_at: "2026-10-23T09:14:00Z",
+  },
   {
     id: "cccccccc-0000-0000-0000-000000000003",
     automation_id: MOCK_IMPROVE_AUTOMATION_ID,
