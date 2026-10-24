@@ -15,7 +15,8 @@
   },
   "bin": {
     "agent-canvas": "bin/agent-canvas.mjs",
-    "oh": "bin/oh.mjs"
+    "oh": "bin/oh.mjs",
+    "oh-gate": "bin/oh-gate.mjs"
   },
   "engines": {
     "node": ">=24"
