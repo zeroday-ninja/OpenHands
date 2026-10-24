@@ -92,6 +92,23 @@ export const SOUL_QUERY_KEYS = {
 } as const;
 
 /**
+ * The work graph, one entry per registered deployment because the view fans
+ * out over all of them. Keyed by backend, org, and connection revision so an
+ * org switch or a credential edit never folds one deployment's work into
+ * another's picture, and by the window asked for, since a different window is
+ * different data rather than a stale version of the same data.
+ */
+export const WORK_GRAPH_QUERY_KEYS = {
+  all: ["work-graph"] as const,
+  byBackend: (
+    backendId: string,
+    orgId: string | null,
+    connectionRevision: number,
+    window: { windowDays: number; limit: number },
+  ) => ["work-graph", backendId, orgId, connectionRevision, window] as const,
+} as const;
+
+/**
  * The project map document in a workspace. Keyed by backend and by the
  * conversation whose working directory it was resolved from, so switching
  * either never shows another repository's map.
