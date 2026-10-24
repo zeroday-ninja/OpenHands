@@ -27,6 +27,13 @@ import type {
   GitSyncStatus,
   GitSyncTriggerResponse,
 } from "#/types/git-sync";
+import {
+  WORK_GRAPH_DEFAULT_LIMIT,
+  WORK_GRAPH_DEFAULT_WINDOW_DAYS,
+  WORK_GRAPH_PATH,
+  type WorkGraphRequestParams,
+  type WorkGraphResponse,
+} from "#/types/work-graph";
 import type {
   CreateImprovementProgramRequest,
   ImproveCycleListParams,
@@ -1362,6 +1369,50 @@ class AutomationService {
       "/preset/improve",
       body,
     );
+  }
+
+  /**
+   * One deployment's slice of the work graph.
+   *
+   * Every other call in this file resolves its host from whichever backend is
+   * active. This one cannot: the work graph fans out over every registered
+   * deployment at once, so the one being asked is a parameter, and both
+   * branches below pin host, session key, and organization to *that* backend
+   * rather than to the active selection. A cloud request in particular must
+   * carry its own `X-Org-Id`, because `callCloudProxy` only fills that in for
+   * the active backend.
+   */
+  static async getWorkGraph(
+    backend: Backend,
+    orgId: string | null,
+    params: WorkGraphRequestParams = {},
+  ): Promise<WorkGraphResponse> {
+    const {
+      since,
+      windowDays = WORK_GRAPH_DEFAULT_WINDOW_DAYS,
+      limit = WORK_GRAPH_DEFAULT_LIMIT,
+    } = params;
+    const query = new URLSearchParams({
+      window_days: String(windowDays),
+      limit: String(limit),
+    });
+    if (since) query.set("since", since);
+    const path = `${AUTOMATION_BASE_PATH}${WORK_GRAPH_PATH}?${query.toString()}`;
+
+    if (backend.kind === "cloud") {
+      return callCloudProxy<WorkGraphResponse>({
+        backend,
+        method: "GET",
+        path,
+        headers: await buildPinnedCloudHeaders({ backend, orgId }),
+      });
+    }
+
+    const { data } = await localAutomationAxios.get<WorkGraphResponse>(
+      path,
+      await buildPinnedLocalConfig(backend),
+    );
+    return data;
   }
 
   static async checkHealth(): Promise<AutomationHealthResponse> {
