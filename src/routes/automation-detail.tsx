@@ -19,8 +19,10 @@ import { useAutomationAgentDisplay } from "#/hooks/query/use-automation-agent-di
 import { useCloudOrgMember } from "#/hooks/query/use-cloud-org-member";
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import { useNavigation } from "#/context/navigation-context";
+import { RejectedManifestNotice } from "#/components/features/automations/rejected-manifest-notice";
 import {
   automationListPath,
+  automationInterfaceRejection,
   hasAutomationInterface,
 } from "#/manifests/automation-interface";
 import { BackLink } from "#/components/features/automations/detail/back-link";
@@ -71,17 +73,23 @@ const nullAutomation: Automation = {
 
 /**
  * The page renders the interface manifest's copy, so without an admitted
- * manifest there is nothing to render: a 404, which the layout's error
- * boundary renders.
+ * manifest there is nothing to render.
+ *
+ * A 404 only when the package publishes none: that deployment genuinely has
+ * no automation interface. A manifest that was published and refused is a
+ * defect in the pinned package, and saying "not found" there sends someone
+ * looking for a page that was taken away from them without a word.
  */
 export const clientLoader = () => {
+  const rejection = automationInterfaceRejection();
+  if (rejection) return { rejection };
   if (!hasAutomationInterface()) {
     throw new Response(null, { status: 404, statusText: "Not Found" });
   }
-  return null;
+  return { rejection: null };
 };
 
-export default function AutomationDetail() {
+function AutomationDetailPage() {
   const { t } = useTranslation("openhands");
   const { automationId } = useParams();
   const [searchParams] = useSearchParams();
@@ -301,4 +309,17 @@ export default function AutomationDetail() {
       </div>
     </div>
   );
+}
+
+/**
+ * The page, or why there is no page.
+ *
+ * A wrapper rather than an early return inside the page itself: everything in
+ * there reads the admitted manifest, which by definition is not there when the
+ * published one was refused.
+ */
+export default function AutomationDetail() {
+  const rejection = automationInterfaceRejection();
+  if (rejection) return <RejectedManifestNotice reason={rejection} />;
+  return <AutomationDetailPage />;
 }

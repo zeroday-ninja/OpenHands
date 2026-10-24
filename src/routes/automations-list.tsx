@@ -60,10 +60,12 @@ import {
   parseAutomationFile,
   serializeAutomation,
 } from "#/utils/automation-export";
+import { RejectedManifestNotice } from "#/components/features/automations/rejected-manifest-notice";
 import {
   automationDetailPath,
   getDashboardSpec,
   getInterfaceCopy,
+  automationInterfaceRejection,
   hasAutomationInterface,
 } from "#/manifests/automation-interface";
 import {
@@ -98,14 +100,20 @@ const PAGE_SIZE = 50;
 
 /**
  * The page renders the interface manifest's copy, so without an admitted
- * manifest there is nothing to render: a 404, which the layout's error
- * boundary renders.
+ * manifest there is nothing to render.
+ *
+ * A 404 only when the package publishes none: that deployment genuinely has
+ * no automation interface. A manifest that was published and refused is a
+ * defect in the pinned package, and saying "not found" there sends someone
+ * looking for a page that was taken away from them without a word.
  */
 export const clientLoader = () => {
+  const rejection = automationInterfaceRejection();
+  if (rejection) return { rejection };
   if (!hasAutomationInterface()) {
     throw new Response(null, { status: 404, statusText: "Not Found" });
   }
-  return null;
+  return { rejection: null };
 };
 
 function withoutDraftAutomations(
@@ -294,7 +302,7 @@ function SavedDraftsGroup({
   );
 }
 
-export default function AutomationsList() {
+function AutomationsListPage() {
   const { t } = useTranslation("openhands");
   const interfaceCopy = getInterfaceCopy();
   // Admission is stable for the session; memo just keeps one identity.
@@ -926,4 +934,17 @@ export default function AutomationsList() {
       />
     </>,
   );
+}
+
+/**
+ * The page, or why there is no page.
+ *
+ * A wrapper rather than an early return inside the page itself: everything in
+ * there reads the admitted manifest, which by definition is not there when the
+ * published one was refused.
+ */
+export default function AutomationsList() {
+  const rejection = automationInterfaceRejection();
+  if (rejection) return <RejectedManifestNotice reason={rejection} />;
+  return <AutomationsListPage />;
 }

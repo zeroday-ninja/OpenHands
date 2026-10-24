@@ -61,6 +61,17 @@ function getCatalogIds(): ReadonlySet<string> {
   );
 }
 
+/**
+ * Why the published manifest was refused, when there was one to refuse.
+ *
+ * Null covers both "admitted" and "the package publishes none", which are the
+ * two states a deployment can legitimately be in. A manifest that exists and
+ * does not validate is neither: it is a defect in the pinned package, and the
+ * surfaces it would have described must say that rather than 404 as if the
+ * deployment simply has no automations.
+ */
+let REJECTION: string | null = null;
+
 function admitInterfaceManifest(candidate: unknown): InterfaceManifest | null {
   if (candidate === undefined) return null;
 
@@ -69,18 +80,26 @@ function admitInterfaceManifest(candidate: unknown): InterfaceManifest | null {
     mountedRoutes: MOUNTED_ROUTES,
   });
   if (!result.valid) {
-    // Mirrors the setup registry: a rejected manifest is skipped loudly, and
-    // the surfaces it would have described stay unrendered.
-    console.warn(
-      "Rejected the automation interface manifest:",
-      result.errors.join("; "),
-    );
+    REJECTION = result.errors.join("; ");
+    console.warn("Rejected the automation interface manifest:", REJECTION);
     return null;
   }
   return candidate as InterfaceManifest;
 }
 
 const ADMITTED = admitInterfaceManifest(AUTOMATION_INTERFACE_CANDIDATE);
+
+/**
+ * The reason the published manifest was refused, or null if none was.
+ *
+ * The routes ask so they can tell a package defect apart from a deployment
+ * with no automation interface at all. The two look identical from outside —
+ * an absent nav entry and a page that will not open — and only one of them is
+ * something to go and fix.
+ */
+export function automationInterfaceRejection(): string | null {
+  return REJECTION;
+}
 
 /**
  * Whether this deployment has an automation interface at all. The nav entries

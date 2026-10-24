@@ -4,8 +4,10 @@ import { Route } from "./+types/automation-setup-route";
 import {
   automationDetailPath,
   automationListPath,
+  automationInterfaceRejection,
   hasAutomationInterface,
 } from "#/manifests/automation-interface";
+import { RejectedManifestNotice } from "#/components/features/automations/rejected-manifest-notice";
 import { SETUP_REGISTRY } from "#/manifests/manifest-sources";
 import { SetupDialog } from "#/components/features/manifest/manifest-setup-dialog";
 import { DetailSkeleton } from "#/components/features/automations/detail/detail-skeleton";
@@ -37,8 +39,10 @@ export const clientLoader = ({ params }: Route.ClientLoaderArgs) => {
   const entry = SETUP_REGISTRY.findById(automationId);
 
   // Setup submits against the interface manifest's endpoints, so without an
-  // admitted manifest the page has nothing to submit to either.
-  if (!hasAutomationInterface()) {
+  // admitted manifest the page has nothing to submit to either. A manifest
+  // that was published and refused is a package defect rather than a
+  // deployment without automations, and says so instead of 404ing.
+  if (!hasAutomationInterface() && !automationInterfaceRejection()) {
     throw new Response(null, { status: 404, statusText: "Not Found" });
   }
 
@@ -106,7 +110,7 @@ function ExistingAutomationSetup({ automationId }: { automationId: string }) {
   );
 }
 
-export default function AutomationSetupRoute() {
+function AutomationSetupRoutePage() {
   const { automationId, isCatalogEntry } = useLoaderData<typeof clientLoader>();
 
   return isCatalogEntry ? (
@@ -114,4 +118,17 @@ export default function AutomationSetupRoute() {
   ) : (
     <ExistingAutomationSetup automationId={automationId} />
   );
+}
+
+/**
+ * The page, or why there is no page.
+ *
+ * A wrapper rather than an early return inside the page itself: everything in
+ * there reads the admitted manifest, which by definition is not there when the
+ * published one was refused.
+ */
+export default function AutomationSetupRoute() {
+  const rejection = automationInterfaceRejection();
+  if (rejection) return <RejectedManifestNotice reason={rejection} />;
+  return <AutomationSetupRoutePage />;
 }
