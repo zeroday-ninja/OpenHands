@@ -35,6 +35,8 @@ import {
   type WorkGraphResponse,
 } from "#/types/work-graph";
 import type {
+  CaptureLessonRequest,
+  CaptureLessonResult,
   CreateImprovementProgramRequest,
   ImproveCycle,
   ImproveCycleListParams,
@@ -42,6 +44,7 @@ import type {
   ImproveProgramConfig,
   ImproveRoute,
   ImproveRotationResponse,
+  LessonListResponse,
 } from "#/types/improve";
 import {
   automationCreateEndpoint,
@@ -1335,6 +1338,32 @@ class AutomationService {
     return AutomationService.requestImprove<ImproveCycleListResponse>(
       "GET",
       `/improve/${encodeURIComponent(automationId)}/cycles?${query}`,
+    );
+  }
+
+  /**
+   * Record a correction that was actually given.
+   *
+   * The service decides whether this is a new correction or a repeat of one
+   * already given, and diagnoses which stage let a repeat through. Nothing
+   * here guesses at that: the caller reports what happened and the answer
+   * says what it was.
+   */
+  static captureLesson(
+    body: CaptureLessonRequest,
+  ): Promise<CaptureLessonResult> {
+    return AutomationService.requestImprove<CaptureLessonResult>(
+      "POST",
+      "/lessons",
+      body,
+    );
+  }
+
+  /** Every correction in force, with how often it has had to be repeated. */
+  static listLessons(): Promise<LessonListResponse> {
+    return AutomationService.requestImprove<LessonListResponse>(
+      "GET",
+      "/lessons",
     );
   }
 
