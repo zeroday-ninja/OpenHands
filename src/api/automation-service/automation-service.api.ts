@@ -36,9 +36,11 @@ import {
 } from "#/types/work-graph";
 import type {
   CreateImprovementProgramRequest,
+  ImproveCycle,
   ImproveCycleListParams,
   ImproveCycleListResponse,
   ImproveProgramConfig,
+  ImproveRoute,
   ImproveRotationResponse,
 } from "#/types/improve";
 import {
@@ -1333,6 +1335,41 @@ class AutomationService {
     return AutomationService.requestImprove<ImproveCycleListResponse>(
       "GET",
       `/improve/${encodeURIComponent(automationId)}/cycles?${query}`,
+    );
+  }
+
+  /**
+   * Every cycle waiting for a person, across every program in the org.
+   *
+   * Its own call rather than a filter over one program's history, because the
+   * question is never "which of this program's cycles are parked" — it is
+   * "what is waiting on me", and an answer that needs the reader to know
+   * which program to look in is not an answer.
+   */
+  static listParkedImproveCycles(
+    limit = 20,
+  ): Promise<ImproveCycleListResponse> {
+    return AutomationService.requestImprove<ImproveCycleListResponse>(
+      "GET",
+      `/improve/parked?limit=${encodeURIComponent(String(limit))}`,
+    );
+  }
+
+  /**
+   * Answer what a parked cycle is waiting for, so it can carry on.
+   *
+   * The reason is required by the service and carried into the resuming
+   * cycle's context: an answer with no reasoning behind it has to be guessed
+   * at again the next time the same question comes up.
+   */
+  static resolveImproveCycle(
+    cycleId: string,
+    body: { route: ImproveRoute; resolution: string },
+  ): Promise<ImproveCycle> {
+    return AutomationService.requestImprove<ImproveCycle>(
+      "POST",
+      `/improve/cycles/${encodeURIComponent(cycleId)}/resolve`,
+      body,
     );
   }
 

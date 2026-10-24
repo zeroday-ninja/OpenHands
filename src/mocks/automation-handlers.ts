@@ -18,12 +18,14 @@ import type {
 import { AutomationRunStatus } from "#/types/automation";
 import {
   IMPROVE_PRESET_TYPE,
+  ImproveCycleStatus,
   type ImproveProgramConfig,
 } from "#/types/improve";
 import {
   MOCK_IMPROVE_ROTATION,
   mockImproveCyclePage,
   mockImproveRotationFor,
+  MOCK_PARKED_CYCLE,
 } from "#/fixtures/improve-program";
 import { isImprovementProgram } from "#/utils/improve-program";
 import { MOCK_AUTOMATIONS_RESPONSE } from "./automations.mock";
@@ -424,6 +426,36 @@ export const AUTOMATION_HANDLERS = [
   }),
 
   // POST /api/automation/v1/preset/:kind — Create a prompt/plugin automation
+  // GET /api/automation/v1/improve/parked — work waiting for a person,
+  // org-wide. Registered before `/improve/:automationId/...` so "parked" is
+  // not read as an automation id.
+  http.get("*/api/automation/v1/improve/parked", async () => {
+    await delay(200);
+    return HttpResponse.json({ cycles: [MOCK_PARKED_CYCLE], total: 1 });
+  }),
+
+  // POST /api/automation/v1/improve/cycles/:cycleId/resolve — a person's
+  // answer to a parked cycle.
+  http.post(
+    "*/api/automation/v1/improve/cycles/:cycleId/resolve",
+    async ({ request }) => {
+      await delay(200);
+      const body = (await request.json()) as {
+        route: string;
+        resolution: string;
+      };
+      return HttpResponse.json({
+        ...MOCK_PARKED_CYCLE,
+        status:
+          body.route === "archive"
+            ? ImproveCycleStatus.COMPLETED
+            : ImproveCycleStatus.REVIEWING,
+        resolution: body.resolution,
+        resolved_at: new Date().toISOString(),
+      });
+    },
+  ),
+
   // GET /api/automation/v1/improve/:automationId/rotation — the rotation and
   // which repository the next run takes. Registered before the generic
   // `/v1/:id` handlers below, which would otherwise never see these paths.

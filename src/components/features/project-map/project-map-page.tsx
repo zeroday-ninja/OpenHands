@@ -69,6 +69,7 @@ import { buildProjectMapAnalysisPrompt } from "./project-map-analysis-prompt";
 import { ProjectMapCanvas } from "./project-map-canvas";
 import { ProjectMapInspector } from "./project-map-inspector";
 import { useWorkGraph } from "#/hooks/query/use-work-graph";
+import { ProjectMapWaiting } from "./project-map-waiting";
 import {
   conversationIdOf,
   workGraphToDerivedLayer,
@@ -257,6 +258,7 @@ export function ProjectMapPage() {
       data-testid="project-map-page"
       className="flex h-full min-h-0 flex-col gap-3 p-4 lg:px-8"
     >
+      <ProjectMapWaiting />
       <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <div className="flex flex-col">
           <h2 className="text-xl font-medium text-contrast">
