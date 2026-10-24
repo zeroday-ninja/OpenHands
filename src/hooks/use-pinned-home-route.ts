@@ -9,6 +9,8 @@ import {
   automationListPath,
   hasAutomationInterface,
 } from "#/manifests/automation-interface";
+import { getLockedCloudHost } from "#/api/agent-server-config";
+import { PROJECT_MAP_ROUTE_PATH } from "#/types/project-map";
 
 export const PINNED_HOME_ROUTE_KEY = "oh:pinned-home-route";
 
@@ -39,6 +41,10 @@ export function getPinnedHomeRouteKey(
 export function isPinnableRoute(path: string): boolean {
   if (path === CUSTOMIZE_PATH) return true;
   if (path === automationListPath()) return hasAutomationInterface();
+  // The map reads a file from a local workspace, which a canvas locked to a
+  // Cloud host never has — and `/` must not redirect to a page whose only
+  // possible content is "unsupported here". Same guard the sidebar link uses.
+  if (path === PROJECT_MAP_ROUTE_PATH) return getLockedCloudHost() === null;
   return false;
 }
 

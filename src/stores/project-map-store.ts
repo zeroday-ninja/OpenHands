@@ -18,14 +18,51 @@ import { create } from "zustand";
 import type {
   PlacedProjectMapDocument,
   PlacedProjectMapNode,
+  ProjectMapAnchor,
+  ProjectMapCanvasLayer,
+  ProjectMapConnector,
+  ProjectMapEndpoint,
+  ProjectMapLayoutKind,
+  ProjectMapMode,
   ProjectMapNote,
+  ProjectMapShape,
 } from "#/types/project-map";
 import {
   PROJECT_MAP_GRID,
   projectMapGroupAtPoint,
   projectMapNodeSize,
 } from "#/utils/project-map/project-map-layout";
+import {
+  PROJECT_MAP_SHAPE_DEFAULT_SIZE,
+  PROJECT_MAP_SHAPE_MIN_SIZE,
+  createProjectMapConnector,
+  createProjectMapShape,
+  type CreateProjectMapShapeOptions,
+} from "#/utils/project-map/project-map-authoring";
+import { layoutProjectMapShapes } from "#/utils/project-map/project-map-autolayout";
 import { mergeProjectMap } from "#/utils/project-map/merge-project-map";
+
+/**
+ * Which tool a press on the paper means.
+ *
+ * It lives in the store rather than the document: which tool is in hand is
+ * about this moment of editing, not about the drawing, so it must never reach
+ * the committed file.
+ */
+export const PROJECT_MAP_TOOLS = [
+  "select",
+  "box",
+  "diamond",
+  "sticky",
+  "frame",
+  "branch",
+  "connect",
+] as const;
+
+export type ProjectMapTool = (typeof PROJECT_MAP_TOOLS)[number];
+
+/** How many steps back the editor remembers. */
+export const PROJECT_MAP_HISTORY_LIMIT = 50;
 
 export interface ProjectMapViewport {
   /** Diagram coordinate shown at the top-left of the frame. */
@@ -56,6 +93,27 @@ interface ProjectMapState {
    * its own editor, so adding one is never a dead end.
    */
   editingNote: string | null;
+  /** The drawn shape whose text is open, if any. */
+  editingShape: string | null;
+  /** The connector whose label is open, if any. */
+  editingConnectorLabel: string | null;
+  /** Which tool a press on the paper means right now. */
+  tool: ProjectMapTool;
+  /**
+   * Whether the chat dock is expanded.
+   *
+   * Ephemeral UI, deliberately not in the document: where the canvas is the
+   * work, chat is a panel you open when you want it.
+   */
+  chatOpen: boolean;
+  /**
+   * Buffers before and after the current one.
+   *
+   * The save is explicit, and Delete can remove drawn work that was never
+   * saved, so without this an accident is unrecoverable.
+   */
+  past: PlacedProjectMapDocument[];
+  future: PlacedProjectMapDocument[];
   viewport: ProjectMapViewport;
   /** Hidden nodes are drawn, faint, while this is on, so they can be restored. */
   showHidden: boolean;
@@ -82,6 +140,39 @@ interface ProjectMapState {
   removeNote: (id: string) => void;
   setEditingNote: (id: string | null) => void;
 
+  setMode: (mode: ProjectMapMode) => void;
+  setTool: (tool: ProjectMapTool) => void;
+  setChatOpen: (open: boolean) => void;
+  setEditingShape: (id: string | null) => void;
+  setEditingConnectorLabel: (id: string | null) => void;
+
+  addShape: (options: CreateProjectMapShapeOptions) => void;
+  updateShapeText: (id: string, text: string) => void;
+  moveShapes: (ids: string[], dx: number, dy: number) => void;
+  resizeShape: (
+    id: string,
+    rect: { x: number; y: number; width: number; height: number },
+  ) => void;
+  setShapeAccent: (id: string, accent: string | null) => void;
+  setShapePinned: (id: string, pinned: boolean) => void;
+  anchorShape: (id: string, anchor: ProjectMapAnchor | null) => void;
+  removeSelected: () => void;
+
+  addConnector: (from: ProjectMapEndpoint, to: ProjectMapEndpoint) => void;
+  updateConnector: (
+    id: string,
+    change: Partial<Omit<ProjectMapConnector, "id">>,
+  ) => void;
+
+  groupSelection: () => void;
+  ungroupFrame: (id: string) => void;
+  addBranchChild: (parentId: string) => void;
+  addBranchSibling: (siblingId: string) => void;
+
+  runLayout: (kind: ProjectMapLayoutKind) => void;
+  undo: () => void;
+  redo: () => void;
+
   setViewport: (viewport: ProjectMapViewport) => void;
 }
 
@@ -94,13 +185,124 @@ function center(node: PlacedProjectMapNode): { x: number; y: number } {
   return { x: node.x + width / 2, y: node.y + height / 2 };
 }
 
-/** Applies a change to the buffer and records that it now differs from disk. */
+/**
+ * Applies a change to the buffer, records that it differs from disk, and
+ * remembers the buffer it replaced.
+ *
+ * Every edit goes through here, which is what makes one undo step mean one
+ * thing the user did rather than one field that happened to change.
+ */
 function edit(
   state: ProjectMapState,
   change: (document: PlacedProjectMapDocument) => PlacedProjectMapDocument,
 ): Partial<ProjectMapState> {
   if (state.document === null) return {};
-  return { document: change(state.document), dirty: true };
+  return {
+    document: change(state.document),
+    dirty: true,
+    past: [...state.past, state.document].slice(-PROJECT_MAP_HISTORY_LIMIT),
+    // A new edit is a new branch of history: what was undone is no longer
+    // reachable, and pretending otherwise would redo the wrong thing.
+    future: [],
+  };
+}
+
+/** Applies a change to the authored layer only. */
+function editCanvas(
+  state: ProjectMapState,
+  change: (canvas: ProjectMapCanvasLayer) => ProjectMapCanvasLayer,
+): Partial<ProjectMapState> {
+  return edit(state, (document) => ({
+    ...document,
+    canvas: change(document.canvas),
+  }));
+}
+
+/**
+ * The view, with the drawn layer made visible.
+ *
+ * Anything that creates drawn content runs through this: making something the
+ * user cannot see, in a mode that hides it, would read as the editor silently
+ * dropping their work. The analysis stays on screen too, so nothing they were
+ * looking at disappears either.
+ */
+function showingAuthored(canvas: ProjectMapCanvasLayer): ProjectMapCanvasLayer {
+  if (canvas.view.mode !== "derived") return canvas;
+  return { ...canvas, view: { ...canvas.view, mode: "both" } };
+}
+
+function mapShape(
+  canvas: ProjectMapCanvasLayer,
+  id: string,
+  change: (shape: ProjectMapShape) => ProjectMapShape,
+): ProjectMapCanvasLayer {
+  return {
+    ...canvas,
+    shapes: canvas.shapes.map((shape) =>
+      shape.id === id ? change(shape) : shape,
+    ),
+  };
+}
+
+/** Where a shape is drawn: its anchor's node if it has one, else its own x/y. */
+export function shapeOrigin(
+  document: PlacedProjectMapDocument,
+  shape: ProjectMapShape,
+): { x: number; y: number } {
+  const anchor = shape.anchor?.layer === "code" ? shape.anchor : null;
+  if (anchor === null) {
+    return { x: shape.x, y: shape.y };
+  }
+  const node = document.nodes.find((candidate) => candidate.id === anchor.node);
+  if (node === undefined) return { x: shape.x, y: shape.y };
+  return { x: node.x + anchor.dx, y: node.y + anchor.dy };
+}
+
+/** True when `inner` sits entirely within `outer`'s bounds. */
+function contains(outer: ProjectMapShape, inner: ProjectMapShape): boolean {
+  return (
+    inner.x >= outer.x &&
+    inner.y >= outer.y &&
+    inner.x + inner.width <= outer.x + outer.width &&
+    inner.y + inner.height <= outer.y + outer.height
+  );
+}
+
+/**
+ * Where a line's end goes when the shape it was attached to is deleted.
+ *
+ * It lands on that shape's last position rather than vanishing, so a deletion
+ * never silently removes a line the user can still see.
+ */
+function releaseEndpoint(
+  endpoint: ProjectMapEndpoint,
+  removed: Set<string>,
+  before: ProjectMapShape[],
+): ProjectMapEndpoint {
+  if (endpoint.attach !== "shape" || !removed.has(endpoint.shape)) {
+    return endpoint;
+  }
+  const gone = before.find((shape) => shape.id === endpoint.shape);
+  return {
+    attach: "free",
+    x: gone ? gone.x + gone.width / 2 : 0,
+    y: gone ? gone.y + gone.height / 2 : 0,
+  };
+}
+
+/** The whole drawing's extent, used to place a new arrangement clear of it. */
+function shapesBounds(shapes: ProjectMapShape[]): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+} | null {
+  if (shapes.length === 0) return null;
+  const minX = Math.min(...shapes.map((shape) => shape.x));
+  const minY = Math.min(...shapes.map((shape) => shape.y));
+  const maxX = Math.max(...shapes.map((shape) => shape.x + shape.width));
+  const maxY = Math.max(...shapes.map((shape) => shape.y + shape.height));
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
 function mapNode(
@@ -121,6 +323,12 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
   selection: [],
   focused: null,
   editingNote: null,
+  editingShape: null,
+  editingConnectorLabel: null,
+  tool: "select",
+  chatOpen: false,
+  past: [],
+  future: [],
   viewport: INITIAL_VIEWPORT,
   showHidden: false,
 
@@ -156,6 +364,13 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
           state.editingNote !== null && noteIds.has(state.editingNote)
             ? state.editingNote
             : null,
+        // History belongs to the buffer it was recorded against. Keeping it
+        // across a new revision would let undo paste a shape back into a
+        // document that never had it.
+        past: [],
+        future: [],
+        editingShape: null,
+        editingConnectorLabel: null,
       };
     }),
 
@@ -167,6 +382,12 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
       selection: [],
       focused: null,
       editingNote: null,
+      editingShape: null,
+      editingConnectorLabel: null,
+      tool: "select",
+      chatOpen: false,
+      past: [],
+      future: [],
       viewport: INITIAL_VIEWPORT,
       showHidden: false,
     }),
@@ -300,6 +521,363 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
     })),
 
   setEditingNote: (id) => set({ editingNote: id }),
+
+  setMode: (mode) =>
+    set((state) =>
+      editCanvas(state, (canvas) => ({
+        ...canvas,
+        view: { ...canvas.view, mode },
+      })),
+    ),
+
+  setTool: (tool) => set({ tool }),
+  setChatOpen: (chatOpen) => set({ chatOpen }),
+  setEditingShape: (editingShape) => set({ editingShape }),
+  setEditingConnectorLabel: (editingConnectorLabel) =>
+    set({ editingConnectorLabel }),
+
+  /** A new shape is selected and opened for typing: creating one is never a dead end. */
+  addShape: (options) =>
+    set((state) => {
+      if (state.document === null) return {};
+      const shape = createProjectMapShape(state.document.canvas.shapes, {
+        ...options,
+        x: snap(options.x),
+        y: snap(options.y),
+      });
+      const edited = editCanvas(state, (canvas) => ({
+        ...showingAuthored(canvas),
+        // A frame paints behind what it contains, so it goes to the front of
+        // the list rather than the end.
+        shapes:
+          shape.kind === "frame"
+            ? [shape, ...canvas.shapes]
+            : [...canvas.shapes, shape],
+      }));
+      return {
+        ...edited,
+        selection: [shape.id],
+        focused: shape.id,
+        editingShape: shape.kind === "frame" ? null : shape.id,
+      };
+    }),
+
+  updateShapeText: (id, text) =>
+    set((state) =>
+      editCanvas(state, (canvas) =>
+        mapShape(canvas, id, (shape) => ({ ...shape, text })),
+      ),
+    ),
+
+  /**
+   * Moving drawn shapes.
+   *
+   * An anchored shape keeps travelling with its node, so the move adjusts the
+   * offset it travels at rather than fighting the anchor. A frame carries what
+   * it visually contains, which is the only gesture in the editor where moving
+   * one object moves another.
+   */
+  moveShapes: (ids, dx, dy) =>
+    set((state) => {
+      if (state.document === null) return {};
+      const { shapes } = state.document.canvas;
+      const direct = new Set(ids);
+      const carried = new Set<string>();
+      for (const frame of shapes) {
+        if (!direct.has(frame.id) || frame.kind !== "frame") continue;
+        for (const inner of shapes) {
+          if (direct.has(inner.id) || inner.id === frame.id) continue;
+          if (contains(frame, inner)) carried.add(inner.id);
+        }
+      }
+      const moving = new Set([...direct, ...carried]);
+      const nodeById = new Map(
+        state.document.nodes.map((node) => [node.id, node]),
+      );
+      return editCanvas(state, (canvas) => ({
+        ...canvas,
+        shapes: canvas.shapes.map((shape) => {
+          if (!moving.has(shape.id)) return shape;
+          const x = snap(shape.x + dx);
+          const y = snap(shape.y + dy);
+          const anchor = shape.anchor?.layer === "code" ? shape.anchor : null;
+          if (anchor === null) {
+            return { ...shape, x, y };
+          }
+          const node = nodeById.get(anchor.node);
+          if (node === undefined) return { ...shape, x, y };
+          return {
+            ...shape,
+            x,
+            y,
+            anchor: { ...anchor, dx: x - node.x, dy: y - node.y },
+          };
+        }),
+      }));
+    }),
+
+  resizeShape: (id, rect) =>
+    set((state) =>
+      editCanvas(state, (canvas) =>
+        mapShape(canvas, id, (shape) => ({
+          ...shape,
+          x: snap(rect.x),
+          y: snap(rect.y),
+          width: Math.max(snap(rect.width), PROJECT_MAP_SHAPE_MIN_SIZE),
+          height: Math.max(snap(rect.height), PROJECT_MAP_SHAPE_MIN_SIZE),
+        })),
+      ),
+    ),
+
+  setShapeAccent: (id, accent) =>
+    set((state) =>
+      editCanvas(state, (canvas) =>
+        mapShape(canvas, id, (shape) => ({ ...shape, accent })),
+      ),
+    ),
+
+  setShapePinned: (id, pinned) =>
+    set((state) =>
+      editCanvas(state, (canvas) =>
+        mapShape(canvas, id, (shape) => ({ ...shape, pinned })),
+      ),
+    ),
+
+  anchorShape: (id, anchor) =>
+    set((state) =>
+      editCanvas(state, (canvas) =>
+        mapShape(canvas, id, (shape) => ({ ...shape, anchor })),
+      ),
+    ),
+
+  /**
+   * Deletes drawn things only.
+   *
+   * An analysed node is never deleted here: it is a claim about the repository
+   * that the next analysis will make again. Hiding one is the gesture that
+   * exists for that, and the inspector offers it.
+   */
+  removeSelected: () =>
+    set((state) => {
+      if (state.document === null) return {};
+      const selected = new Set(state.selection);
+      const { shapes, connectors } = state.document.canvas;
+      const removedShapes = new Set(
+        shapes
+          .filter((shape) => selected.has(shape.id))
+          .map((shape) => shape.id),
+      );
+      const removedConnectors = new Set(
+        connectors
+          .filter((connector) => selected.has(connector.id))
+          .map((connector) => connector.id),
+      );
+      if (removedShapes.size === 0 && removedConnectors.size === 0) return {};
+      const edited = editCanvas(state, (canvas) => ({
+        ...canvas,
+        shapes: canvas.shapes
+          .filter((shape) => !removedShapes.has(shape.id))
+          // A child whose parent is gone becomes a root rather than vanishing.
+          .map((shape) =>
+            shape.parent !== null && removedShapes.has(shape.parent)
+              ? { ...shape, parent: null }
+              : shape,
+          ),
+        connectors: canvas.connectors
+          .filter((connector) => !removedConnectors.has(connector.id))
+          // A line whose end is gone ends where that end was, rather than
+          // disappearing along with it.
+          .map((connector) => ({
+            ...connector,
+            from: releaseEndpoint(connector.from, removedShapes, shapes),
+            to: releaseEndpoint(connector.to, removedShapes, shapes),
+          })),
+      }));
+      return {
+        ...edited,
+        selection: [],
+        focused: null,
+        editingShape: null,
+        editingConnectorLabel: null,
+      };
+    }),
+
+  addConnector: (from, to) =>
+    set((state) =>
+      editCanvas(state, (canvas) => ({
+        ...showingAuthored(canvas),
+        connectors: [
+          ...canvas.connectors,
+          createProjectMapConnector(canvas.connectors, { from, to }),
+        ],
+      })),
+    ),
+
+  updateConnector: (id, change) =>
+    set((state) =>
+      editCanvas(state, (canvas) => ({
+        ...canvas,
+        connectors: canvas.connectors.map((connector) =>
+          connector.id === id ? { ...connector, ...change } : connector,
+        ),
+      })),
+    ),
+
+  /** Wraps the selection in a frame sized to it, behind its contents. */
+  groupSelection: () =>
+    set((state) => {
+      if (state.document === null) return {};
+      const selected = new Set(state.selection);
+      const inside = state.document.canvas.shapes.filter((shape) =>
+        selected.has(shape.id),
+      );
+      const bounds = shapesBounds(inside);
+      if (bounds === null) return {};
+      const padding = PROJECT_MAP_GRID * 2;
+      const frame = createProjectMapShape(state.document.canvas.shapes, {
+        kind: "frame",
+        x: bounds.x - padding,
+        y: bounds.y - padding,
+        width: bounds.width + padding * 2,
+        height: bounds.height + padding * 2,
+      });
+      const edited = editCanvas(state, (canvas) => ({
+        ...showingAuthored(canvas),
+        shapes: [frame, ...canvas.shapes],
+      }));
+      return { ...edited, selection: [frame.id], focused: frame.id };
+    }),
+
+  /** Removes a frame and leaves everything that was inside it exactly where it is. */
+  ungroupFrame: (id) =>
+    set((state) =>
+      editCanvas(state, (canvas) => ({
+        ...canvas,
+        shapes: canvas.shapes.filter(
+          (shape) => !(shape.id === id && shape.kind === "frame"),
+        ),
+      })),
+    ),
+
+  addBranchChild: (parentId) =>
+    set((state) => {
+      if (state.document === null) return {};
+      const parent = state.document.canvas.shapes.find(
+        (shape) => shape.id === parentId,
+      );
+      if (parent === undefined) return {};
+      const siblings = state.document.canvas.shapes.filter(
+        (shape) => shape.parent === parentId,
+      );
+      const size = PROJECT_MAP_SHAPE_DEFAULT_SIZE.branch;
+      const child = createProjectMapShape(state.document.canvas.shapes, {
+        kind: "branch",
+        parent: parentId,
+        x: parent.x + parent.width + PROJECT_MAP_GRID * 4,
+        y: parent.y + siblings.length * (size.height + PROJECT_MAP_GRID * 2),
+      });
+      const edited = editCanvas(state, (canvas) => ({
+        ...showingAuthored(canvas),
+        shapes: [...canvas.shapes, child],
+      }));
+      return {
+        ...edited,
+        selection: [child.id],
+        focused: child.id,
+        editingShape: child.id,
+      };
+    }),
+
+  addBranchSibling: (siblingId) =>
+    set((state) => {
+      if (state.document === null) return {};
+      const sibling = state.document.canvas.shapes.find(
+        (shape) => shape.id === siblingId,
+      );
+      if (sibling === undefined) return {};
+      const next = createProjectMapShape(state.document.canvas.shapes, {
+        kind: sibling.kind === "frame" ? "branch" : sibling.kind,
+        parent: sibling.parent,
+        x: sibling.x,
+        y: sibling.y + sibling.height + PROJECT_MAP_GRID * 2,
+      });
+      const edited = editCanvas(state, (canvas) => ({
+        ...showingAuthored(canvas),
+        shapes: [...canvas.shapes, next],
+      }));
+      return {
+        ...edited,
+        selection: [next.id],
+        focused: next.id,
+        editingShape: next.id,
+      };
+    }),
+
+  /**
+   * Arranges the drawn layer.
+   *
+   * Scope is the selection when there is one: "arrange" with nothing chosen
+   * should not rearrange a diagram someone else laid out by hand. Pinned and
+   * anchored shapes are left where they are by the layout itself.
+   */
+  runLayout: (kind) =>
+    set((state) => {
+      if (state.document === null) return {};
+      const { canvas } = state.document;
+      const selected = new Set(state.selection);
+      const scoped =
+        selected.size > 0
+          ? canvas.shapes.filter((shape) => selected.has(shape.id))
+          : canvas.shapes;
+      const fixed = canvas.shapes.filter(
+        (shape) => shape.pinned || shape.anchor !== null,
+      );
+      const clearOf = shapesBounds(fixed);
+      const origin = clearOf
+        ? { x: clearOf.x + clearOf.width + PROJECT_MAP_GRID * 4, y: clearOf.y }
+        : { x: 0, y: 0 };
+      const positions = layoutProjectMapShapes(scoped, {
+        kind,
+        origin,
+        connectors: canvas.connectors,
+      });
+      return editCanvas(state, (current) => ({
+        ...current,
+        view: { ...current.view, layout: kind },
+        shapes: current.shapes.map((shape) => {
+          const position = positions.get(shape.id);
+          if (position === undefined) return shape;
+          return { ...shape, x: snap(position.x), y: snap(position.y) };
+        }),
+      }));
+    }),
+
+  undo: () =>
+    set((state) => {
+      const previous = state.past.at(-1);
+      if (previous === undefined || state.document === null) return {};
+      return {
+        document: previous,
+        past: state.past.slice(0, -1),
+        future: [state.document, ...state.future].slice(
+          0,
+          PROJECT_MAP_HISTORY_LIMIT,
+        ),
+        dirty: true,
+      };
+    }),
+
+  redo: () =>
+    set((state) => {
+      const [next, ...rest] = state.future;
+      if (next === undefined || state.document === null) return {};
+      return {
+        document: next,
+        past: [...state.past, state.document].slice(-PROJECT_MAP_HISTORY_LIMIT),
+        future: rest,
+        dirty: true,
+      };
+    }),
 
   setViewport: (viewport) =>
     set({

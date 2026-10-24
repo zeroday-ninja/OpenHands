@@ -67,8 +67,10 @@ import {
 import { displayErrorToast } from "#/utils/custom-toast-handlers";
 import { buildProjectMapAnalysisPrompt } from "./project-map-analysis-prompt";
 import { ProjectMapCanvas } from "./project-map-canvas";
-import { ProjectMapConversation } from "./project-map-conversation";
 import { ProjectMapInspector } from "./project-map-inspector";
+import { ProjectMapToolPalette } from "./project-map-tool-palette";
+import { ProjectMapModeSwitch } from "./project-map-mode-switch";
+import { ProjectMapChatDock } from "./project-map-chat-dock";
 import { ProjectMapLegend } from "./project-map-legend";
 import {
   PROJECT_MAP_BUTTON_CLASS,
@@ -362,8 +364,26 @@ export function ProjectMapPage() {
         />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
-          <div className="min-h-80 flex-1 overflow-hidden rounded-lg border border-border-subtle">
-            <ProjectMapCanvas document={document_} frameRef={frameRef} />
+          <div className="flex min-h-80 flex-1 flex-col gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <ProjectMapToolPalette />
+              <ProjectMapModeSwitch mode={document_.canvas.view.mode} />
+            </div>
+            {/* The dock is positioned against this box rather than the page so
+                it stays over the drawing when the rail is beside it. */}
+            <div className="relative min-h-0 flex-1 overflow-hidden rounded-lg border border-border-subtle">
+              <ProjectMapCanvas document={document_} frameRef={frameRef} />
+              <ProjectMapChatDock
+                document={document_}
+                mapPath={mapPath}
+                conversationId={mapConversationId}
+                launchWorkingDir={
+                  isolated ? null : (workspace?.workingDir ?? null)
+                }
+                onConversationStarted={setMapConversationId}
+                onDetach={() => setMapConversationId(null)}
+              />
+            </div>
           </div>
           <aside className="flex w-full shrink-0 flex-col gap-5 overflow-y-auto rounded-lg border border-border-subtle bg-base-secondary p-4 lg:w-88 custom-scrollbar">
             <div className="flex flex-col gap-2">
@@ -372,16 +392,6 @@ export function ProjectMapPage() {
               </span>
               <ProjectMapInspector document={document_} />
             </div>
-            <ProjectMapConversation
-              document={document_}
-              mapPath={mapPath}
-              conversationId={mapConversationId}
-              launchWorkingDir={
-                isolated ? null : (workspace?.workingDir ?? null)
-              }
-              onConversationStarted={setMapConversationId}
-              onDetach={() => setMapConversationId(null)}
-            />
             <ProjectMapLegend document={document_} />
           </aside>
         </div>

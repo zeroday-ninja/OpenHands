@@ -12,7 +12,10 @@ import { useTranslation } from "react-i18next";
 import { Eye, EyeOff, MapPin, Pencil, StickyNote } from "lucide-react";
 import { I18nKey } from "#/i18n/declaration";
 import type { PlacedProjectMapDocument } from "#/types/project-map";
-import { projectMapNeighbors } from "#/utils/project-map/project-map-graph";
+import {
+  projectMapNeighbors,
+  resolveProjectMapSelection,
+} from "#/utils/project-map/project-map-graph";
 import { useProjectMapStore } from "#/stores/project-map-store";
 import {
   PROJECT_MAP_BUTTON_CLASS,
@@ -44,9 +47,79 @@ export function ProjectMapInspector({
   const setNodePinned = useProjectMapStore((state) => state.setNodePinned);
   const setNodeGroup = useProjectMapStore((state) => state.setNodeGroup);
   const addNote = useProjectMapStore((state) => state.addNote);
+  const anchorShape = useProjectMapStore((state) => state.anchorShape);
+  const removeSelected = useProjectMapStore((state) => state.removeSelected);
   const [renaming, setRenaming] = React.useState<string | null>(null);
 
-  const selected = map.nodes.filter((node) => selection.includes(node.id));
+  const resolved = resolveProjectMapSelection(map, selection);
+  const selected = resolved.nodes;
+
+  // A drawn selection is a different panel: a shape has text and a colour
+  // where a node has a path and a group, and showing the node panel's empty
+  // state over a box the user just clicked reads as a bug.
+  if (selected.length === 0 && resolved.shapes.length > 0) {
+    return (
+      <div
+        data-testid="project-map-inspector-shapes"
+        className="flex flex-col gap-2"
+      >
+        <ul className="flex flex-col gap-1">
+          {resolved.shapes.map((shape) => (
+            <li key={shape.id} className="truncate text-sm text-foreground">
+              {shape.text.trim() === "" ? shape.kind : shape.text}
+            </li>
+          ))}
+        </ul>
+        <div className="flex flex-wrap gap-1.5">
+          {resolved.shapes.length === 1 && (
+            <button
+              type="button"
+              data-testid="project-map-shape-attach"
+              className={PROJECT_MAP_BUTTON_CLASS}
+              disabled={resolved.shapes[0].anchor !== null}
+              onClick={() => {
+                const [shape] = resolved.shapes;
+                const node = map.nodes.find((candidate) =>
+                  selection.includes(candidate.id),
+                );
+                if (node === undefined) return;
+                anchorShape(shape.id, {
+                  layer: "code",
+                  node: node.id,
+                  dx: shape.x - node.x,
+                  dy: shape.y - node.y,
+                });
+              }}
+            >
+              {t(I18nKey.PROJECT_MAP$SHAPE_ATTACH)}
+            </button>
+          )}
+          {resolved.shapes.some((shape) => shape.anchor !== null) && (
+            <button
+              type="button"
+              data-testid="project-map-shape-detach"
+              className={PROJECT_MAP_BUTTON_CLASS}
+              onClick={() => {
+                for (const shape of resolved.shapes) {
+                  anchorShape(shape.id, null);
+                }
+              }}
+            >
+              {t(I18nKey.PROJECT_MAP$SHAPE_DETACH)}
+            </button>
+          )}
+          <button
+            type="button"
+            data-testid="project-map-shape-delete"
+            className={PROJECT_MAP_BUTTON_CLASS}
+            onClick={() => removeSelected()}
+          >
+            {t(I18nKey.PROJECT_MAP$DELETE_DRAWN)}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (selected.length === 0) {
     return (

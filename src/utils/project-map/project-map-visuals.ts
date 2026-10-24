@@ -22,9 +22,11 @@
  * compute six points than depend on either.
  */
 
-import {
-  type ProjectMapEdgeKind,
-  type ProjectMapNodeKind,
+import type {
+  ProjectMapEdgeKind,
+  ProjectMapNodeKind,
+  ProjectMapShapeKind,
+  ProjectMapSide,
 } from "#/types/project-map";
 
 /** How many accents the theme palette offers. See `--oh-map-accent-*`. */
@@ -340,4 +342,113 @@ export function projectMapEdgeHeadPath(
     return `M${round(tip.x)} ${round(tip.y)}L${round(left.x)} ${round(left.y)}L${round(far.x)} ${round(far.y)}L${round(right.x)} ${round(right.y)}Z`;
   }
   return `M${round(tip.x)} ${round(tip.y)}L${round(left.x)} ${round(left.y)}L${round(right.x)} ${round(right.y)}Z`;
+}
+
+/**
+ * The outline of a drawn shape, as a path in its own local coordinates.
+ *
+ * Paths rather than `<rect>`/`<polygon>` elements so every kind is drawn by
+ * the same component with the same stroke and fill treatment, and adding a
+ * kind is a case here rather than a branch in the renderer.
+ */
+export function projectMapShapeOutline(
+  kind: ProjectMapShapeKind,
+  width: number,
+  height: number,
+): string {
+  const w = round(width);
+  const h = round(height);
+  if (kind === "diamond") {
+    const halfW = round(w / 2);
+    const halfH = round(h / 2);
+    return `M${halfW} 0L${w} ${halfH}L${halfW} ${h}L0 ${halfH}Z`;
+  }
+  if (kind === "sticky") {
+    // A folded corner, because a note is the one drawn object people expect
+    // to look like a physical thing.
+    const fold = round(Math.min(18, Math.min(w, h) / 4));
+    return `M0 0H${w}V${h - fold}L${w - fold} ${h}H0Z`;
+  }
+  if (kind === "branch") {
+    const radius = round(Math.min(h / 2, 14));
+    return `M${radius} 0H${w - radius}A${radius} ${radius} 0 0 1 ${w} ${radius}V${h - radius}A${radius} ${radius} 0 0 1 ${w - radius} ${h}H${radius}A${radius} ${radius} 0 0 1 0 ${h - radius}V${radius}A${radius} ${radius} 0 0 1 ${radius} 0Z`;
+  }
+  // Box and frame share a square-cornered outline; a frame is told apart by
+  // its stroke, not its silhouette, because it is a region rather than a thing.
+  return `M0 0H${w}V${h}H0Z`;
+}
+
+/** Where a side's attachment point sits on a rectangle. */
+export function projectMapSidePoint(
+  rect: Rect,
+  side: ProjectMapSide,
+): { x: number; y: number } {
+  if (side === "left") return { x: rect.x, y: rect.y + rect.height / 2 };
+  if (side === "right")
+    return { x: rect.x + rect.width, y: rect.y + rect.height / 2 };
+  if (side === "top") return { x: rect.x + rect.width / 2, y: rect.y };
+  return { x: rect.x + rect.width / 2, y: rect.y + rect.height };
+}
+
+/**
+ * Which side of `rect` faces `towards`.
+ *
+ * Used when a connector was drawn without naming a side, so the line leaves in
+ * the direction it is actually going instead of always leaving to the right.
+ */
+export function projectMapFacingSide(
+  rect: Rect,
+  towards: { x: number; y: number },
+): ProjectMapSide {
+  const dx = towards.x - (rect.x + rect.width / 2);
+  const dy = towards.y - (rect.y + rect.height / 2);
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? "right" : "left";
+  return dy >= 0 ? "bottom" : "top";
+}
+
+/**
+ * A drawn line: straight between its ends, bending through the points the
+ * user placed.
+ *
+ * Deliberately not the orthogonal routing analysed edges use. An analysed edge
+ * is a claim about the code and reads best as a diagram; a line someone drew
+ * means what they drew, so it goes where they put it.
+ */
+export function projectMapConnectorPath(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  waypoints: { x: number; y: number }[],
+): string {
+  const points = [from, ...waypoints, to];
+  return points
+    .map(
+      (point, index) =>
+        `${index === 0 ? "M" : "L"}${round(point.x)} ${round(point.y)}`,
+    )
+    .join("");
+}
+
+/**
+ * A mind-map branch: a flat curve from the parent's edge to the child's.
+ *
+ * Curved where connectors are straight, so a tree reads as a tree at a glance
+ * and nobody has to check whether a line is structure or a remark.
+ */
+export function projectMapBranchPath(parent: Rect, child: Rect): string {
+  const start = projectMapSidePoint(
+    parent,
+    projectMapFacingSide(parent, {
+      x: child.x + child.width / 2,
+      y: child.y + child.height / 2,
+    }),
+  );
+  const end = projectMapSidePoint(
+    child,
+    projectMapFacingSide(child, {
+      x: parent.x + parent.width / 2,
+      y: parent.y + parent.height / 2,
+    }),
+  );
+  const midX = round((start.x + end.x) / 2);
+  return `M${round(start.x)} ${round(start.y)}C${midX} ${round(start.y)} ${midX} ${round(end.y)} ${round(end.x)} ${round(end.y)}`;
 }

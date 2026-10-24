@@ -12,8 +12,10 @@
 import type {
   PlacedProjectMapDocument,
   PlacedProjectMapNode,
+  ProjectMapConnector,
   ProjectMapEdge,
   ProjectMapEdgeKind,
+  ProjectMapShape,
 } from "#/types/project-map";
 import { projectMapNodeSize } from "./project-map-layout";
 
@@ -188,4 +190,30 @@ export function projectMapArrowTarget(
     if (best === null || score < best.score) best = { id: node.id, score };
   }
   return best?.id ?? null;
+}
+
+/**
+ * What a selection actually contains.
+ *
+ * Ids from both layers live in one flat list, and prefixes keep them apart —
+ * but every surface deriving that for itself is how a drawn box ends up
+ * looking like "nothing selected" in the inspector while the chat sends a
+ * context block that says the same. One resolver, one answer.
+ */
+export function resolveProjectMapSelection(
+  document: PlacedProjectMapDocument,
+  ids: readonly string[],
+): {
+  nodes: PlacedProjectMapNode[];
+  shapes: ProjectMapShape[];
+  connectors: ProjectMapConnector[];
+} {
+  const chosen = new Set(ids);
+  return {
+    nodes: document.nodes.filter((node) => chosen.has(node.id)),
+    shapes: document.canvas.shapes.filter((shape) => chosen.has(shape.id)),
+    connectors: document.canvas.connectors.filter((connector) =>
+      chosen.has(connector.id),
+    ),
+  };
 }

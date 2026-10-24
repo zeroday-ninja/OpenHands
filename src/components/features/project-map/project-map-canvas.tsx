@@ -33,7 +33,10 @@ import { I18nKey } from "#/i18n/declaration";
 import type {
   PlacedProjectMapDocument,
   PlacedProjectMapNode,
+  ProjectMapEndpoint,
   ProjectMapNote,
+  ProjectMapShape,
+  ProjectMapShapeKind,
 } from "#/types/project-map";
 import {
   PROJECT_MAP_GRID,
@@ -48,12 +51,16 @@ import {
 } from "#/utils/project-map/project-map-graph";
 import {
   projectMapAccentToken,
+  projectMapBranchPath,
   projectMapEdgeGeometry,
   projectMapEdgeHeadPath,
   projectMapEdgeStyle,
+  projectMapFacingSide,
+  projectMapSidePoint,
   resolveProjectMapAccent,
   type Rect,
 } from "#/utils/project-map/project-map-visuals";
+import { PROJECT_MAP_SHAPE_MIN_SIZE } from "#/utils/project-map/project-map-authoring";
 import {
   PROJECT_MAP_MAX_SCALE,
   PROJECT_MAP_MIN_SCALE,
@@ -61,6 +68,14 @@ import {
 } from "#/stores/project-map-store";
 import { ProjectMapNodePlate } from "./project-map-node-plate";
 import { projectMapNodeDomId } from "./project-map-labels";
+import {
+  ProjectMapShapeMark,
+  type ProjectMapShapeHandle,
+} from "./project-map-shape";
+import {
+  ProjectMapConnectorDraft,
+  ProjectMapConnectorMark,
+} from "./project-map-connector";
 
 /** Height of a collapsed group's plate. */
 const COLLAPSED_HEIGHT = 56;
@@ -129,7 +144,96 @@ type Drag =
       wasSelected: boolean;
       from: Point;
       to: Point;
+    }
+  /** The authored twin of `node`: the same gesture over drawn shapes. */
+  | {
+      kind: "shape";
+      pointerId: number;
+      screen: Point;
+      ids: string[];
+      target: string;
+      additive: boolean;
+      wasSelected: boolean;
+      from: Point;
+      to: Point;
+    }
+  /** Drawing a new shape out, or tapping one into place. */
+  | {
+      kind: "create";
+      pointerId: number;
+      screen: Point;
+      shapeKind: ProjectMapShapeKind;
+      from: Point;
+      to: Point;
+    }
+  /** Pulling a line out of something, before it has anywhere to land. */
+  | {
+      kind: "connect";
+      pointerId: number;
+      screen: Point;
+      origin: ProjectMapEndpoint;
+      start: Point;
+      to: Point;
+    }
+  | {
+      kind: "resize";
+      pointerId: number;
+      screen: Point;
+      id: string;
+      handle: ProjectMapShapeHandle;
+      /** The shape's box when the press landed. */
+      box: Rect;
+      from: Point;
+      to: Point;
     };
+
+/** The box a create drag has swept out, normalised so width is never negative. */
+function dragBox(from: Point, to: Point): Rect {
+  return {
+    x: Math.min(from.x, to.x),
+    y: Math.min(from.y, to.y),
+    width: Math.abs(to.x - from.x),
+    height: Math.abs(to.y - from.y),
+  };
+}
+
+/** A resize applied to a box, by the handle that is being pulled. */
+function resizedBox(
+  box: Rect,
+  handle: ProjectMapShapeHandle,
+  dx: number,
+  dy: number,
+): Rect {
+  const west = handle.includes("w");
+  const east = handle.includes("e");
+  const north = handle.startsWith("n");
+  const south = handle.startsWith("s");
+  const x = west ? box.x + dx : box.x;
+  const y = north ? box.y + dy : box.y;
+  const width = east ? box.width + dx : west ? box.width - dx : box.width;
+  const height = south ? box.height + dy : north ? box.height - dy : box.height;
+  return {
+    x,
+    y,
+    width: Math.max(width, PROJECT_MAP_SHAPE_MIN_SIZE),
+    height: Math.max(height, PROJECT_MAP_SHAPE_MIN_SIZE),
+  };
+}
+
+/**
+ * True when a key event came from somewhere text is being typed.
+ *
+ * The fields live inside the SVG, so their keys bubble through the shapes and
+ * the paper. Without this, space pans while writing, Backspace deletes the
+ * selection instead of a character, and Ctrl+Z undoes the drawing rather than
+ * the sentence.
+ */
+function fromTextField(event: { target: EventTarget | null }): boolean {
+  return (
+    event.target instanceof Element &&
+    event.target.closest("input, textarea, [contenteditable='true']") !== null
+  );
+}
 
 /** True while a press has not travelled far enough to mean a drag. */
 function isTap(drag: Drag, event: { clientX: number; clientY: number }) {
@@ -164,21 +268,57 @@ export function ProjectMapCanvas({
   const setGroupCollapsed = useProjectMapStore(
     (state) => state.setGroupCollapsed,
   );
+  const tool = useProjectMapStore((state) => state.tool);
+  const setTool = useProjectMapStore((state) => state.setTool);
+  const addShape = useProjectMapStore((state) => state.addShape);
+  const moveShapes = useProjectMapStore((state) => state.moveShapes);
+  const resizeShape = useProjectMapStore((state) => state.resizeShape);
+  const addConnector = useProjectMapStore((state) => state.addConnector);
+  const removeSelected = useProjectMapStore((state) => state.removeSelected);
+  const setEditingShape = useProjectMapStore((state) => state.setEditingShape);
+  const addBranchChild = useProjectMapStore((state) => state.addBranchChild);
+  const addBranchSibling = useProjectMapStore(
+    (state) => state.addBranchSibling,
+  );
+  const groupSelection = useProjectMapStore((state) => state.groupSelection);
+  const undo = useProjectMapStore((state) => state.undo);
+  const redo = useProjectMapStore((state) => state.redo);
 
   const [drag, setDrag] = React.useState<Drag | null>(null);
+  /** Held space pans in every tool, so the paper is never out of reach. */
+  const [spaceHeld, setSpaceHeld] = React.useState(false);
+
+  const { mode } = map.canvas.view;
+  const showsDerived = mode !== "freeform";
+  const showsAuthored = mode !== "derived";
+  const shapes = React.useMemo(
+    () => (showsAuthored ? map.canvas.shapes : []),
+    [map.canvas.shapes, showsAuthored],
+  );
+  const connectors = React.useMemo(
+    () => (showsAuthored ? map.canvas.connectors : []),
+    [map.canvas.connectors, showsAuthored],
+  );
 
   const model = React.useMemo(() => projectMapRenderModel(map), [map]);
-  const drawn = React.useMemo(
-    () =>
-      showHidden
-        ? [...model.nodes, ...map.nodes.filter((node) => node.hidden)]
-        : model.nodes,
-    [model.nodes, map.nodes, showHidden],
-  );
-  const focusIds = React.useMemo(
-    () => projectMapFocusIds(selection, map.edges),
-    [selection, map.edges],
-  );
+  const drawn = React.useMemo(() => {
+    if (!showsDerived) return [];
+    return showHidden
+      ? [...model.nodes, ...map.nodes.filter((node) => node.hidden)]
+      : model.nodes;
+  }, [model.nodes, map.nodes, showHidden, showsDerived]);
+  /**
+   * Dimming applies only to a selection that contains an analysed node.
+   * Selecting a drawn box has no edges to be adjacent to, so dimming on it
+   * would fade the entire analysis for no reason a reader could work out.
+   */
+  const focusIds = React.useMemo(() => {
+    const derivedSelection = selection.filter((id) =>
+      drawn.some((node) => node.id === id),
+    );
+    if (derivedSelection.length === 0) return new Set<string>();
+    return projectMapFocusIds(derivedSelection, map.edges);
+  }, [selection, map.edges, drawn]);
 
   const accentOf = React.useCallback(
     (groupId: string | null) => {
@@ -191,11 +331,63 @@ export function ProjectMapCanvas({
     [map.groups],
   );
 
-  /** Where a plate sits, including the live offset of a drag in progress. */
+  /**
+   * Where everything sits this render, including the live offset of a drag.
+   *
+   * Built once per render rather than searched per lookup: the edge pass asks
+   * twice per edge, every render, and during a drag that is every pointer
+   * move. With two layers on the paper a linear search would be felt.
+   */
+  const rects = React.useMemo(() => {
+    const index = new Map<string, Rect>();
+    const nodeOffset =
+      drag?.kind === "node"
+        ? { x: drag.to.x - drag.from.x, y: drag.to.y - drag.from.y }
+        : { x: 0, y: 0 };
+    for (const node of drawn) {
+      const { width, height } = projectMapNodeSize(node.size);
+      const moving = drag?.kind === "node" && drag.ids.includes(node.id);
+      index.set(node.id, {
+        x: node.x + (moving ? nodeOffset.x : 0),
+        y: node.y + (moving ? nodeOffset.y : 0),
+        width,
+        height,
+      });
+    }
+    const shapeOffset =
+      drag?.kind === "shape"
+        ? { x: drag.to.x - drag.from.x, y: drag.to.y - drag.from.y }
+        : { x: 0, y: 0 };
+    for (const shape of shapes) {
+      const moving = drag?.kind === "shape" && drag.ids.includes(shape.id);
+      const resizing = drag?.kind === "resize" && drag.id === shape.id;
+      if (resizing) {
+        index.set(
+          shape.id,
+          resizedBox(
+            drag.box,
+            drag.handle,
+            drag.to.x - drag.from.x,
+            drag.to.y - drag.from.y,
+          ),
+        );
+        continue;
+      }
+      index.set(shape.id, {
+        x: shape.x + (moving ? shapeOffset.x : 0),
+        y: shape.y + (moving ? shapeOffset.y : 0),
+        width: shape.width,
+        height: shape.height,
+      });
+    }
+    return index;
+  }, [drawn, shapes, drag]);
+
+  /** Where a plate or a shape sits, by id. */
   const rectOf = React.useCallback(
-    (nodeId: string): Rect | null => {
-      if (nodeId.startsWith(PROJECT_MAP_GROUP_NODE_PREFIX)) {
-        const groupId = nodeId.slice(PROJECT_MAP_GROUP_NODE_PREFIX.length);
+    (id: string): Rect | null => {
+      if (id.startsWith(PROJECT_MAP_GROUP_NODE_PREFIX)) {
+        const groupId = id.slice(PROJECT_MAP_GROUP_NODE_PREFIX.length);
         const bounds = projectMapGroupBounds(map.nodes, groupId);
         if (bounds === null) return null;
         return {
@@ -205,16 +397,25 @@ export function ProjectMapCanvas({
           height: COLLAPSED_HEIGHT,
         };
       }
-      const node = drawn.find((candidate) => candidate.id === nodeId);
-      if (!node) return null;
-      const { width, height } = projectMapNodeSize(node.size);
-      const offset =
-        drag?.kind === "node" && drag.ids.includes(nodeId)
-          ? { x: drag.to.x - drag.from.x, y: drag.to.y - drag.from.y }
-          : { x: 0, y: 0 };
-      return { x: node.x + offset.x, y: node.y + offset.y, width, height };
+      return rects.get(id) ?? null;
     },
-    [drawn, drag, map.nodes],
+    [rects, map.nodes],
+  );
+
+  /** Where a connector end lands, resolving whatever it is attached to. */
+  const endpointPoint = React.useCallback(
+    (endpoint: ProjectMapEndpoint, towards: Point): Point => {
+      if (endpoint.attach === "free") return { x: endpoint.x, y: endpoint.y };
+      const id = endpoint.attach === "shape" ? endpoint.shape : endpoint.node;
+      const rect = rectOf(id);
+      // An end whose subject is not on the paper right now — hidden, or in a
+      // layer this mode does not draw — is parked at the origin rather than
+      // dropping the line, so nothing silently disappears.
+      if (rect === null) return { x: 0, y: 0 };
+      const side = endpoint.side ?? projectMapFacingSide(rect, towards);
+      return projectMapSidePoint(rect, side);
+    },
+    [rectOf],
   );
 
   /** Pointer position in diagram coordinates. */
@@ -250,18 +451,50 @@ export function ProjectMapCanvas({
     });
   };
 
+  /**
+   * A press on the paper.
+   *
+   * The one rule that keeps the original grammar true: the active tool decides
+   * what this means, and with the Select tool nothing has changed. Pan is
+   * never out of reach — held space and the middle button pan in every tool.
+   */
   const handleBackgroundPointerDown = (
     event: React.PointerEvent<SVGSVGElement>,
   ) => {
-    if (event.button !== 0) return;
+    const panning = event.button === 1 || spaceHeld;
+    if (event.button !== 0 && !panning) return;
     const screen = { x: event.clientX, y: event.clientY };
     capturePointer(event.currentTarget, event.pointerId);
     // The paper takes focus so Escape reaches this element's key handler. With
     // the pointer captured nothing inside the drawing can take it, and focus
     // left on the document body is focus the canvas cannot hear.
     event.currentTarget.focus();
-    if (event.shiftKey) {
-      const point = toDiagram(event);
+    const point = toDiagram(event);
+
+    if (!panning && tool !== "select") {
+      if (tool === "connect") {
+        setDrag({
+          kind: "connect",
+          pointerId: event.pointerId,
+          screen,
+          origin: { attach: "free", x: point.x, y: point.y },
+          start: point,
+          to: point,
+        });
+        return;
+      }
+      setDrag({
+        kind: "create",
+        pointerId: event.pointerId,
+        screen,
+        shapeKind: tool,
+        from: point,
+        to: point,
+      });
+      return;
+    }
+
+    if (!panning && event.shiftKey) {
       setDrag({
         kind: "marquee",
         pointerId: event.pointerId,
@@ -279,12 +512,133 @@ export function ProjectMapCanvas({
     });
   };
 
+  /** A press on a drawn shape: the authored twin of pressing a plate. */
+  const handleShapePointerDown = (
+    event: React.PointerEvent<SVGGElement>,
+    shape: ProjectMapShape,
+  ) => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    const point = toDiagram(event);
+    capturePointer(frameRef.current, event.pointerId);
+    event.currentTarget.focus();
+
+    if (tool === "connect") {
+      setDrag({
+        kind: "connect",
+        pointerId: event.pointerId,
+        screen: { x: event.clientX, y: event.clientY },
+        origin: { attach: "shape", shape: shape.id, side: null },
+        start: point,
+        to: point,
+      });
+      return;
+    }
+
+    const additive = event.shiftKey || event.metaKey;
+    const wasSelected = selection.includes(shape.id);
+    const ids = wasSelected
+      ? selection.filter((id) =>
+          shapes.some((candidate) => candidate.id === id),
+        )
+      : additive
+        ? [...selection, shape.id]
+        : [shape.id];
+    if (!wasSelected) setSelection(ids);
+    setDrag({
+      kind: "shape",
+      pointerId: event.pointerId,
+      screen: { x: event.clientX, y: event.clientY },
+      ids,
+      target: shape.id,
+      additive,
+      wasSelected,
+      from: point,
+      to: point,
+    });
+  };
+
+  const handleHandlePointerDown = (
+    event: React.PointerEvent<SVGRectElement>,
+    shape: ProjectMapShape,
+    handle: ProjectMapShapeHandle,
+  ) => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    const point = toDiagram(event);
+    capturePointer(frameRef.current, event.pointerId);
+    setDrag({
+      kind: "resize",
+      pointerId: event.pointerId,
+      screen: { x: event.clientX, y: event.clientY },
+      id: shape.id,
+      handle,
+      box: {
+        x: shape.x,
+        y: shape.y,
+        width: shape.width,
+        height: shape.height,
+      },
+      from: point,
+      to: point,
+    });
+  };
+
+  /** What a line being dragged would attach to if it were released here. */
+  const endpointAt = React.useCallback(
+    (point: Point): ProjectMapEndpoint => {
+      const shape = [...shapes].reverse().find((candidate) => {
+        const rect = rects.get(candidate.id);
+        return (
+          rect !== undefined &&
+          point.x >= rect.x &&
+          point.x <= rect.x + rect.width &&
+          point.y >= rect.y &&
+          point.y <= rect.y + rect.height
+        );
+      });
+      if (shape !== undefined) {
+        return { attach: "shape", shape: shape.id, side: null };
+      }
+      const node = drawn.find((candidate) => {
+        const rect = rects.get(candidate.id);
+        return (
+          rect !== undefined &&
+          point.x >= rect.x &&
+          point.x <= rect.x + rect.width &&
+          point.y >= rect.y &&
+          point.y <= rect.y + rect.height
+        );
+      });
+      if (node !== undefined) {
+        return { attach: "derived", layer: "code", node: node.id, side: null };
+      }
+      return { attach: "free", x: point.x, y: point.y };
+    },
+    [shapes, drawn, rects],
+  );
+
   const handleNodePointerDown = (
     event: React.PointerEvent<SVGGElement>,
     node: PlacedProjectMapNode,
   ) => {
     if (event.button !== 0) return;
     event.stopPropagation();
+    if (tool === "connect") {
+      // A line from the analysis to a drawn note is the whole point of the
+      // two layers sharing a canvas, so a plate is a valid place to start one.
+      const point = toDiagram(event);
+      capturePointer(frameRef.current, event.pointerId);
+      setDrag({
+        kind: "connect",
+        pointerId: event.pointerId,
+        screen: { x: event.clientX, y: event.clientY },
+        origin: { attach: "derived", layer: "code", node: node.id, side: null },
+        start: point,
+        to: point,
+      });
+      return;
+    }
     const additive = event.shiftKey || event.metaKey;
     const wasSelected = selection.includes(node.id);
     // A drag moves whatever the press landed inside, so pressing a plate that
@@ -348,20 +702,60 @@ export function ProjectMapCanvas({
         const dy = drag.to.y - drag.from.y;
         if (dx !== 0 || dy !== 0) moveSelection(drag.ids, dx, dy);
       }
+    } else if (drag.kind === "shape") {
+      if (tap) {
+        if (!drag.additive) setSelection([drag.target]);
+        else if (drag.wasSelected) toggleInSelection(drag.target);
+      } else {
+        const dx = drag.to.x - drag.from.x;
+        const dy = drag.to.y - drag.from.y;
+        if (dx !== 0 || dy !== 0) moveShapes(drag.ids, dx, dy);
+      }
+    } else if (drag.kind === "create") {
+      // A tap makes a shape at its default size; a sweep makes the box that
+      // was swept. Both are the same gesture, which is why one tool does both.
+      const box = dragBox(drag.from, drag.to);
+      const swept = box.width > TAP_SLOP && box.height > TAP_SLOP;
+      addShape({
+        kind: drag.shapeKind,
+        x: swept ? box.x : drag.from.x,
+        y: swept ? box.y : drag.from.y,
+        ...(swept ? { width: box.width, height: box.height } : {}),
+      });
+      // One shape per press: the tool returns to Select so the next press
+      // does not silently make another.
+      setTool("select");
+    } else if (drag.kind === "connect") {
+      const target = endpointAt(drag.to);
+      const sameShape =
+        drag.origin.attach === "shape" &&
+        target.attach === "shape" &&
+        drag.origin.shape === target.shape;
+      // A line from a thing to itself is a slip, not a drawing.
+      if (!tap && !sameShape) addConnector(drag.origin, target);
+      setTool("select");
+    } else if (drag.kind === "resize") {
+      const box = resizedBox(
+        drag.box,
+        drag.handle,
+        drag.to.x - drag.from.x,
+        drag.to.y - drag.from.y,
+      );
+      if (!tap) resizeShape(drag.id, box);
     } else {
       const box = marqueeBox(drag);
-      const swept = drawn
-        .filter((node) => {
-          const rect = rectOf(node.id);
-          return (
-            rect !== null &&
-            rect.x + rect.width >= box.x &&
-            rect.x <= box.x + box.width &&
-            rect.y + rect.height >= box.y &&
-            rect.y <= box.y + box.height
-          );
-        })
-        .map((node) => node.id);
+      const hit = (rect: Rect | null) =>
+        rect !== null &&
+        rect.x + rect.width >= box.x &&
+        rect.x <= box.x + box.width &&
+        rect.y + rect.height >= box.y &&
+        rect.y <= box.y + box.height;
+      // The sweep covers whatever this mode actually draws, so a marquee in
+      // freeform mode does not select plates nobody can see.
+      const swept = [
+        ...drawn.filter((node) => hit(rectOf(node.id))).map((node) => node.id),
+        ...shapes.filter((shape) => hit(rectOf(shape.id))).map((s) => s.id),
+      ];
       if (swept.length > 0) setSelection(swept);
       else clearSelection();
     }
@@ -372,6 +766,7 @@ export function ProjectMapCanvas({
     event: React.KeyboardEvent<SVGGElement>,
     node: PlacedProjectMapNode,
   ) => {
+    if (fromTextField(event)) return;
     const arrow = {
       ArrowLeft: "left",
       ArrowRight: "right",
@@ -396,6 +791,32 @@ export function ProjectMapCanvas({
     }
   };
 
+  /**
+   * Keyboard on a drawn shape.
+   *
+   * Enter opens its text rather than selecting it, because a shape with no
+   * words in it says nothing, and typing is the next thing anyone wants after
+   * making one.
+   */
+  const handleShapeKeyDown = (
+    event: React.KeyboardEvent<SVGGElement>,
+    shape: ProjectMapShape,
+  ) => {
+    if (fromTextField(event)) return;
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      event.stopPropagation();
+      setSelection([shape.id]);
+      setEditingShape(shape.id);
+      return;
+    }
+    if (event.key === " ") {
+      event.preventDefault();
+      if (event.shiftKey) toggleInSelection(shape.id);
+      else setSelection([shape.id]);
+    }
+  };
+
   const transform = `translate(${-viewport.x * viewport.scale} ${-viewport.y * viewport.scale}) scale(${viewport.scale})`;
   const detailed = viewport.scale >= DETAIL_SCALE;
 
@@ -417,7 +838,55 @@ export function ProjectMapCanvas({
       // abandon it rather than committing a move the user never finished.
       onPointerCancel={() => setDrag(null)}
       onKeyDown={(event) => {
-        if (event.key === "Escape") clearSelection();
+        if (fromTextField(event)) return;
+        if (event.key === " " && !spaceHeld) {
+          // Held space pans; it must not also scroll the page.
+          event.preventDefault();
+          setSpaceHeld(true);
+          return;
+        }
+        if (event.key === "Escape") {
+          // Escape leaves the tool first, then puts the selection down: one
+          // key, the shallowest thing it could mean each time.
+          if (tool !== "select") setTool("select");
+          else clearSelection();
+          return;
+        }
+        if (event.key === "Delete" || event.key === "Backspace") {
+          // Drawn things only. An analysed node is a claim the next analysis
+          // will make again, so it is hidden rather than deleted.
+          event.preventDefault();
+          removeSelected();
+          return;
+        }
+        const accel = event.ctrlKey || event.metaKey;
+        if (accel && event.key.toLowerCase() === "z") {
+          event.preventDefault();
+          if (event.shiftKey) redo();
+          else undo();
+          return;
+        }
+        if (accel && event.key.toLowerCase() === "g") {
+          event.preventDefault();
+          groupSelection();
+          return;
+        }
+        if (event.key === "Tab" && selection.length === 1) {
+          const [id] = selection;
+          if (!shapes.some((shape) => shape.id === id)) return;
+          event.preventDefault();
+          addBranchChild(id);
+          return;
+        }
+        if (event.key === "Enter" && selection.length === 1) {
+          const [id] = selection;
+          if (!shapes.some((shape) => shape.id === id)) return;
+          event.preventDefault();
+          addBranchSibling(id);
+        }
+      }}
+      onKeyUp={(event) => {
+        if (event.key === " ") setSpaceHeld(false);
       }}
     >
       <desc>{t(I18nKey.PROJECT_MAP$CANVAS_HELP)}</desc>
@@ -443,118 +912,178 @@ export function ProjectMapCanvas({
           />
         )}
 
-        {/* Group boundaries, drawn first so the plates sit on them. */}
-        {map.groups.map((group) => {
-          const bounds = projectMapGroupBounds(
-            group.collapsed ? map.nodes : drawn,
-            group.id,
-          );
-          if (bounds === null) return null;
-          const accent = accentOf(group.id);
-          const labelWidth = group.label.length * 6 + GROUP_LABEL_PADDING * 2;
-          return (
-            <g key={group.id} data-testid={`project-map-group-${group.id}`}>
-              {group.collapsed ? (
-                <rect
-                  x={bounds.x}
-                  y={bounds.y}
-                  width={bounds.width}
-                  height={COLLAPSED_HEIGHT}
-                  fill={accent}
-                  fillOpacity={0.1}
-                  stroke={accent}
-                  strokeWidth={1.25}
-                  vectorEffect="non-scaling-stroke"
-                />
-              ) : (
-                // The boundary breaks for its own label, the way a section
-                // callout does on a plate. That break is the group's signature.
-                <path
-                  d={groupBoundary(bounds, labelWidth)}
-                  fill="none"
-                  stroke={accent}
-                  strokeOpacity={0.6}
-                  strokeWidth={1}
-                  strokeDasharray="7 5"
-                  vectorEffect="non-scaling-stroke"
-                />
-              )}
-              <text
-                x={bounds.x + GROUP_LABEL_PADDING}
-                y={bounds.y + (group.collapsed ? 22 : 4)}
-                fill={accent}
-                fontSize={10}
-                fontWeight={600}
-                letterSpacing={1.4}
-                className="uppercase"
-              >
-                {group.label}
-              </text>
-              {group.collapsed && (
-                <text
-                  x={bounds.x + GROUP_LABEL_PADDING}
-                  y={bounds.y + 40}
-                  fontSize={9.5}
-                  className="fill-muted font-mono"
-                >
-                  {map.nodes.filter((node) => node.group === group.id).length}
-                </text>
-              )}
-            </g>
-          );
-        })}
+        {/* Frames first of all: a region is painted behind what it holds. */}
+        {shapes
+          .filter((shape) => shape.kind === "frame")
+          .map((shape) => (
+            <ProjectMapShapeMark
+              key={shape.id}
+              shape={shape}
+              rect={rects.get(shape.id) ?? shape}
+              selected={selection.includes(shape.id)}
+              focused={focused === shape.id}
+              resizable={selection.length === 1 && selection[0] === shape.id}
+              onPointerDown={(event) => handleShapePointerDown(event, shape)}
+              onHandlePointerDown={(event, handle) =>
+                handleHandlePointerDown(event, shape, handle)
+              }
+              onKeyDown={(event) => handleShapeKeyDown(event, shape)}
+            />
+          ))}
 
-        {/* Edges under the plates: a line should pass behind what it joins. */}
-        <g>
-          {model.edges.map((edge) => {
-            const from = rectOf(edge.from);
-            const to = rectOf(edge.to);
-            if (from === null || to === null) return null;
-            const geometry = projectMapEdgeGeometry(from, to);
-            const style = projectMapEdgeStyle(edge.kind);
-            const head = projectMapEdgeHeadPath(
-              style.head,
-              geometry.tip,
-              geometry.direction,
+        {/* Group boundaries, drawn first so the plates sit on them. */}
+        {showsDerived &&
+          map.groups.map((group) => {
+            const bounds = projectMapGroupBounds(
+              group.collapsed ? map.nodes : drawn,
+              group.id,
             );
-            const lit =
-              focusIds.size === 0 ||
-              focusIds.has(edge.from) ||
-              focusIds.has(edge.to);
-            const accent = accentOf(
-              drawn.find((node) => node.id === edge.from)?.group ?? null,
-            );
+            if (bounds === null) return null;
+            const accent = accentOf(group.id);
+            const labelWidth = group.label.length * 6 + GROUP_LABEL_PADDING * 2;
             return (
-              <g
-                key={edge.key}
-                opacity={lit ? 0.85 : 0.1}
-                data-testid={`project-map-edge-${edge.key}`}
-              >
-                <path
-                  d={geometry.d}
-                  fill="none"
-                  stroke={accent}
-                  strokeWidth={style.weight}
-                  strokeDasharray={style.dash ?? undefined}
-                  vectorEffect="non-scaling-stroke"
-                />
-                {head !== null && (
-                  <path
-                    d={head}
-                    fill={
-                      style.head === "open"
-                        ? "var(--color-canvas-base)"
-                        : accent
-                    }
+              <g key={group.id} data-testid={`project-map-group-${group.id}`}>
+                {group.collapsed ? (
+                  <rect
+                    x={bounds.x}
+                    y={bounds.y}
+                    width={bounds.width}
+                    height={COLLAPSED_HEIGHT}
+                    fill={accent}
+                    fillOpacity={0.1}
                     stroke={accent}
-                    strokeWidth={1}
+                    strokeWidth={1.25}
                     vectorEffect="non-scaling-stroke"
                   />
+                ) : (
+                  // The boundary breaks for its own label, the way a section
+                  // callout does on a plate. That break is the group's signature.
+                  <path
+                    d={groupBoundary(bounds, labelWidth)}
+                    fill="none"
+                    stroke={accent}
+                    strokeOpacity={0.6}
+                    strokeWidth={1}
+                    strokeDasharray="7 5"
+                    vectorEffect="non-scaling-stroke"
+                  />
+                )}
+                <text
+                  x={bounds.x + GROUP_LABEL_PADDING}
+                  y={bounds.y + (group.collapsed ? 22 : 4)}
+                  fill={accent}
+                  fontSize={10}
+                  fontWeight={600}
+                  letterSpacing={1.4}
+                  className="uppercase"
+                >
+                  {group.label}
+                </text>
+                {group.collapsed && (
+                  <text
+                    x={bounds.x + GROUP_LABEL_PADDING}
+                    y={bounds.y + 40}
+                    fontSize={9.5}
+                    className="fill-muted font-mono"
+                  >
+                    {map.nodes.filter((node) => node.group === group.id).length}
+                  </text>
                 )}
               </g>
             );
           })}
+
+        {/* Edges under the plates: a line should pass behind what it joins. */}
+        <g>
+          {showsDerived &&
+            model.edges.map((edge) => {
+              const from = rectOf(edge.from);
+              const to = rectOf(edge.to);
+              if (from === null || to === null) return null;
+              const geometry = projectMapEdgeGeometry(from, to);
+              const style = projectMapEdgeStyle(edge.kind);
+              const head = projectMapEdgeHeadPath(
+                style.head,
+                geometry.tip,
+                geometry.direction,
+              );
+              const lit =
+                focusIds.size === 0 ||
+                focusIds.has(edge.from) ||
+                focusIds.has(edge.to);
+              const accent = accentOf(
+                drawn.find((node) => node.id === edge.from)?.group ?? null,
+              );
+              return (
+                <g
+                  key={edge.key}
+                  opacity={lit ? 0.85 : 0.1}
+                  data-testid={`project-map-edge-${edge.key}`}
+                >
+                  <path
+                    d={geometry.d}
+                    fill="none"
+                    stroke={accent}
+                    strokeWidth={style.weight}
+                    strokeDasharray={style.dash ?? undefined}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                  {head !== null && (
+                    <path
+                      d={head}
+                      fill={
+                        style.head === "open"
+                          ? "var(--color-canvas-base)"
+                          : accent
+                      }
+                      stroke={accent}
+                      strokeWidth={1}
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  )}
+                </g>
+              );
+            })}
         </g>
+
+        {/* Branch lines are derived from the tree, never stored, so the mind
+            map has one source of truth. */}
+        <g>
+          {shapes.map((shape) => {
+            if (shape.parent === null) return null;
+            const parent = rects.get(shape.parent);
+            const child = rects.get(shape.id);
+            if (parent === undefined || child === undefined) return null;
+            return (
+              <path
+                key={`branch-${shape.id}`}
+                data-testid={`project-map-branch-${shape.id}`}
+                d={projectMapBranchPath(parent, child)}
+                className="fill-none stroke-border-strong"
+                strokeWidth={1.5}
+                vectorEffect="non-scaling-stroke"
+              />
+            );
+          })}
+        </g>
+
+        {connectors.map((connector) => {
+          const to = endpointPoint(connector.to, { x: 0, y: 0 });
+          const from = endpointPoint(connector.from, to);
+          return (
+            <ProjectMapConnectorMark
+              key={connector.id}
+              connector={connector}
+              from={from}
+              to={endpointPoint(connector.to, from)}
+              selected={selection.includes(connector.id)}
+              onPointerDown={(event) => {
+                event.stopPropagation();
+                setSelection([connector.id]);
+              }}
+            />
+          );
+        })}
 
         {drawn.map((node) => (
           <ProjectMapNodePlate
@@ -579,71 +1108,108 @@ export function ProjectMapCanvas({
           />
         ))}
 
-        {map.notes.map((note) => (
-          <ProjectMapNoteMark
-            key={note.id}
-            note={note}
-            anchorRect={note.anchor === null ? null : rectOf(note.anchor)}
+        {/* Drawn shapes over the analysis: the drawing is what the user is
+            working in, so it is never hidden behind a plate. */}
+        {shapes
+          .filter((shape) => shape.kind !== "frame")
+          .map((shape) => (
+            <ProjectMapShapeMark
+              key={shape.id}
+              shape={shape}
+              rect={rects.get(shape.id) ?? shape}
+              selected={selection.includes(shape.id)}
+              focused={focused === shape.id}
+              resizable={selection.length === 1 && selection[0] === shape.id}
+              onPointerDown={(event) => handleShapePointerDown(event, shape)}
+              onHandlePointerDown={(event, handle) =>
+                handleHandlePointerDown(event, shape, handle)
+              }
+              onKeyDown={(event) => handleShapeKeyDown(event, shape)}
+            />
+          ))}
+
+        {drag?.kind === "connect" && (
+          <ProjectMapConnectorDraft from={drag.start} to={drag.to} />
+        )}
+
+        {drag?.kind === "create" && (
+          <rect
+            data-testid="project-map-create-preview"
+            {...dragBox(drag.from, drag.to)}
+            className="fill-transparent stroke-border-strong"
+            strokeWidth={1.5}
+            strokeDasharray="4 4"
+            vectorEffect="non-scaling-stroke"
           />
-        ))}
+        )}
+
+        {showsDerived &&
+          map.notes.map((note) => (
+            <ProjectMapNoteMark
+              key={note.id}
+              note={note}
+              anchorRect={note.anchor === null ? null : rectOf(note.anchor)}
+            />
+          ))}
 
         {/* Group controls come last in document order so tabbing reaches the
             plates first, while the boundaries above still paint underneath
             them. Paint order and tab order are different questions. */}
-        {map.groups.map((group) => {
-          const bounds = projectMapGroupBounds(
-            group.collapsed ? map.nodes : drawn,
-            group.id,
-          );
-          if (bounds === null) return null;
-          const accent = accentOf(group.id);
-          return (
-            <g
-              key={group.id}
-              role="button"
-              tabIndex={0}
-              data-testid={`project-map-group-toggle-${group.id}`}
-              aria-label={t(
-                group.collapsed
-                  ? I18nKey.PROJECT_MAP$EXPAND_GROUP
-                  : I18nKey.PROJECT_MAP$COLLAPSE_GROUP,
-              )}
-              aria-expanded={!group.collapsed}
-              className="cursor-pointer"
-              onClick={(event) => {
-                event.stopPropagation();
-                setGroupCollapsed(group.id, !group.collapsed);
-              }}
-              onKeyDown={(event) => {
-                if (event.key !== "Enter" && event.key !== " ") return;
-                event.preventDefault();
-                setGroupCollapsed(group.id, !group.collapsed);
-              }}
-              onPointerDown={(event) => event.stopPropagation()}
-            >
-              <rect
-                x={bounds.x + bounds.width - 26}
-                y={bounds.y - 8}
-                width={18}
-                height={16}
-                fill="var(--color-surface)"
-                stroke={accent}
-                strokeWidth={1}
-                vectorEffect="non-scaling-stroke"
-              />
-              <path
-                d={
+        {showsDerived &&
+          map.groups.map((group) => {
+            const bounds = projectMapGroupBounds(
+              group.collapsed ? map.nodes : drawn,
+              group.id,
+            );
+            if (bounds === null) return null;
+            const accent = accentOf(group.id);
+            return (
+              <g
+                key={group.id}
+                role="button"
+                tabIndex={0}
+                data-testid={`project-map-group-toggle-${group.id}`}
+                aria-label={t(
                   group.collapsed
-                    ? `M${bounds.x + bounds.width - 21} ${bounds.y}h8M${bounds.x + bounds.width - 17} ${bounds.y - 4}v8`
-                    : `M${bounds.x + bounds.width - 21} ${bounds.y}h8`
-                }
-                stroke={accent}
-                strokeWidth={1.25}
-                vectorEffect="non-scaling-stroke"
-              />
-            </g>
-          );
-        })}
+                    ? I18nKey.PROJECT_MAP$EXPAND_GROUP
+                    : I18nKey.PROJECT_MAP$COLLAPSE_GROUP,
+                )}
+                aria-expanded={!group.collapsed}
+                className="cursor-pointer"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setGroupCollapsed(group.id, !group.collapsed);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  setGroupCollapsed(group.id, !group.collapsed);
+                }}
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <rect
+                  x={bounds.x + bounds.width - 26}
+                  y={bounds.y - 8}
+                  width={18}
+                  height={16}
+                  fill="var(--color-surface)"
+                  stroke={accent}
+                  strokeWidth={1}
+                  vectorEffect="non-scaling-stroke"
+                />
+                <path
+                  d={
+                    group.collapsed
+                      ? `M${bounds.x + bounds.width - 21} ${bounds.y}h8M${bounds.x + bounds.width - 17} ${bounds.y - 4}v8`
+                      : `M${bounds.x + bounds.width - 21} ${bounds.y}h8`
+                  }
+                  stroke={accent}
+                  strokeWidth={1.25}
+                  vectorEffect="non-scaling-stroke"
+                />
+              </g>
+            );
+          })}
 
         {drag?.kind === "marquee" && (
           <rect
