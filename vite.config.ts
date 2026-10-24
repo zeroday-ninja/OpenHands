@@ -37,6 +37,12 @@ const NODE_ENV_PILOT_TESTS = [
   "__tests__/utils/file-language.test.ts",
   "__tests__/utils/format-model-name.test.ts",
   "__tests__/utils/parse-terminal-output.test.ts",
+  // The access gate stands up a real server on a real socket and talks to it
+  // with `fetch`. Under jsdom that `fetch` is MSW's, and MSW answers
+  // `/api/conversations` from the mock handlers — so a probe asserting that
+  // nothing unauthenticated reaches the ingress passed through a mock instead
+  // of through the gate. It has to run where nothing is intercepting.
+  "__tests__/scripts/access-gate.test.ts",
 ];
 
 const normalizeBasePath = (value?: string) => {
