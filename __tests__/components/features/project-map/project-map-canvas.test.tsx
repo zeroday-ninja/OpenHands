@@ -537,4 +537,32 @@ describe("ProjectMapCanvas", () => {
       screen.queryByTestId("project-map-node-left"),
     ).not.toBeInTheDocument();
   });
+
+  it("says so rather than drawing a line to nowhere when its subject is hidden", () => {
+    // Arrange: a line from an analysed plate to a drawn box, then a mode that
+    // takes the analysis off the paper.
+    stubFrame();
+    renderCanvas();
+    act(() => {
+      const store = useProjectMapStore.getState();
+      store.addShape({ kind: "box", x: 400, y: 400 });
+      const shapeId =
+        useProjectMapStore.getState().document?.canvas.shapes[0].id ?? "";
+      store.addConnector(
+        { attach: "derived", layer: "code", node: "left", side: null },
+        { attach: "shape", shape: shapeId, side: null },
+      );
+      store.setMode("freeform");
+    });
+
+    // Assert: the line is left out rather than drawn to the origin, where it
+    // would be indistinguishable from a line someone drew there, and the
+    // canvas says that something is missing.
+    expect(
+      screen.queryByTestId(/^project-map-connector-/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("project-map-hidden-connectors"),
+    ).toBeInTheDocument();
+  });
 });
