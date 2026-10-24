@@ -15,7 +15,13 @@ import process from "node:process";
 import readline from "node:readline";
 import { discoverStack, StackNotFound } from "../stack-discovery.mjs";
 import { createClient } from "./client.mjs";
-import { colourEnabled, paint, renderTranscript } from "./render.mjs";
+import {
+  colourEnabled,
+  paint,
+  renderDiff,
+  renderTranscript,
+} from "./render.mjs";
+import { unifiedDiff } from "./diff.mjs";
 import { followConversation } from "./stream.mjs";
 import { PARITY_ACTIONS, parityReport } from "./parity.mjs";
 
@@ -28,8 +34,11 @@ const USAGE = `oh — Agent Canvas from the terminal
   oh allow <id> | oh deny <id> [reason...]
                              answer a tool call it is waiting on
   oh history <id>            print the whole transcript
+  oh diff [path] [ref]       what changed in a working tree, as a diff
   oh list                    conversations, newest first
-  oh graph                   what every agent is doing right now
+  oh graph                   what every agent is doing
+  oh programs [new <file>]   improvement programs, and create one from a
+                             config file right now
   oh waiting                 work parked for you, and answer it
   oh budget                  which runtimes have usage left
   oh parity                  what this can do, and what it cannot
@@ -160,8 +169,7 @@ export async function main(argv = process.argv.slice(2), io = process) {
         // this field.
         workspace: {
           kind: "LocalWorkspace",
-          working_dir:
-            (io.env ?? process.env).OH_WORKING_DIR || process.cwd(),
+          working_dir: (io.env ?? process.env).OH_WORKING_DIR || process.cwd(),
         },
         ...(profile ? { agent_profile_id: profile } : {}),
         // Deliberately *without* the prompt. An `initial_message` starts the
@@ -171,7 +179,9 @@ export async function main(argv = process.argv.slice(2), io = process) {
       });
       const id = created?.id ?? created?.conversation?.id;
       if (!id) {
-        write(`The stack created something without an id: ${JSON.stringify(created).slice(0, 200)}`);
+        write(
+          `The stack created something without an id: ${JSON.stringify(created).slice(0, 200)}`,
+        );
         return 1;
       }
       write(paint(id, "dim", colour));
@@ -188,7 +198,11 @@ export async function main(argv = process.argv.slice(2), io = process) {
           // Said rather than swallowed: the conversation will fail on auth
           // and this is the reason, which is not otherwise visible.
           write(
-            paint(`· could not pass the profile's secrets: ${error.message}`, "yellow", colour),
+            paint(
+              `· could not pass the profile's secrets: ${error.message}`,
+              "yellow",
+              colour,
+            ),
           );
         }
       }
@@ -198,6 +212,45 @@ export async function main(argv = process.argv.slice(2), io = process) {
       }
       return followUntilIdle(client, id, { write, colour });
     }
+
+    case "diff": {
+      const path =
+        rest[0] ?? (io.env ?? process.env).OH_WORKING_DIR ?? process.cwd();
+      const ref = rest[1];
+      const changes = await client.gitChanges(path, ref);
+      const files = Array.isArray(changes) ? changes : (changes?.changes ?? []);
+      if (files.length === 0) {
+        write("Nothing has changed in that tree.");
+        return 0;
+      }
+      // One request per file, because that is what the server offers: it
+      // answers with the two versions of one file, and the unified form is
+      // computed here.
+      for (const change of files) {
+        const file = change?.path ?? String(change);
+        write(`${paint(change?.status ?? "?", "dim", colour)}  ${file}`);
+      }
+      write("");
+      for (const change of files) {
+        const file = change?.path ?? String(change);
+        // eslint-disable-next-line no-await-in-loop
+        const versions = await client
+          .gitDiff(`${path.replace(/\/$/, "")}/${file}`, { ref })
+          .catch((error) => ({ error: error.message }));
+        if (versions?.error) {
+          write(paint(`· ${file}: ${versions.error}`, "yellow", colour));
+          continue;
+        }
+        renderDiff(
+          unifiedDiff(file, versions?.original ?? "", versions?.modified ?? ""),
+          colour,
+        ).forEach(write);
+      }
+      return 0;
+    }
+
+    case "programs":
+      return await showPrograms(client, write, colour, rest);
 
     case "graph":
       return await showGraph(client, write, colour);
@@ -260,7 +313,9 @@ async function followUntilIdle(client, id, { write, colour, verbose = false }) {
   const onSigint = () => {
     controller.abort();
     void client.pause(id).catch(() => {});
-    write(paint("↯ interrupted — the conversation is intact", "yellow", colour));
+    write(
+      paint("↯ interrupted — the conversation is intact", "yellow", colour),
+    );
   };
   process.once("SIGINT", onSigint);
   try {
@@ -274,9 +329,11 @@ async function followUntilIdle(client, id, { write, colour, verbose = false }) {
       onPermission: async (request) => {
         const answer = await askOne();
         if (answer === null) return;
-        await client.respondToConfirmation(id, answer !== "n").catch((error) => {
-          write(`Could not answer that: ${error.message}`);
-        });
+        await client
+          .respondToConfirmation(id, answer !== "n")
+          .catch((error) => {
+            write(`Could not answer that: ${error.message}`);
+          });
       },
     });
     if (result.streamedAny) process.stdout.write("\n");
@@ -313,6 +370,80 @@ function askOne() {
       resolve(line.trim().slice(0, 1).toLowerCase() || "y");
     });
   });
+}
+
+/**
+ * Improvement programs: read them, and create one from a file.
+ *
+ * Created from a file rather than from flags, because the configuration has a
+ * rotation, a reviewer list, a judge and a repository source that constrain
+ * each other — a flag per field would be a worse version of the JSON the
+ * service already validates, and it would drift from it.
+ *
+ * The service generates the runner tarball itself, so nothing here has to
+ * build or upload one.
+ */
+async function showPrograms(client, write, colour, rest) {
+  if (!client.stack.automation) {
+    write("The automation service is not reachable through this stack.");
+    return 2;
+  }
+  const [verb, file] = rest;
+
+  if (verb === "new") {
+    if (!file) {
+      write(
+        "Which config? `oh programs new program.json`. It takes " +
+          '{"name", "trigger", "improve"} — the same body the dashboard posts.',
+      );
+      return 2;
+    }
+    const { readFile } = await import("node:fs/promises");
+    let body;
+    try {
+      body = JSON.parse(await readFile(file, "utf8"));
+    } catch (error) {
+      // Named here rather than sent and refused: a JSON error from the
+      // service would arrive as a 422 about a field, not about the file.
+      write(`Could not read ${file}: ${error.message}`);
+      return 2;
+    }
+    const created = await client.automation("POST", "/preset/improve", body);
+    write(`${paint(created?.id ?? "?", "dim", colour)}  ${created?.name ?? ""}`);
+    return 0;
+  }
+
+  const payload = await client.automation("GET", "");
+  // `automations`, not `items`: the automation list names its own collection
+  // where the conversation list says `items`, and reading the wrong key
+  // reports an empty stack rather than failing.
+  const items = payload?.automations ?? payload?.items ?? payload ?? [];
+  const programs = (Array.isArray(items) ? items : []).filter(
+    (item) => item?.preset_metadata?.preset_type === "improve",
+  );
+  if (programs.length === 0) {
+    write("No improvement programs. `oh programs new <file.json>` makes one.");
+    return 0;
+  }
+  programs.forEach((program) => {
+    const config = program.preset_metadata?.improve ?? {};
+    const rotation = [
+      config.builder_profile_id,
+      ...(config.rotate_builder ?? []),
+    ].filter(Boolean);
+    write(
+      `${paint(program.id, "dim", colour)}  ${program.enabled ? "on" : "off"}  ` +
+        `${program.trigger?.schedule ?? "?"}  ${program.name}`,
+    );
+    write(
+      paint(
+        `    ${rotation.length} builder(s) in rotation · cap ${config.daily_cycles_per_repository ?? "default"}/repo/day`,
+        "dim",
+        colour,
+      ),
+    );
+  });
+  return 0;
 }
 
 async function showGraph(client, write, colour) {
@@ -397,26 +528,39 @@ async function showBudget(client, write, colour) {
     write("The automation service is not reachable through this stack.");
     return 2;
   }
-  const payload = await client.automation("GET", "/improve/parked");
-  // The ledger has no read endpoint of its own yet, so what can honestly be
-  // shown is what the cycles recorded. Said plainly rather than rendered as
-  // though it were the ledger.
-  write(
-    "The runtime ledger has no read endpoint yet; this is what the cycles reported.",
-  );
-  const seen = new Map();
-  (payload?.cycles ?? []).forEach((cycle) => {
-    (cycle.runtime_switches ?? []).forEach((hop) => {
-      if (hop.reason === "usage_limit") seen.set(hop.from, hop.at);
-    });
-  });
-  if (seen.size === 0) {
-    write("No runtime has reported running out.");
+  const payload = await client.automation("GET", "/improve/runtime-usage");
+  const runtimes = payload?.runtimes ?? [];
+  if (runtimes.length === 0) {
+    // Nothing observed is not the same as nothing available: no cycle has
+    // reported on a runtime yet, which is a different sentence.
+    write("No runtime has been observed yet, so nothing is known either way.");
     return 0;
   }
-  seen.forEach((at, runtime) => {
-    write(`${paint(runtime, "yellow", colour)} ran out at ${at}`);
+  runtimes.forEach((entry) => {
+    const tone = entry.available ? "green" : "yellow";
+    const state = entry.available ? entry.state.toLowerCase() : "spent";
+    const until = entry.reset_at ? ` until ${entry.reset_at}` : "";
+    write(
+      `${paint(entry.runtime, tone, colour)}  ${state}${until}  ` +
+        `${entry.cycles_completed}/${entry.cycles_attempted} cycles today`,
+    );
+    // The evidence beside the verdict: a reader deciding whether to trust an
+    // exhaustion needs what was seen, not only the conclusion.
+    const seen = entry.last_observation?.evidence;
+    if (seen) write(paint(`    saw: ${seen}`, "dim", colour));
+    if (entry.consecutive_exhaustions > 1) {
+      write(
+        paint(
+          `    refused ${entry.consecutive_exhaustions} times in a row, so the reset estimate may be wrong rather than early`,
+          "dim",
+          colour,
+        ),
+      );
+    }
   });
+  if (payload?.earliest_reset) {
+    write(paint(`first one back at ${payload.earliest_reset}`, "dim", colour));
+  }
   return 0;
 }
 

@@ -16,7 +16,11 @@ import {
 } from "../../scripts/tui/render.mjs";
 import { readFrame, settledStatusOf } from "../../scripts/tui/stream.mjs";
 import { PARITY_ACTIONS, parityReport } from "../../scripts/tui/parity.mjs";
-import { hasAutomation, resolveApiKey } from "../../scripts/stack-discovery.mjs";
+import { CONTEXT, diffLines, unifiedDiff } from "../../scripts/tui/diff.mjs";
+import {
+  hasAutomation,
+  resolveApiKey,
+} from "../../scripts/stack-discovery.mjs";
 
 const PLAIN = { colour: false };
 
@@ -103,7 +107,9 @@ describe("rendering what an agent did", () => {
       action: { kind: "FinishAction", message: "ok" },
     };
 
-    expect(renderEvent(finish, { ...PLAIN, alreadyStreamed: true })).toEqual([]);
+    expect(renderEvent(finish, { ...PLAIN, alreadyStreamed: true })).toEqual(
+      [],
+    );
   });
 
   it("renders an ACP tool call from the runtime's own words", () => {
@@ -124,8 +130,18 @@ describe("rendering what an agent did", () => {
 
   it("collapses a finished call to one line in a transcript", () => {
     const events = [
-      { kind: "ACPToolCallEvent", tool_call_id: "e1", title: "pytest", status: "in_progress" },
-      { kind: "ACPToolCallEvent", tool_call_id: "e1", title: "pytest", status: "completed" },
+      {
+        kind: "ACPToolCallEvent",
+        tool_call_id: "e1",
+        title: "pytest",
+        status: "in_progress",
+      },
+      {
+        kind: "ACPToolCallEvent",
+        tool_call_id: "e1",
+        title: "pytest",
+        status: "completed",
+      },
     ];
 
     // Two lines is what a reader wants while work happens and not what they
@@ -217,9 +233,9 @@ describe("the parity checklist", () => {
 
 describe("finding the stack", () => {
   it("prefers an explicit key over the persisted one", async () => {
-    await expect(
-      resolveApiKey({ OH_STACK_API_KEY: "explicit" }),
-    ).resolves.toBe("explicit");
+    await expect(resolveApiKey({ OH_STACK_API_KEY: "explicit" })).resolves.toBe(
+      "explicit",
+    );
     await expect(
       resolveApiKey({ LOCAL_BACKEND_API_KEY: "pinned" }),
     ).resolves.toBe("pinned");
@@ -246,5 +262,68 @@ describe("finding the stack", () => {
     ).toBe(false);
     expect(hasAutomation({})).toBe(false);
     expect(hasAutomation(null)).toBe(false);
+  });
+});
+
+describe("computing a diff the server does not send", () => {
+  // `/api/git/diff` answers with the two versions of a file, not with a
+  // diff: the web client builds its own side-by-side view from them. A
+  // terminal wants the unified form, so it is computed here.
+
+  it("shows a changed line as a removal and an addition", () => {
+    const lines = unifiedDiff("x.txt", "a\nb\nc\n", "a\nB\nc\n");
+
+    expect(lines).toContain("-b");
+    expect(lines).toContain("+B");
+    expect(lines[0]).toBe("diff --git a/x.txt b/x.txt");
+  });
+
+  it("says nothing at all when nothing changed", () => {
+    // An empty answer rather than a header with no hunks: a diff that prints
+    // a file name and no change reads as a change nobody can see.
+    expect(unifiedDiff("x.txt", "same\n", "same\n")).toEqual([]);
+  });
+
+  it("collapses the untouched middle of a file", () => {
+    const before = Array.from({ length: 40 }, (_, n) => `line ${n}`).join("\n");
+    const after = before
+      .replace("line 2", "LINE 2")
+      .replace("line 37", "LINE 37");
+
+    const lines = unifiedDiff("x.txt", `${before}\n`, `${after}\n`);
+
+    // Two changes forty lines apart are two hunks, not one that prints the
+    // whole file — a diff nobody reads.
+    expect(lines.filter((line) => line.startsWith("@@"))).toHaveLength(2);
+    expect(lines.length).toBeLessThan(2 * (2 * CONTEXT + 2) + 6);
+  });
+
+  it("handles a file that was empty, and one that became empty", () => {
+    expect(unifiedDiff("new.txt", "", "hello\n")).toContain("+hello");
+    expect(unifiedDiff("gone.txt", "hello\n", "")).toContain("-hello");
+  });
+
+  it("does not report a trailing newline as a changed blank line", () => {
+    // A trailing newline terminates the last line; treating it as an empty
+    // line would show every file as having one blank line changed.
+    expect(unifiedDiff("x.txt", "a\nb\n", "a\nb\n")).toEqual([]);
+  });
+
+  it("refuses a pair too large to diff, rather than hanging on it", () => {
+    const huge = Array.from({ length: 5000 }, (_, n) => `line ${n}`).join("\n");
+
+    const lines = unifiedDiff("big.txt", huge, `${huge}\nextra`);
+
+    expect(lines.join("\n")).toContain("too large to diff here");
+  });
+
+  it("keeps the operations in the order the file reads", () => {
+    const operations = diffLines(["a", "b"], ["a", "c", "b"]);
+
+    expect(operations.map((entry) => entry.op + entry.text)).toEqual([
+      " a",
+      "+c",
+      " b",
+    ]);
   });
 });

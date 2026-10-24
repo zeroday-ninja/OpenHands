@@ -42,6 +42,8 @@ oh say <id> <text...>      send a message to it
 oh stop <id>               interrupt the turn; the conversation survives
 oh allow <id> | oh deny <id> [reason...]
 oh history <id>            the whole transcript
+oh diff [path] [ref]       what changed in a working tree, as a diff
+oh programs [new <file>]   improvement programs, and create one
 oh list                    conversations, newest first
 oh graph                   what every agent is doing
 oh waiting                 work parked for you — and `oh waiting <id> <route> <why>` answers it
@@ -58,9 +60,32 @@ defaults to the current directory.
 ## What it cannot do
 
 `oh parity` is the checklist, and it is asserted by a test rather than kept in
-prose, so an action that regresses to web-only shows up as a failure. Four
-things still need a browser, each with its reason — a gap with a reason is the
-honest thing to show someone deciding whether to open one.
+prose, so an action that regresses to web-only shows up as a failure.
+
+**One** thing still needs a browser: drawing on the canvas. A freeform diagram
+editor is not a terminal surface, and pretending otherwise would be worse than
+saying so. A gap with a reason is the honest thing to show someone deciding
+whether to open one.
+
+## Diffs
+
+`/api/git/diff` answers with the two *versions* of a file rather than with a
+diff — the web client builds its own side-by-side view from them. So `oh diff`
+lists what changed, fetches each file's before and after, and computes the
+unified form itself: a plain LCS in `scripts/tui/diff.mjs`, bounded at four
+thousand lines, because a diff library would be a new pinned dependency under
+the seven-day age rule and this is forty lines.
+
+## Creating a program
+
+From a file, not from flags: the configuration has a rotation, a reviewer list,
+a judge and a repository source that constrain each other, so a flag per field
+would be a worse version of the JSON the service already validates — and it
+would drift from it. The service generates the runner tarball itself.
+
+```sh
+oh programs new nightly.json   # {"name", "trigger", "improve"}
+```
 
 ## Starting work: the order matters
 
