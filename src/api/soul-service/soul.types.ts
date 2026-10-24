@@ -89,3 +89,17 @@ export type SoulUnsupportedReason =
   | "cloud-backend"
   /** The agent server is older than the route. */
   | "missing-api";
+
+/**
+ * What a merge did.
+ *
+ * `conflicts` names entry ids that arrived with text differing from the copy
+ * already there. Both versions are kept, under suffixed ids: deciding which
+ * of two versions of someone's memory to discard is not a sync's call.
+ */
+export interface MemoryMergeResponse {
+  content: string;
+  entry_count: number;
+  added: number;
+  conflicts: string[];
+}

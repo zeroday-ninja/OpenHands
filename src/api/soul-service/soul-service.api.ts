@@ -27,12 +27,19 @@ import type { Backend } from "#/api/backend-registry/types";
 import type {
   IdentityDocumentResponse,
   IdentitySetResponse,
+  MemoryMergeResponse,
   SoulResponse,
   SoulUnsupportedReason,
 } from "./soul.types";
 
 const SOUL_PATH = "/api/soul";
 const IDENTITY_DOCUMENTS_PATH = `${SOUL_PATH}/documents`;
+
+/** Where several backends' memory is folded into one. */
+const MEMORY_MERGE_PATH = `${IDENTITY_DOCUMENTS_PATH}/memory/merge`;
+
+/** The document that is a log rather than a text someone edits. */
+export const MEMORY_DOCUMENT_NAME = "memory";
 
 /**
  * A document's own route. The name is a stable id the server declared in the
@@ -84,17 +91,25 @@ export function soulUnsupportedReasonFor(
   return null;
 }
 
-function getClient(): AgentServerClient {
-  const reason = soulUnsupportedReasonFor(getActiveBackend().backend);
+function getClient(backend?: Backend): AgentServerClient {
+  const target = backend ?? getActiveBackend().backend;
+  const reason = soulUnsupportedReasonFor(target);
   if (reason) throw new SoulUnsupportedError(reason);
-  const { host, apiKey } = getAgentServerClientOptions();
+  // Syncing reaches backends other than the active one, so the options are
+  // pinned to the backend being asked rather than read from the module-level
+  // active selection — otherwise every request in a fan-out would go to
+  // whichever backend happened to be selected.
+  const { host, apiKey } = backend
+    ? { host: backend.host, apiKey: backend.apiKey }
+    : getAgentServerClientOptions();
   return new AgentServerClient({ host, ...(apiKey ? { apiKey } : {}) });
 }
 
 async function withClient<T>(
   operation: (client: AgentServerClient) => Promise<T>,
+  backend?: Backend,
 ): Promise<T> {
-  const client = getClient();
+  const client = getClient(backend);
   try {
     return await operation(client);
   } catch (error) {
@@ -147,6 +162,41 @@ class SoulService {
    * the server does not declare, but Canvas only ever writes names the server
    * itself just listed.
    */
+  /**
+   * One identity document from a named backend.
+   *
+   * Takes the backend explicitly because syncing reads from backends other
+   * than the active one, which the rest of this service has no reason to do.
+   */
+  static getIdentityDocumentFrom(
+    backend: Backend,
+    name: string,
+  ): Promise<IdentityDocumentResponse> {
+    return withClient(
+      (client) =>
+        client.get<IdentityDocumentResponse>(identityDocumentPath(name)),
+      backend,
+    );
+  }
+
+  /**
+   * Fold other backends' memory into one backend's, losing nothing.
+   *
+   * The server does the merging. Memory is append-only, so the merge is a
+   * union by entry id: it converges whichever order the backends are reached
+   * in, running it twice changes nothing, and an entry can only ever appear
+   * or stay.
+   */
+  static mergeMemory(
+    backend: Backend,
+    logs: string[],
+  ): Promise<MemoryMergeResponse> {
+    return withClient(
+      (client) => client.post<MemoryMergeResponse>(MEMORY_MERGE_PATH, { logs }),
+      backend,
+    );
+  }
+
   static saveIdentityDocument(
     name: string,
     content: string,
