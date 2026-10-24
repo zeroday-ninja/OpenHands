@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { MemorySyncAction } from "./memory-sync-action";
 import { I18nKey } from "#/i18n/declaration";
 import type { IdentitySetResponse } from "#/api/soul-service/soul.types";
 import { IdentityDocumentSection } from "#/components/features/settings/soul/identity-document-section";
@@ -39,6 +40,7 @@ export function IdentityDocumentsEditor({ set }: { set: IdentitySetResponse }) {
           {set.directory}
         </code>
       </p>
+      <MemorySyncAction />
 
       {set.documents.map((doc) => (
         <IdentityDocumentSection key={doc.name} document={doc} />
