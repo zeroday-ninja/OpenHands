@@ -11,6 +11,7 @@ import {
   type PlacedProjectMapDocument,
   type PlacedProjectMapNode,
 } from "#/types/project-map";
+import { defaultProjectMapCanvas } from "#/utils/project-map/project-map-authoring";
 
 function node(
   overrides: Partial<PlacedProjectMapNode> & { id: string },
@@ -42,6 +43,7 @@ function document(
     nodes: [],
     edges: [],
     notes: [],
+  canvas: defaultProjectMapCanvas(),
     ...overrides,
   };
 }
