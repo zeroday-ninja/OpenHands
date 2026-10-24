@@ -77,7 +77,10 @@ export function isEmptyProjectMapCanvas(
     canvas.shapes.length === 0 &&
     canvas.connectors.length === 0 &&
     canvas.view.mode === DEFAULT_PROJECT_MAP_MODE &&
-    canvas.view.layout === DEFAULT_PROJECT_MAP_LAYOUT
+    canvas.view.layout === DEFAULT_PROJECT_MAP_LAYOUT &&
+    // An unset layer and an explicit `code` mean the same thing, so a
+    // document that only ever had the default still writes no block.
+    (canvas.view.layer ?? "code") === "code"
   );
 }
 

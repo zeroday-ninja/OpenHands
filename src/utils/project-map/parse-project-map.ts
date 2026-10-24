@@ -494,11 +494,15 @@ function readCanvas(
     if (!isRecord(rawView)) throw new InvalidField("canvas.view");
     const mode = rawView.mode ?? fallback.view.mode;
     const layout = rawView.layout ?? fallback.view.layout;
+    const layer = rawView.layer ?? "code";
     if (!isProjectMapMode(mode)) throw new InvalidField("canvas.view.mode");
     if (!isProjectMapLayoutKind(layout)) {
       throw new InvalidField("canvas.view.layout");
     }
-    view = { mode, layout };
+    if (!PROJECT_MAP_LAYER_IDS.includes(layer as ProjectMapLayerId)) {
+      throw new InvalidField("canvas.view.layer");
+    }
+    view = { mode, layout, layer: layer as ProjectMapLayerId };
   }
 
   const shapesById = new Map<string, ProjectMapShape>();

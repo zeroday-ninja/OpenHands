@@ -22,6 +22,7 @@ import type {
   ProjectMapCanvasLayer,
   ProjectMapConnector,
   ProjectMapEndpoint,
+  ProjectMapLayerId,
   ProjectMapLayoutKind,
   ProjectMapMode,
   ProjectMapNote,
@@ -141,6 +142,7 @@ interface ProjectMapState {
   setEditingNote: (id: string | null) => void;
 
   setMode: (mode: ProjectMapMode) => void;
+  setLayer: (layer: ProjectMapLayerId) => void;
   setTool: (tool: ProjectMapTool) => void;
   setChatOpen: (open: boolean) => void;
   setEditingShape: (id: string | null) => void;
@@ -527,6 +529,20 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
       editCanvas(state, (canvas) => ({
         ...canvas,
         view: { ...canvas.view, mode },
+      })),
+    ),
+
+  /**
+   * Which derived layer is on the paper.
+   *
+   * Goes through `edit` like any other view change, so switching to watch the
+   * agents work and back is one undo step and is saved with everything else.
+   */
+  setLayer: (layer) =>
+    set((state) =>
+      editCanvas(state, (canvas) => ({
+        ...canvas,
+        view: { ...canvas.view, layer },
       })),
     ),
 

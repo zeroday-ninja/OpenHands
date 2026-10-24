@@ -68,6 +68,11 @@ import { displayErrorToast } from "#/utils/custom-toast-handlers";
 import { buildProjectMapAnalysisPrompt } from "./project-map-analysis-prompt";
 import { ProjectMapCanvas } from "./project-map-canvas";
 import { ProjectMapInspector } from "./project-map-inspector";
+import { useWorkGraph } from "#/hooks/query/use-work-graph";
+import {
+  conversationIdOf,
+  workGraphToDerivedLayer,
+} from "#/utils/work-graph/work-graph-to-document";
 import { ProjectMapToolPalette } from "./project-map-tool-palette";
 import { ProjectMapModeSwitch } from "./project-map-mode-switch";
 import { ProjectMapChatDock } from "./project-map-chat-dock";
@@ -121,6 +126,44 @@ export function ProjectMapPage() {
     (state) => state.toggleShowHidden,
   );
   const setViewport = useProjectMapStore((state) => state.setViewport);
+
+  // Which derived layer is on the paper. The committed analysis of the code,
+  // or the live graph of what the agents are doing — the canvas draws either
+  // the same way, and everything drawn over the top is unaffected.
+  const layer = document_?.canvas.view.layer ?? "code";
+  const { graph: workGraph } = useWorkGraph({ enabled: layer === "work" });
+  const workLayer = React.useMemo(
+    () => (layer === "work" ? workGraphToDerivedLayer(workGraph) : null),
+    [layer, workGraph],
+  );
+
+  /**
+   * The agent whose transcript the dock should show, when one is selected.
+   *
+   * Clicking an agent on the work layer is the whole point of drawing it:
+   * the node says a runtime did something, and the transcript says what.
+   */
+  const selection = useProjectMapStore((state) => state.selection);
+  const selectedAgentConversationId = React.useMemo(() => {
+    if (layer !== "work") return null;
+    for (const key of selection) {
+      const node = workGraph.nodes.find((candidate) => candidate.key === key);
+      if (node?.kind !== "agent") continue;
+      const conversationId = conversationIdOf(node);
+      if (conversationId !== null) return conversationId;
+    }
+    return null;
+  }, [layer, selection, workGraph.nodes]);
+
+  /**
+   * One conversation is bound at a time, deliberately.
+   *
+   * The event store holds a single conversation, so showing an agent's
+   * transcript beside the map's own would have them overwrite each other.
+   * Selecting an agent therefore replaces what the dock is showing rather
+   * than adding to it.
+   */
+  const boundConversationId = selectedAgentConversationId ?? mapConversationId;
 
   // Synchronisation with an external system — the file on disk. The revision
   // fingerprints the bytes, so `hydrate` ignores a re-read that found no
@@ -367,16 +410,39 @@ export function ProjectMapPage() {
           <div className="flex min-h-80 flex-1 flex-col gap-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <ProjectMapToolPalette />
-              <ProjectMapModeSwitch mode={document_.canvas.view.mode} />
+              <ProjectMapModeSwitch
+                mode={document_.canvas.view.mode}
+                layer={layer}
+              />
             </div>
             {/* The dock is positioned against this box rather than the page so
                 it stays over the drawing when the rail is beside it. */}
             <div className="relative min-h-0 flex-1 overflow-hidden rounded-lg border border-border-subtle">
-              <ProjectMapCanvas document={document_} frameRef={frameRef} />
+              <ProjectMapCanvas
+                document={document_}
+                frameRef={frameRef}
+                derivedLayer={workLayer}
+              />
+              {layer === "work" && workGraph.nodes.length === 0 && (
+                <p
+                  data-testid="project-map-work-empty"
+                  className="pointer-events-none absolute left-4 top-4 text-sm text-muted"
+                >
+                  {t(I18nKey.PROJECT_MAP$WORK_EMPTY)}
+                </p>
+              )}
+              {layer === "work" && workGraph.omissions.length > 0 && (
+                <p
+                  data-testid="project-map-work-omissions"
+                  className="pointer-events-none absolute bottom-4 left-4 text-xs text-feedback-warning"
+                >
+                  {t(I18nKey.PROJECT_MAP$WORK_OMISSIONS)}
+                </p>
+              )}
               <ProjectMapChatDock
                 document={document_}
                 mapPath={mapPath}
-                conversationId={mapConversationId}
+                conversationId={boundConversationId}
                 launchWorkingDir={
                   isolated ? null : (workspace?.workingDir ?? null)
                 }
@@ -399,15 +465,15 @@ export function ProjectMapPage() {
     </div>
   );
 
-  if (mapConversationId === null) return page;
+  if (boundConversationId === null) return page;
 
   // The transport for the bound conversation, mounted around the whole page
   // rather than around the chat pane: the pane only exists once there is a
   // drawing, and the page needs the socket before that — the conversation
   // generating the very first map is the one whose write makes it appear.
   return (
-    <ScopedConversationIdProvider conversationId={mapConversationId}>
-      <WebSocketProviderWrapper conversationId={mapConversationId}>
+    <ScopedConversationIdProvider conversationId={boundConversationId}>
+      <WebSocketProviderWrapper conversationId={boundConversationId}>
         <EventHandler>{page}</EventHandler>
       </WebSocketProviderWrapper>
     </ScopedConversationIdProvider>

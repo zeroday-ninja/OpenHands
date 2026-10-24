@@ -33,6 +33,7 @@ import { I18nKey } from "#/i18n/declaration";
 import type {
   PlacedProjectMapDocument,
   PlacedProjectMapNode,
+  ProjectMapDerivedLayer,
   ProjectMapEndpoint,
   ProjectMapNote,
   ProjectMapShape,
@@ -45,6 +46,7 @@ import {
 } from "#/utils/project-map/project-map-layout";
 import {
   PROJECT_MAP_GROUP_NODE_PREFIX,
+  type ProjectMapRenderEdge,
   projectMapArrowTarget,
   projectMapFocusIds,
   projectMapRenderModel,
@@ -246,11 +248,21 @@ function isTap(drag: Drag, event: { clientX: number; clientY: number }) {
 export interface ProjectMapCanvasProps {
   document: PlacedProjectMapDocument;
   frameRef: React.RefObject<SVGSVGElement | null>;
+  /**
+   * A derived layer to draw instead of the committed analysis.
+   *
+   * The work graph is assembled live and never serialized, so it arrives as a
+   * prop rather than through the document. Everything else — selection,
+   * panning, annotating, the drawn layer over the top — works the same way on
+   * whichever layer is on the paper.
+   */
+  derivedLayer?: ProjectMapDerivedLayer | null;
 }
 
 export function ProjectMapCanvas({
   document: map,
   frameRef,
+  derivedLayer = null,
 }: ProjectMapCanvasProps) {
   const { t } = useTranslation("openhands");
   const viewport = useProjectMapStore((state) => state.viewport);
@@ -303,10 +315,26 @@ export function ProjectMapCanvas({
   const model = React.useMemo(() => projectMapRenderModel(map), [map]);
   const drawn = React.useMemo(() => {
     if (!showsDerived) return [];
+    if (derivedLayer !== null) return derivedLayer.nodes;
     return showHidden
       ? [...model.nodes, ...map.nodes.filter((node) => node.hidden)]
       : model.nodes;
-  }, [model.nodes, map.nodes, showHidden, showsDerived]);
+  }, [model.nodes, map.nodes, showHidden, showsDerived, derivedLayer]);
+
+  /**
+   * The lines between whatever the current layer draws.
+   *
+   * A rendered edge needs a stable key, which the committed analysis gets
+   * from the render model's own folding of collapsed groups. A live layer has
+   * no groups, so its key is simply what it joins.
+   */
+  const layerEdges = React.useMemo((): ProjectMapRenderEdge[] => {
+    if (derivedLayer === null) return model.edges;
+    return derivedLayer.edges.map((edge) => ({
+      ...edge,
+      key: `${edge.from}|${edge.kind}|${edge.to}`,
+    }));
+  }, [derivedLayer, model.edges]);
   /**
    * Dimming applies only to a selection that contains an analysed node.
    * Selecting a drawn box has no edges to be adjacent to, so dimming on it
@@ -317,8 +345,8 @@ export function ProjectMapCanvas({
       drawn.some((node) => node.id === id),
     );
     if (derivedSelection.length === 0) return new Set<string>();
-    return projectMapFocusIds(derivedSelection, map.edges);
-  }, [selection, map.edges, drawn]);
+    return projectMapFocusIds(derivedSelection, layerEdges);
+  }, [selection, layerEdges, drawn]);
 
   const accentOf = React.useCallback(
     (groupId: string | null) => {
@@ -1023,7 +1051,7 @@ export function ProjectMapCanvas({
         {/* Edges under the plates: a line should pass behind what it joins. */}
         <g>
           {showsDerived &&
-            model.edges.map((edge) => {
+            layerEdges.map((edge) => {
               const from = rectOf(edge.from);
               const to = rectOf(edge.to);
               if (from === null || to === null) return null;
