@@ -1423,6 +1423,21 @@ class AutomationService {
   }
 
   /**
+   * Repackage a program's runner from the service's current preset code.
+   *
+   * Configuration is untouched — a run reads that from its claim — and a
+   * cycle already running is unaffected, because its code was unpacked when
+   * it started. The answer is the automation record, whose `tarball_path`
+   * changes.
+   */
+  static refreshImproveCode(automationId: string): Promise<Automation> {
+    return AutomationService.requestImprove<Automation>(
+      "POST",
+      `/improve/${encodeURIComponent(automationId)}/refresh-code`,
+    );
+  }
+
+  /**
    * Create an improvement program. The service generates the runner tarball
    * and stores the configuration on the automation, so the returned record is
    * an ordinary automation with `preset_metadata.preset_type === "improve"`.

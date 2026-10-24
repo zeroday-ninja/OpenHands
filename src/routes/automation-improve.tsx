@@ -16,6 +16,7 @@ import { GitSyncSkeleton } from "#/components/features/automations/git-sync/git-
 import { ImproveConfigForm } from "#/components/features/automations/improve/improve-config-form";
 import { ImproveCycleHistory } from "#/components/features/automations/improve/improve-cycle-history";
 import { ImproveRotationStrip } from "#/components/features/automations/improve/improve-rotation-strip";
+import { ImproveStaleCodeNotice } from "#/components/features/automations/improve/improve-stale-code-notice";
 import { extensionModuleEmptyStateClassName } from "#/utils/extension-module-card-classes";
 import { lastVerdictByRepository } from "#/utils/improve-program";
 
@@ -82,6 +83,13 @@ function ImproveProgramPage({ automationId }: { automationId: string }) {
           {t(I18nKey.AUTOMATIONS$IMPROVE$DESCRIPTION)}
         </p>
       </header>
+
+      {/* Above the rotation: it changes what the next cycle does, so it
+          belongs before what the next cycle will take. */}
+      <ImproveStaleCodeNotice
+        automationId={automationId}
+        isCurrent={rotation.data.preset_code_is_current}
+      />
 
       <ImproveRotationStrip
         repositories={rotation.data.repositories}

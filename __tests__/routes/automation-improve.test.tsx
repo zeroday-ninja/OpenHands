@@ -42,6 +42,7 @@ vi.mock("#/api/automation-service/automation-service.api", () => ({
     listImproveCycles: vi.fn(),
     listGitSyncRemotes: vi.fn(),
     replaceImproveConfig: vi.fn(),
+    refreshImproveCode: vi.fn(),
   },
 }));
 
@@ -305,6 +306,7 @@ beforeEach(() => {
   vi.mocked(AutomationService.checkHealth).mockResolvedValue({ status: "ok" });
   vi.mocked(AutomationService.getAutomation).mockResolvedValue(automation);
   vi.mocked(AutomationService.getImproveRotation).mockResolvedValue(rotation);
+  vi.mocked(AutomationService.refreshImproveCode).mockResolvedValue(automation);
   vi.mocked(AutomationService.listImproveCycles).mockResolvedValue({
     cycles: [unreviewedCycle, reviewedCycle],
     total: 2,
@@ -388,6 +390,78 @@ describe("AutomationImprove rotation", () => {
       await screen.findByTestId("improve-not-a-program"),
     ).toHaveTextContent(I18nKey.AUTOMATIONS$IMPROVE$NOT_A_PROGRAM_BODY);
     expect(screen.queryByTestId("improve-rotation")).not.toBeInTheDocument();
+  });
+});
+
+describe("AutomationImprove packaged code", () => {
+  it("offers to update a program running older code", async () => {
+    // Arrange: the service says this program's runner is not the code it
+    // would package now.
+    vi.mocked(AutomationService.getImproveRotation).mockResolvedValue({
+      ...rotation,
+      preset_code_is_current: false,
+    });
+
+    // Act
+    renderPage();
+    const notice = await screen.findByTestId("improve-stale-code-notice");
+    fireEvent.click(within(notice).getByTestId("improve-refresh-code"));
+
+    // Assert
+    await waitFor(() =>
+      expect(AutomationService.refreshImproveCode).toHaveBeenCalledWith(
+        AUTOMATION_ID,
+      ),
+    );
+  });
+
+  it("says nothing when the program is running current code", async () => {
+    vi.mocked(AutomationService.getImproveRotation).mockResolvedValue({
+      ...rotation,
+      preset_code_is_current: true,
+    });
+
+    renderPage();
+    await screen.findByTestId("improve-rotation");
+
+    expect(
+      screen.queryByTestId("improve-stale-code-notice"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("says nothing when the service gave no verdict", async () => {
+    // An automation service from before this landed answers without the
+    // field. Silence there means it has nothing to say, which must not render
+    // as "your program is out of date".
+    renderPage();
+    await screen.findByTestId("improve-rotation");
+
+    expect(
+      screen.queryByTestId("improve-stale-code-notice"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps saying the code is old when the update fails", async () => {
+    // Arrange: the refresh is refused. The program is still on the old code,
+    // so the notice must not disappear as if the update had worked.
+    vi.mocked(AutomationService.getImproveRotation).mockResolvedValue({
+      ...rotation,
+      preset_code_is_current: false,
+    });
+    vi.mocked(AutomationService.refreshImproveCode).mockRejectedValue(
+      new Error("tarball upload failed"),
+    );
+
+    // Act
+    renderPage();
+    const notice = await screen.findByTestId("improve-stale-code-notice");
+    fireEvent.click(within(notice).getByTestId("improve-refresh-code"));
+
+    // Assert
+    expect(
+      await within(notice).findByTestId("improve-stale-code-error"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("improve-stale-code-notice")).toBeInTheDocument();
   });
 });
 
