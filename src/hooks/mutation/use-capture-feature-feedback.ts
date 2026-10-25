@@ -14,10 +14,9 @@ import { useMutation } from "@tanstack/react-query";
 import AutomationService from "#/api/automation-service/automation-service.api";
 import SoulService, {
   isSoulUnsupportedError,
-  MEMORY_DOCUMENT_NAME,
 } from "#/api/soul-service/soul-service.api";
 import type { FeatureTrial } from "#/types/feature-trial";
-import { withCorrection } from "#/utils/soul/correction-entry";
+import { correctionEntry } from "#/utils/soul/correction-entry";
 
 export interface CaptureFeatureFeedbackInput {
   trial: FeatureTrial;
@@ -65,6 +64,15 @@ export function useCaptureFeatureFeedback() {
  * entry is the `out_of_scope` failure this pipeline exists to diagnose — so
  * the reason is logged, and a backend too old to have an identity set is told
  * apart from one that refused.
+ *
+ * **Through the merge, not a read and a write.** This read the document,
+ * appended to it and wrote the whole thing back — so two corrections filed
+ * close together each read the same document and the second write dropped
+ * the first's entry. MEMORY.md is append-only for exactly this reason, and
+ * the server already owns the union: it "converges whichever order the
+ * backends are reached in, running it twice changes nothing, and an entry can
+ * only ever appear or stay". One entry is a log of one, and the entry's own
+ * id is what makes filing it twice the same as filing it once.
  */
 async function recordInMemory(
   lessonId: string,
@@ -73,17 +81,16 @@ async function recordInMemory(
   text: string,
 ): Promise<void> {
   try {
-    const before = await SoulService.getIdentityDocument(MEMORY_DOCUMENT_NAME);
-    const after = withCorrection(before.content ?? "", {
-      lessonId,
-      scope: "surface",
-      subject,
-      trigger,
-      text,
-      at: new Date(),
-    });
-    if (after === (before.content ?? "")) return;
-    await SoulService.saveIdentityDocument(MEMORY_DOCUMENT_NAME, after);
+    await SoulService.mergeMemory([
+      correctionEntry({
+        lessonId,
+        scope: "surface",
+        subject,
+        trigger,
+        text,
+        at: new Date(),
+      }),
+    ]);
   } catch (error) {
     if (isSoulUnsupportedError(error)) {
       // An older agent server has no identity set to file it in. The lesson

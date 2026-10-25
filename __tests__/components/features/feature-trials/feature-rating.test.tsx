@@ -20,6 +20,7 @@ describe("FeatureRating", () => {
 
   it("takes one click as a complete answer", async () => {
     const sent: unknown[] = [];
+    const merged: unknown[] = [];
     server.use(
       http.post(LESSONS_PATH, async ({ request }) => {
         sent.push(await request.json());
@@ -27,6 +28,10 @@ describe("FeatureRating", () => {
           { lesson: {}, repeat: false },
           { status: 201 },
         );
+      }),
+      http.post("*/api/soul/documents/memory/merge", async ({ request }) => {
+        merged.push(await request.json());
+        return HttpResponse.json({ added: 1, entry_count: 1, conflicts: [] });
       }),
     );
     const user = userEvent.setup();
@@ -37,13 +42,17 @@ describe("FeatureRating", () => {
 
     await waitFor(() => expect(sent).toHaveLength(1));
     expect(useFeatureTrialStore.getState().records[TRIAL.id].rating).toBe("up");
+    // And waited out: the filing that follows the lesson outlived this test
+    // and landed in the next one, where it looked like a second write.
+    await waitFor(() => expect(merged).toHaveLength(1));
   });
 
   it("files the correction in MEMORY.md, where a person can read it", async () => {
     // Injection into the next cycle was built; filing it in the document that
     // owns it was not, so a correction lived in a database row and in prompts
     // nobody reads. The rule asks for both.
-    const filed: string[] = [];
+    const filed: string[][] = [];
+    const written: unknown[] = [];
     server.use(
       http.post(LESSONS_PATH, () =>
         HttpResponse.json(
@@ -51,23 +60,21 @@ describe("FeatureRating", () => {
           { status: 201 },
         ),
       ),
-      http.get("*/api/soul/documents/memory", () =>
-        HttpResponse.json({
-          name: "memory",
-          content:
-            "## 2026-10-01T00:00:00Z — Earlier\n<!-- id: mem-a -->\n\nTheirs.\n",
-          exists: true,
-          size_bytes: 10,
-        }),
-      ),
+      http.post("*/api/soul/documents/memory/merge", async ({ request }) => {
+        const body = (await request.json()) as { logs: string[] };
+        filed.push(body.logs);
+        return HttpResponse.json({ added: 1, entry_count: 1, conflicts: [] });
+      }),
+      // Nothing may rewrite the document to file one entry. It used to read
+      // and write it whole, so two corrections filed close together each read
+      // the same document and the second write dropped the first's entry.
       http.put("*/api/soul/documents/memory", async ({ request }) => {
-        const body = (await request.json()) as { content: string };
-        filed.push(body.content);
+        written.push(await request.json());
         return HttpResponse.json({
           name: "memory",
-          content: body.content,
+          content: "",
           exists: true,
-          size_bytes: body.content.length,
+          size_bytes: 0,
         });
       }),
     );
@@ -77,11 +84,13 @@ describe("FeatureRating", () => {
     await user.click(screen.getByTestId("feature-rating-down"));
 
     await waitFor(() => expect(filed).toHaveLength(1));
-    // Appended, with the user's earlier entry untouched, and carrying an id
-    // so the cross-backend merge can take a union rather than duplicate it.
-    expect(filed[0]).toContain("<!-- id: mem-a -->");
-    expect(filed[0]).toContain("<!-- id: lesson-lesson-7 -->");
-    expect(filed[0]).toContain("Correction (surface: ");
+    // One entry, carrying its id, so the server's union can take it once
+    // however many times it is sent — and the user's own entries are not
+    // part of the request at all, so nothing can drop them.
+    expect(filed[0]).toHaveLength(1);
+    expect(filed[0][0]).toContain("<!-- id: lesson-lesson-7 -->");
+    expect(filed[0][0]).toContain("Correction (surface: ");
+    expect(written).toEqual([]);
   });
 
   it("keeps the rating when the document cannot be written", async () => {
