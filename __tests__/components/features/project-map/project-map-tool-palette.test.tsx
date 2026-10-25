@@ -2,7 +2,10 @@ import { act, fireEvent, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 import { renderWithProviders } from "../../../../test-utils";
 import { ProjectMapToolPalette } from "#/components/features/project-map/project-map-tool-palette";
-import { useProjectMapStore } from "#/stores/project-map-store";
+import {
+  PROJECT_MAP_HISTORY_LIMIT,
+  useProjectMapStore,
+} from "#/stores/project-map-store";
 import {
   PROJECT_MAP_VERSION,
   type PlacedProjectMapDocument,
@@ -84,5 +87,43 @@ describe("ProjectMapToolPalette", () => {
       0,
     );
     expect(screen.getByTestId("project-map-redo")).not.toBeDisabled();
+  });
+
+  it("remembers fifty steps and no more", () => {
+    // The bound is the plan's: undo exists because "the moment Delete exists
+    // so does unrecoverable loss of unsaved drawing", and it is capped at
+    // fifty so a long session cannot grow the history without limit.
+    //
+    // The cap was applied in three places and asserted nowhere, so a
+    // refactor that dropped one `.slice(...)` would be invisible — and the
+    // failure it would cause, a drawing session whose memory grows with
+    // every stroke, is the kind nobody notices until it is bad.
+    renderWithProviders(<ProjectMapToolPalette />);
+    const steps = PROJECT_MAP_HISTORY_LIMIT + 10;
+
+    // Act: more edits than the history holds, then undo until it refuses.
+    act(() => {
+      for (let index = 0; index < steps; index += 1) {
+        useProjectMapStore.getState().addShape({ kind: "box", x: index, y: 0 });
+      }
+    });
+    let undone = 0;
+    while (
+      !(screen.getByTestId("project-map-undo") as HTMLButtonElement).disabled
+    ) {
+      fireEvent.click(screen.getByTestId("project-map-undo"));
+      undone += 1;
+      // A cap that is not applied would run until the array is exhausted, so
+      // the loop needs its own ceiling to fail as an assertion rather than
+      // as a timeout.
+      if (undone > steps) break;
+    }
+
+    // Assert: fifty steps back, and the ten oldest shapes are still there
+    // because their history was dropped rather than their content.
+    expect(undone).toBe(PROJECT_MAP_HISTORY_LIMIT);
+    expect(useProjectMapStore.getState().document?.canvas.shapes).toHaveLength(
+      steps - PROJECT_MAP_HISTORY_LIMIT,
+    );
   });
 });
