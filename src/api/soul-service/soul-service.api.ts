@@ -91,6 +91,21 @@ export function soulUnsupportedReasonFor(
   return null;
 }
 
+/**
+ * The backends a memory sync could include.
+ *
+ * Here rather than beside the sync, because it is a question about a backend
+ * and not about a mutation — and because three callers ask it: the button
+ * hides itself when fewer than two are eligible, the sync skips the rest with
+ * a reason, and filing a correction only spreads it when there is somewhere
+ * to spread it to. A fourth answer would be a fourth definition.
+ */
+export function eligibleForSync(backends: readonly Backend[]): Backend[] {
+  return backends.filter(
+    (candidate) => soulUnsupportedReasonFor(candidate) === null,
+  );
+}
+
 function getClient(backend?: Backend): AgentServerClient {
   const target = backend ?? getActiveBackend().backend;
   const reason = soulUnsupportedReasonFor(target);

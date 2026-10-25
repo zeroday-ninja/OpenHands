@@ -1,14 +1,16 @@
+import React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import SoulService, {
   MEMORY_DOCUMENT_NAME,
   isSoulUnsupportedError,
   soulUnsupportedReasonFor,
 } from "#/api/soul-service/soul-service.api";
-import type { Backend } from "#/api/backend-registry/types";
 import {
-  useActiveBackend,
-  useActiveBackendContext,
-} from "#/contexts/active-backend-context";
+  getRegisteredBackends,
+  subscribeActiveBackend,
+} from "#/api/backend-registry/active-store";
+import type { Backend } from "#/api/backend-registry/types";
+import { useActiveBackend } from "#/contexts/active-backend-context";
 import { useBackendsHealth } from "#/hooks/query/use-backends-health";
 import { SOUL_QUERY_KEYS } from "#/hooks/query/query-keys";
 
@@ -44,7 +46,15 @@ export interface MemorySyncResult {
 export function useSyncMemoryAcrossBackends() {
   const queryClient = useQueryClient();
   const { backend: active, orgId } = useActiveBackend();
-  const { backends } = useActiveBackendContext();
+  // The registry read straight from its store rather than through the
+  // provider, for the reason `useWorkGraph` gives for doing the same: a hook
+  // that throws without the provider cannot be used from a surface that an
+  // embedded host mounts on its own, and this one only ever reads the list.
+  const backends = React.useSyncExternalStore(
+    subscribeActiveBackend,
+    getRegisteredBackends,
+    getRegisteredBackends,
+  );
   const health = useBackendsHealth(backends);
 
   return useMutation({

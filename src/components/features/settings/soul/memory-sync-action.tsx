@@ -9,7 +9,7 @@
 import { useTranslation } from "react-i18next";
 import { I18nKey } from "#/i18n/declaration";
 import { useActiveBackendContext } from "#/contexts/active-backend-context";
-import { soulUnsupportedReasonFor } from "#/api/soul-service/soul-service.api";
+import { eligibleForSync } from "#/api/soul-service/soul-service.api";
 import { useSyncMemoryAcrossBackends } from "#/hooks/mutation/use-sync-memory-across-backends";
 import { BrandButton } from "#/components/features/settings/brand-button";
 
@@ -26,10 +26,8 @@ export function MemorySyncAction() {
   const { backends } = useActiveBackendContext();
   const sync = useSyncMemoryAcrossBackends();
 
-  const eligible = backends.filter(
-    (backend) => soulUnsupportedReasonFor(backend) === null,
-  );
-  if (eligible.length < 2) return null;
+  // The same question the sync and the correction path ask, answered once.
+  if (eligibleForSync(backends).length < 2) return null;
 
   const result = sync.data;
   // Deduplicated: the same entry conflicting on three backends is one entry

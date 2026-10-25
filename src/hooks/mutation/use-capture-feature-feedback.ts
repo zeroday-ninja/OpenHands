@@ -12,10 +12,13 @@
 
 import { useMutation } from "@tanstack/react-query";
 import AutomationService from "#/api/automation-service/automation-service.api";
+import { getRegisteredBackends } from "#/api/backend-registry/active-store";
 import SoulService, {
+  eligibleForSync,
   isSoulUnsupportedError,
 } from "#/api/soul-service/soul-service.api";
 import type { FeatureTrial } from "#/types/feature-trial";
+import { useSyncMemoryAcrossBackends } from "#/hooks/mutation/use-sync-memory-across-backends";
 import { correctionEntry } from "#/utils/soul/correction-entry";
 
 export interface CaptureFeatureFeedbackInput {
@@ -25,6 +28,8 @@ export interface CaptureFeatureFeedbackInput {
 }
 
 export function useCaptureFeatureFeedback() {
+  const spread = useSyncMemoryAcrossBackends();
+
   return useMutation<void, Error, CaptureFeatureFeedbackInput>({
     mutationFn: async ({ trial, rating, comment }) => {
       // The feature's own words, not a template: the register's summary is
@@ -47,6 +52,28 @@ export function useCaptureFeatureFeedback() {
       // asks for both: injection is what guarantees a cycle sees it, the
       // document is what makes the record readable and complete.
       await recordInMemory(captured.lesson.id, trial.id, trigger, text);
+      // And on to the other machines, because the plan asks for memory
+      // "synced across backends, eventually consistent" and the only thing
+      // that synced it was a button in settings — so a correction given on
+      // one machine reached the others when somebody remembered to press it.
+      //
+      // Here rather than on a timer or at startup: the moment memory actually
+      // changed is the only moment there is anything to carry, so nothing is
+      // sent on a machine nobody has corrected anything on. A single backend
+      // would be syncing with itself, which is the condition the button hides
+      // itself under too.
+      if (eligibleForSync(getRegisteredBackends()).length > 1) {
+        // Best effort, and never fatal: the correction is already filed and
+        // recorded. `useSyncMemoryAcrossBackends` reports every backend it
+        // could not reach, and its own surface in settings shows that.
+        spread.mutate(undefined, {
+          onError: (error) =>
+            console.warn(
+              "The correction was filed but could not be spread to the other backends:",
+              error,
+            ),
+        });
+      }
     },
     // The caller shows the failure. A rating the person believes they gave is
     // worse than no rating, so this must not be silent — and it must not be a
