@@ -13,7 +13,7 @@ import path from "node:path";
 import process from "node:process";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it, afterEach } from "vitest";
+import { describe, expect, it, afterEach, vi } from "vitest";
 import {
   assertPortsFree,
   buildSafeDevConfig,
@@ -33,6 +33,7 @@ import {
   findFreePort,
   findFreePorts,
   getOrCreatePersistedSessionApiKey,
+  isEphemeralApiKey,
   resetPersistedSessionApiKeyCache,
   resolveExtensionsDir,
 } from "../../scripts/dev-safe.mjs";
@@ -985,6 +986,46 @@ describe("getOrCreatePersistedSessionApiKey", () => {
     const key = getOrCreatePersistedSessionApiKey(filePath);
     expect(key).toMatch(/^[a-f0-9]{64}$/);
     expect(readFileSync(filePath, "utf8").trim()).toBe(key);
+  });
+
+  it("says the stale key will be refused when it cannot replace it", () => {
+    // The hazard is not the in-memory fallback — the stack works on it. It is
+    // the old file: a client finds its key by reading that path, so a key this
+    // server no longer accepts produces a 401 that looks like a broken client.
+    //
+    // A read-only directory is the one way to reach this on a real
+    // filesystem, and it is also the case where the file *cannot* be removed:
+    // writing and unlinking need the same permission on the parent. So the
+    // answer here is the message and the recorded state, not the removal —
+    // which is kept for the disk-full class of failure, where unlinking does
+    // succeed.
+    const filePath = tempPath();
+    mkdirSync(path.dirname(filePath), { recursive: true });
+    writeFileSync(filePath, "a-key-this-server-will-refuse\n");
+    // Unreadable, so the function regenerates rather than returning it.
+    chmodSync(filePath, 0o000);
+    chmodSync(path.dirname(filePath), 0o500);
+    const warnings: string[] = [];
+    const warn = vi
+      .spyOn(console, "warn")
+      .mockImplementation((...args: unknown[]) => {
+        warnings.push(args.join(" "));
+      });
+
+    try {
+      const key = getOrCreatePersistedSessionApiKey(filePath);
+
+      expect(key).toMatch(/^[a-f0-9]{64}$/);
+      // Answerable after the warning has scrolled past, because a launcher
+      // prints a lot and this is the thing a person comes back to.
+      expect(isEphemeralApiKey(filePath)).toBe(true);
+      expect(warnings.join("\n")).toContain("will refuse");
+      expect(warnings.join("\n")).toContain(filePath);
+    } finally {
+      warn.mockRestore();
+      chmodSync(path.dirname(filePath), 0o700);
+      chmodSync(filePath, 0o600);
+    }
   });
 });
 
