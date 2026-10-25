@@ -135,9 +135,12 @@ export function useParkedImproveCycles(enabled = true) {
 /**
  * Answer what a parked cycle is waiting for.
  *
- * Invalidates every view of every program rather than patching the one cycle:
- * resolving moves it back into the program's history with a new status, and
- * the panel's own list has to lose it.
+ * Invalidates every view of every program rather than patching the one cycle.
+ * An answered cycle keeps its parked status — it is waiting on a run now
+ * rather than on a person, and that is the status the service's janitor
+ * leaves alone — so the panel's list loses it for having been *answered*,
+ * not for having changed state. The work graph changes too, which is why
+ * both are invalidated.
  */
 export function useResolveImproveCycle() {
   const queryClient = useQueryClient();
