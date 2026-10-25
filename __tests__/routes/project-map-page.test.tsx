@@ -17,8 +17,16 @@ async function openChat() {
   if (toggle.getAttribute("aria-expanded") !== "true") fireEvent.click(toggle);
   // The panel is lazily imported, and the first test in a file to open it pays
   // for the import — which is longer than the default wait.
+  //
+  // Fifteen seconds rather than five. Five was enough on an idle machine and
+  // not on a loaded one: this file failed intermittently at exactly 5100ms on
+  // "Unable to find project-map-composer", while every other case passed and
+  // the same file passed on its own minutes earlier. A timeout tuned to a
+  // quiet machine turns a full run into something a reader has to re-run
+  // before believing, which costs more than the wait it saves — and the
+  // waiting only happens on the one import, not per test.
   await screen.findByTestId("project-map-composer", undefined, {
-    timeout: 5000,
+    timeout: 15000,
   });
 }
 import MapRoute from "#/routes/map";
