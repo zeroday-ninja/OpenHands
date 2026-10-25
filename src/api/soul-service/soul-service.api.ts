@@ -163,6 +163,19 @@ class SoulService {
    * itself just listed.
    */
   /**
+   * One identity document from the active backend.
+   *
+   * The symmetric read for `saveIdentityDocument`: a writer that has to append
+   * to a document needs what is in it, and the set listing carries sizes
+   * rather than content.
+   */
+  static getIdentityDocument(name: string): Promise<IdentityDocumentResponse> {
+    return withClient((client) =>
+      client.get<IdentityDocumentResponse>(identityDocumentPath(name)),
+    );
+  }
+
+  /**
    * One identity document from a named backend.
    *
    * Takes the backend explicitly because syncing reads from backends other

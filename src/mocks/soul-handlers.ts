@@ -96,6 +96,24 @@ export const SOUL_HANDLERS = [
     return HttpResponse.json(identitySetResponse());
   }),
 
+  // Reading one document, which is what an appender needs: the set listing
+  // carries sizes, so a writer that has to add an entry has nothing to add it
+  // to without this.
+  http.get("*/api/soul/documents/:name", async ({ params }) => {
+    await delay(100);
+
+    const document = MOCK_IDENTITY_DOCUMENTS.find(
+      (candidate) => candidate.name === params.name,
+    );
+    if (!document) {
+      return HttpResponse.json(
+        { detail: `No identity document named '${String(params.name)}'` },
+        { status: 404 },
+      );
+    }
+    return HttpResponse.json(documentResponse(document));
+  }),
+
   http.put("*/api/soul/documents/:name", async ({ params, request }) => {
     await delay(100);
 
