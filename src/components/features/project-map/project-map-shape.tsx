@@ -105,15 +105,29 @@ export interface ProjectMapShapeMarkProps {
   focused: boolean;
   /** Only the single selected shape offers handles. */
   resizable: boolean;
-  onPointerDown: (event: React.PointerEvent<SVGGElement>) => void;
+  /**
+   * The three handlers take the shape back, rather than being closures over
+   * it. A closure is a new function on every render of the canvas, and a new
+   * function on every render is a prop change: it would re-render all two
+   * hundred shapes on every move of a drag, which is what `React.memo` below
+   * exists to stop.
+   */
+  onPointerDown: (
+    event: React.PointerEvent<SVGGElement>,
+    shape: ProjectMapShape,
+  ) => void;
   onHandlePointerDown: (
     event: React.PointerEvent<SVGRectElement>,
+    shape: ProjectMapShape,
     handle: ProjectMapShapeHandle,
   ) => void;
-  onKeyDown: (event: React.KeyboardEvent<SVGGElement>) => void;
+  onKeyDown: (
+    event: React.KeyboardEvent<SVGGElement>,
+    shape: ProjectMapShape,
+  ) => void;
 }
 
-export function ProjectMapShapeMark({
+function ProjectMapShapeMarkMark({
   shape,
   rect,
   selected,
@@ -156,14 +170,14 @@ export function ProjectMapShapeMark({
       aria-label={empty ? placeholder : shape.text}
       id={`project-map-shape-${shape.id}`}
       className="cursor-move outline-none"
-      onPointerDown={onPointerDown}
+      onPointerDown={(event) => onPointerDown(event, shape)}
       // Double-click is how every drawing tool opens a label, and the press
       // that starts it is a drag that went nowhere, so it costs nothing.
       onDoubleClick={(event) => {
         event.stopPropagation();
         setEditingShape(shape.id);
       }}
-      onKeyDown={onKeyDown}
+      onKeyDown={(event) => onKeyDown(event, shape)}
     >
       <g transform={`translate(${rect.x} ${rect.y})`}>
         <path
@@ -237,10 +251,42 @@ export function ProjectMapShapeMark({
               className="fill-surface-raised stroke-border-subtle"
               strokeWidth={1}
               vectorEffect="non-scaling-stroke"
-              onPointerDown={(event) => onHandlePointerDown(event, handle)}
+              onPointerDown={(event) =>
+                onHandlePointerDown(event, shape, handle)
+              }
             />
           );
         })}
     </g>
   );
 }
+
+/**
+ * One drawn shape, re-rendered only when something about *it* changed.
+ *
+ * Milestone 1's metric is that pointer-move handling stays inside one frame
+ * at two hundred shapes, and it did not: every move of a drag re-rendered
+ * every shape, because the rectangle index is rebuilt each render and each
+ * shape was handed a fresh `rect` object and three fresh closures. Measured
+ * on a production build at two hundred shapes, a move cost 16.8 ms of a
+ * 16.67 ms frame — and 41 ms on a dev build, which is what a developer sees.
+ *
+ * The rectangle is compared by value because that is the one prop that
+ * legitimately changes identity every render; everything else is compared by
+ * identity, and the handlers are stable by construction on the canvas side.
+ */
+export const ProjectMapShapeMark = React.memo(
+  ProjectMapShapeMarkMark,
+  (before, after) =>
+    before.shape === after.shape &&
+    before.selected === after.selected &&
+    before.focused === after.focused &&
+    before.resizable === after.resizable &&
+    before.onPointerDown === after.onPointerDown &&
+    before.onHandlePointerDown === after.onHandlePointerDown &&
+    before.onKeyDown === after.onKeyDown &&
+    before.rect.x === after.rect.x &&
+    before.rect.y === after.rect.y &&
+    before.rect.width === after.rect.width &&
+    before.rect.height === after.rect.height,
+);

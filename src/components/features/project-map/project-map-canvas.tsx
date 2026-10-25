@@ -861,6 +861,45 @@ export function ProjectMapCanvas({
     }
   };
 
+  /**
+   * The shape handlers, with one identity for the life of the canvas.
+   *
+   * A memoised shape only skips a re-render if its props are unchanged, and
+   * an inline closure is a new prop every render — so without this the memo
+   * on `ProjectMapShapeMark` would never fire during a drag, which is the
+   * only time it matters. Each one reads the current implementation out of a
+   * ref rather than capturing it, so nothing goes stale: a press after the
+   * tool changed still runs what the new tool wants.
+   */
+  const handlers = React.useRef({
+    handleShapePointerDown,
+    handleHandlePointerDown,
+    handleShapeKeyDown,
+  });
+  handlers.current = {
+    handleShapePointerDown,
+    handleHandlePointerDown,
+    handleShapeKeyDown,
+  };
+  const onShapePointerDown = React.useCallback(
+    (event: React.PointerEvent<SVGGElement>, shape: ProjectMapShape) =>
+      handlers.current.handleShapePointerDown(event, shape),
+    [],
+  );
+  const onShapeHandlePointerDown = React.useCallback(
+    (
+      event: React.PointerEvent<SVGRectElement>,
+      shape: ProjectMapShape,
+      handle: ProjectMapShapeHandle,
+    ) => handlers.current.handleHandlePointerDown(event, shape, handle),
+    [],
+  );
+  const onShapeKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<SVGGElement>, shape: ProjectMapShape) =>
+      handlers.current.handleShapeKeyDown(event, shape),
+    [],
+  );
+
   const transform = `translate(${-viewport.x * viewport.scale} ${-viewport.y * viewport.scale}) scale(${viewport.scale})`;
   const detailed = viewport.scale >= DETAIL_SCALE;
 
@@ -978,11 +1017,9 @@ export function ProjectMapCanvas({
               selected={selection.includes(shape.id)}
               focused={focused === shape.id}
               resizable={selection.length === 1 && selection[0] === shape.id}
-              onPointerDown={(event) => handleShapePointerDown(event, shape)}
-              onHandlePointerDown={(event, handle) =>
-                handleHandlePointerDown(event, shape, handle)
-              }
-              onKeyDown={(event) => handleShapeKeyDown(event, shape)}
+              onPointerDown={onShapePointerDown}
+              onHandlePointerDown={onShapeHandlePointerDown}
+              onKeyDown={onShapeKeyDown}
             />
           ))}
 
@@ -1177,11 +1214,9 @@ export function ProjectMapCanvas({
               selected={selection.includes(shape.id)}
               focused={focused === shape.id}
               resizable={selection.length === 1 && selection[0] === shape.id}
-              onPointerDown={(event) => handleShapePointerDown(event, shape)}
-              onHandlePointerDown={(event, handle) =>
-                handleHandlePointerDown(event, shape, handle)
-              }
-              onKeyDown={(event) => handleShapeKeyDown(event, shape)}
+              onPointerDown={onShapePointerDown}
+              onHandlePointerDown={onShapeHandlePointerDown}
+              onKeyDown={onShapeKeyDown}
             />
           ))}
 
