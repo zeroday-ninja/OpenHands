@@ -177,3 +177,54 @@ Nothing to add: Drive, Gmail, Calendar, Docs and Sheets are already entries in
 the MCP catalog from `@openhands/extensions`, each with an OAuth connection
 option. Install them from the MCP page and the agents can read company
 documents and write back.
+
+# Antigravity in a sandbox, without the sandbox holding its credential
+
+`agy` keeps its Google login in the desktop keyring. A container has no
+keyring, so the adapter running inside one cannot sign in — and the two
+obvious fixes are both wrong:
+
+- **copying the token in** puts a broad-scope Google refresh token next to
+  agent-written code;
+- **baking the CLI into the image** redistributes a 217 MB vendor binary and
+  still needs the token.
+
+So the credential stays where it already is. The adapter runs on the host,
+which is already signed in, and the sandbox reaches it over the docker bridge
+the launcher already uses — the same shape as the access gate above: hold the
+secret behind the boundary and pass only the conversation across it.
+
+```sh
+export OH_ANTIGRAVITY_BRIDGE_TOKEN=$(openssl rand -hex 24)
+oh-antigravity-bridge
+```
+
+Then an agent profile whose `acp_command` opens the port and pipes stdio, with
+the same token delivered as a secret. What crosses is ACP's own JSON-RPC, one
+line at a time.
+
+## What it will not bend
+
+**Only a sandbox on this host.** The peer address is resolved against Docker's
+own container list; anything else is refused. The port is on the docker
+bridge, which something other than a sandbox could reach.
+
+**Only that sandbox's own directory.** The host path behind `/workspace` is
+read from the container's mounts rather than configured, because a stale
+mapping would hand a conversation somebody else's files. A container with no
+workspace of its own is refused rather than given a guess.
+
+**Only the working directory is rewritten.** A path the sandbox invented is
+left alone: it is not a path on this side, and rewriting it would point the
+CLI at a directory nobody asked for.
+
+**Off unless started.** It opens a port every container on this host can
+reach, so it is token-gated, and the token is checked before the adapter is
+spawned at all.
+
+## The trade-off, stated
+
+A sandbox with this configured can run Antigravity turns as you. That is a
+wider reach than a sandbox has by default, and narrower than giving it the
+credential: the token can be rotated by restarting the bridge, the bridge can
+be stopped, and nothing durable ever lands inside the container.
