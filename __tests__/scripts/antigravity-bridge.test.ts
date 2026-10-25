@@ -192,6 +192,46 @@ describe("a running bridge", () => {
     expect(answer).not.toContain("session/new");
   });
 
+  it("waits for the rest of a line that arrived in pieces", async () => {
+    // A TCP read is not a line. A long `session/prompt` arrives in several
+    // chunks and the boundary lands wherever the network put it — this is the
+    // failure a real run produced, as a JSONDecodeError in the adapter from
+    // half a message.
+    bridge = await startAntigravityBridge({
+      token: "right",
+      command: ["cat"],
+      host: "127.0.0.1",
+      port: 0,
+      docker: fakeDocker({ a: { ip: "127.0.0.1", workspace: "/host/mine" } }),
+      log: () => {},
+    });
+    const { port } = bridge.server.address() as { port: number };
+    const message = JSON.stringify({
+      method: "session/prompt",
+      params: { text: "x".repeat(400) },
+    });
+
+    const echoed = await new Promise<string>((resolve) => {
+      const socket = net.connect(port, "127.0.0.1", () => {
+        socket.write("right\n");
+        // Split where the network might, mid-message.
+        socket.write(message.slice(0, 37));
+        setTimeout(() => socket.write(`${message.slice(37)}\n`), 20);
+      });
+      let seen = "";
+      socket.on("data", (chunk) => {
+        seen += chunk;
+        if (seen.includes("\n")) {
+          resolve(seen);
+          socket.destroy();
+        }
+      });
+    });
+
+    // One whole message reached the adapter, not two fragments.
+    expect(JSON.parse(echoed.trim()).params.text).toHaveLength(400);
+  });
+
   it("carries a session through once the token is right", async () => {
     bridge = await startAntigravityBridge({
       token: "right",
