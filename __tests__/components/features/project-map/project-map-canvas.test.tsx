@@ -621,4 +621,48 @@ describe("ProjectMapCanvas", () => {
       screen.getByTestId("project-map-hidden-connectors"),
     ).toBeInTheDocument();
   });
+
+  it("makes a child with Tab and a sibling with Enter", async () => {
+    // Milestone 1's mind-map grammar, and part of its MVP — "create, move,
+    // connect, label, group and *branch* on one canvas". Both store actions
+    // and both key bindings had no test at all, so branching could have
+    // stopped working without anything noticing.
+    stubFrame();
+    renderCanvas();
+    act(() => {
+      useProjectMapStore
+        .getState()
+        .addShape({ kind: "branch", x: 0, y: 0, text: "root" });
+    });
+    const canvas = screen.getByTestId("project-map-canvas");
+    const [root] = useProjectMapStore.getState().document?.canvas.shapes ?? [];
+
+    // Act: Tab on the root.
+    act(() => {
+      useProjectMapStore.getState().setSelection([root.id]);
+    });
+    fireEvent.keyDown(canvas, { key: "Tab" });
+
+    // Assert: a child of the root, to its right, selected and open for its
+    // label — a branch you have to go and find is a branch nobody names.
+    const afterTab =
+      useProjectMapStore.getState().document?.canvas.shapes ?? [];
+    expect(afterTab).toHaveLength(2);
+    const child = afterTab[1];
+    expect(child.parent).toBe(root.id);
+    expect(child.x).toBeGreaterThan(root.x + root.width);
+    expect(useProjectMapStore.getState().editingShape).toBe(child.id);
+
+    // Act: Enter on the child.
+    fireEvent.keyDown(canvas, { key: "Enter" });
+
+    // Assert: a sibling — same parent as the child, below it, not a
+    // grandchild.
+    const afterEnter =
+      useProjectMapStore.getState().document?.canvas.shapes ?? [];
+    expect(afterEnter).toHaveLength(3);
+    const sibling = afterEnter[2];
+    expect(sibling.parent).toBe(root.id);
+    expect(sibling.y).toBeGreaterThan(child.y);
+  });
 });
