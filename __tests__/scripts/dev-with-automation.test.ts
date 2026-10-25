@@ -37,6 +37,7 @@ import {
   getRejectPrefixes,
   setServiceLogListener,
   spawnService,
+  startAntigravityBridgeService,
   startSandboxBridgeIngress,
   validateLocalAutomationPath,
   DEFAULT_AUTOMATION_REPO,
@@ -1792,6 +1793,77 @@ describe("buildMarsWebEnv", () => {
         marsWebBridge: false,
       } as never),
     ).toEqual({ MARS_WEB: "0" });
+  });
+});
+
+describe("startAntigravityBridgeService", () => {
+  /**
+   * `agy` keeps its Google login in the desktop keyring, which a container
+   * has not got, so the adapter runs on this host and the sandbox reaches it.
+   *
+   * Run by hand it died with the terminal that started it, and Antigravity
+   * cycles then failed with "not installed here" until somebody noticed. A
+   * stack that starts it is a stack where that cannot happen.
+   */
+  const base = { sandboxBridgeHost: "127.0.0.1" };
+
+  afterEach(() => {
+    delete process.env.OH_ANTIGRAVITY_BRIDGE_TOKEN;
+    delete process.env.OH_ANTIGRAVITY_BRIDGE_PORT;
+  });
+
+  it("stays off until a token says to turn it on", () => {
+    // The token is the opt-in: this opens a port every container on this
+    // host can reach, so starting it by default would widen what a sandbox
+    // can do without anybody choosing that.
+    expect(startAntigravityBridgeService(base)).toBeNull();
+  });
+
+  it("stays off where sandboxes have no bridge to reach it on", () => {
+    // No Docker conversations means no container that could use it, and a
+    // listener nothing can reach is a port open for nothing.
+    process.env.OH_ANTIGRAVITY_BRIDGE_TOKEN = "t";
+
+    expect(
+      startAntigravityBridgeService({ sandboxBridgeHost: null }),
+    ).toBeNull();
+  });
+
+  it("listens where the sandboxes already look for this host", async () => {
+    // The same address the API ingress uses, so a sandbox needs nothing new
+    // to find it.
+    const port = await (async () => {
+      const server = net.createServer();
+      await new Promise<void>((resolve) =>
+        server.listen(0, "127.0.0.1", resolve),
+      );
+      const { port: free } = server.address() as net.AddressInfo;
+      await new Promise((resolve) => server.close(resolve));
+      return free;
+    })();
+    process.env.OH_ANTIGRAVITY_BRIDGE_TOKEN = "t";
+    process.env.OH_ANTIGRAVITY_BRIDGE_PORT = String(port);
+    process.env.OH_ANTIGRAVITY_ADAPTER = "cat";
+
+    const proc = startAntigravityBridgeService(base);
+    try {
+      expect(proc).not.toBeNull();
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        const up = await new Promise<boolean>((resolve) => {
+          const socket = net.connect(port, "127.0.0.1", () => {
+            socket.destroy();
+            resolve(true);
+          });
+          socket.on("error", () => resolve(false));
+        });
+        if (up) return;
+        await delay(100);
+      }
+      throw new Error(`the bridge never listened on ${port}`);
+    } finally {
+      proc?.kill();
+      delete process.env.OH_ANTIGRAVITY_ADAPTER;
+    }
   });
 });
 

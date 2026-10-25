@@ -21,6 +21,7 @@ import {
 const USAGE = `oh-antigravity-bridge — serve Antigravity to sandboxes
 
   OH_ANTIGRAVITY_BRIDGE_TOKEN   required; the sandbox sends it first
+  OH_ANTIGRAVITY_BRIDGE_HOST    default the docker bridge
   OH_ANTIGRAVITY_BRIDGE_PORT    default ${DEFAULT_BRIDGE_PORT}
   OH_ANTIGRAVITY_ADAPTER        how to start the adapter on this host,
                                 default: the SDK checkout's own python
@@ -56,9 +57,11 @@ async function run() {
     return;
   }
   const token = process.env.OH_ANTIGRAVITY_BRIDGE_TOKEN?.trim();
+  const host = process.env.OH_ANTIGRAVITY_BRIDGE_HOST?.trim();
   const bridge = await startAntigravityBridge({
     token,
     command: adapterCommand(),
+    ...(host ? { host } : {}),
     port: Number(process.env.OH_ANTIGRAVITY_BRIDGE_PORT || DEFAULT_BRIDGE_PORT),
   });
   const stop = () => void bridge.close().then(() => process.exit(0));
