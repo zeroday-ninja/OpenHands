@@ -665,4 +665,47 @@ describe("ProjectMapCanvas", () => {
     expect(sibling.parent).toBe(root.id);
     expect(sibling.y).toBeGreaterThan(child.y);
   });
+
+  it("moves the origin when a west handle is pulled, and will not invert", () => {
+    // Resize is the fourth of milestone 1's drag variants and the only one
+    // with geometry worth getting wrong: an east handle just changes the
+    // width, but a west or north one has to move the origin *and* shrink by
+    // the same amount. Neither the action nor that arithmetic had a test.
+    stubFrame();
+    renderCanvas();
+    act(() => {
+      useProjectMapStore.getState().setViewport({ x: 0, y: 0, scale: 1 });
+      useProjectMapStore
+        .getState()
+        .addShape({ kind: "box", x: 100, y: 100, width: 200, height: 120 });
+    });
+    const [box] = useProjectMapStore.getState().document?.canvas.shapes ?? [];
+    act(() => {
+      useProjectMapStore.getState().setSelection([box.id]);
+    });
+    const handle = screen.getByTestId(`project-map-shape-handle-${box.id}-w`);
+    const canvas = screen.getByTestId("project-map-canvas");
+
+    // Act: pull the west edge 40 to the right.
+    fireEvent.pointerDown(handle, { ...POINTER, clientX: 100, clientY: 160 });
+    fireEvent.pointerMove(canvas, { ...POINTER, clientX: 140, clientY: 160 });
+    fireEvent.pointerUp(canvas, { ...POINTER, clientX: 140, clientY: 160 });
+
+    // Assert: the left edge moved and the box narrowed by the same 40 — the
+    // right edge stayed where it was, which is what pulling a west handle
+    // means.
+    const pulled = useProjectMapStore.getState().document?.canvas.shapes[0];
+    expect(pulled).toMatchObject({ x: 140, width: 160 });
+    expect((pulled?.x ?? 0) + (pulled?.width ?? 0)).toBe(300);
+
+    // Act: keep pulling, far past the other edge.
+    fireEvent.pointerDown(handle, { ...POINTER, clientX: 140, clientY: 160 });
+    fireEvent.pointerMove(canvas, { ...POINTER, clientX: 900, clientY: 160 });
+    fireEvent.pointerUp(canvas, { ...POINTER, clientX: 900, clientY: 160 });
+
+    // Assert: clamped rather than inverted. A negative width draws nothing
+    // and cannot be grabbed again.
+    const clamped = useProjectMapStore.getState().document?.canvas.shapes[0];
+    expect(clamped?.width).toBeGreaterThan(0);
+  });
 });
