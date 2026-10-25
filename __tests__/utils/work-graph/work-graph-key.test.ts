@@ -79,6 +79,50 @@ describe("work graph keys", () => {
     });
   });
 
+  it("builds one key for a pull request, in both the spellings a service uses", () => {
+    // Milestone 3 names these: "repositories, sources and PRs
+    // content-addressed so they carry no backend prefix and become the join
+    // between backends". Only the repository had a case, and PRs are the one
+    // a reader is most likely to see twice — two deployments working the same
+    // repository both report the pull request they opened against it.
+    const one = workGraphBackendKey(
+      backend({ host: "http://localhost:8000" }),
+      null,
+    );
+    const two = workGraphBackendKey(
+      backend({
+        id: "other",
+        host: "https://agents.example.com",
+        kind: "cloud",
+      }),
+      "org-7",
+    );
+    const pr = "pr:https://github.com/acme/app/pull/12";
+
+    // Act: the bare spelling and the artifact-prefixed one the service also
+    // emits, from two unrelated deployments.
+    const bare = [one, two].map((key) => globalizeWorkGraphKey(key, pr));
+    const prefixed = [one, two].map((key) =>
+      globalizeWorkGraphKey(key, `artifact:${pr}`),
+    );
+
+    // Assert: each spelling collapses to one key across deployments, and
+    // neither carries a backend part — a backend-scoped pull request would be
+    // drawn once per deployment that mentioned it.
+    expect(bare[0]).toBe(bare[1]);
+    expect(prefixed[0]).toBe(prefixed[1]);
+    expect(parseWorkGraphKey(bare[0] as string)).toMatchObject({
+      status: "resolved",
+      backendKey: null,
+      isContentAddressed: true,
+    });
+    expect(parseWorkGraphKey(prefixed[0] as string)).toMatchObject({
+      status: "resolved",
+      backendKey: null,
+      isContentAddressed: true,
+    });
+  });
+
   it("reports a key from an older grammar version as unresolved rather than re-matching it", () => {
     // Act
     const parsed = parseWorkGraphKey("oh:0/local:localhost:8000/cycle:5f1c9a");
