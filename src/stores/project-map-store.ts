@@ -875,6 +875,12 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
       return {
         document: previous,
         past: state.past.slice(0, -1),
+        // Defensive and, as things stand, unreachable: `past` is capped at
+        // the same limit and `undo` is the only thing that pushes here, so
+        // `future` can never be longer than the number of steps there were
+        // to undo. Kept rather than removed because it is the invariant, not
+        // a consequence somebody should have to re-derive — and said out
+        // loud so nobody writes a test for it that cannot fail.
         future: [state.document, ...state.future].slice(
           0,
           PROJECT_MAP_HISTORY_LIMIT,
