@@ -102,6 +102,8 @@ export const WORK_GRAPH_OMISSION_KINDS = [
   "conversation_unreachable",
   "cycle_reaped",
   "window_truncated",
+  /** A cycle handed over and the branch it names never reached the remote. */
+  "handoff_unsaved",
 ] as const;
 
 export type WorkGraphOmissionKind = (typeof WORK_GRAPH_OMISSION_KINDS)[number];
