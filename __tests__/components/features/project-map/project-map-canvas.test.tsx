@@ -224,6 +224,62 @@ describe("ProjectMapCanvas", () => {
     });
   });
 
+  it("pans with the middle button and with held space, whatever tool is in hand", () => {
+    // "Pan survives as space-held and middle-button in every tool." With a
+    // drawing tool in hand a press on paper *creates* a shape, so without
+    // these two the paper is unreachable until the user puts the tool down —
+    // and the existing pan case uses the Select tool, where a plain press
+    // already pans.
+    stubFrame();
+    renderCanvas();
+    act(() => {
+      // Scale 1 so the arithmetic below is the pointer's own distance; the
+      // default is not 1, which is why the pan case above sets it too.
+      useProjectMapStore.getState().setViewport({ x: 0, y: 0, scale: 1 });
+      useProjectMapStore.getState().setTool("box");
+    });
+    const canvas = screen.getByTestId("project-map-canvas");
+
+    // Act: the middle button, with the Box tool held.
+    fireEvent.pointerDown(canvas, {
+      ...POINTER,
+      button: 1,
+      clientX: 100,
+      clientY: 100,
+    });
+    fireEvent.pointerMove(canvas, {
+      ...POINTER,
+      button: 1,
+      clientX: 160,
+      clientY: 100,
+    });
+    fireEvent.pointerUp(canvas, {
+      ...POINTER,
+      button: 1,
+      clientX: 160,
+      clientY: 100,
+    });
+
+    // Assert: the paper moved and no box was drawn.
+    expect(useProjectMapStore.getState().viewport.x).toBe(-60);
+    expect(
+      useProjectMapStore.getState().document?.canvas.shapes ?? [],
+    ).toHaveLength(0);
+
+    // Act: held space, same tool, the other direction.
+    fireEvent.keyDown(canvas, { key: " " });
+    fireEvent.pointerDown(canvas, { ...POINTER, clientX: 160, clientY: 100 });
+    fireEvent.pointerMove(canvas, { ...POINTER, clientX: 100, clientY: 100 });
+    fireEvent.pointerUp(canvas, { ...POINTER, clientX: 100, clientY: 100 });
+    fireEvent.keyUp(canvas, { key: " " });
+
+    // Assert: back where it started, and still nothing drawn.
+    expect(useProjectMapStore.getState().viewport.x).toBe(0);
+    expect(
+      useProjectMapStore.getState().document?.canvas.shapes ?? [],
+    ).toHaveLength(0);
+  });
+
   it("narrows a multi-selection on click, and clears it on empty paper", () => {
     // Arrange: two plates selected, the second one added with shift.
     stubFrame();
