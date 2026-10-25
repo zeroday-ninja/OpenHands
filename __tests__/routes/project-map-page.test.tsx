@@ -633,6 +633,51 @@ describe("the project map page", () => {
     });
   });
 
+  it("names the shapes a regeneration cut loose from their nodes", async () => {
+    // The merge released them in place and reported which ones, and the store
+    // threw the report away — so a sticky note quietly stopped following its
+    // subject, and whoever anchored it found out the next time they moved
+    // that subject and nothing came with it.
+    //
+    // Driven the way it happens: an unsaved drawing anchored to a node, then
+    // a regeneration that drops the node.
+    const read = vi
+      .spyOn(ProjectMapService, "readProjectMap")
+      .mockResolvedValue({
+        workspace: HOST_WORKSPACE,
+        absolutePath: ABSOLUTE_PATH,
+        raw: mapFile(),
+      });
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />);
+    await screen.findByTestId("project-map-canvas");
+
+    // Arrange: a shape anchored to a node, which makes the buffer dirty.
+    act(() => {
+      useProjectMapStore.getState().addShape({
+        kind: "sticky",
+        x: 10,
+        y: 10,
+        anchor: { layer: "code", node: "src/routes/home.tsx", dx: 0, dy: 0 },
+      });
+    });
+
+    // Act: the agent regenerates without that node.
+    read.mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile({ commit: "feed9999", nodes: [], edges: [] }),
+    });
+    await user.click(screen.getByTestId("project-map-refresh"));
+
+    // Assert: said, and the id named — a bare count sends a reader hunting
+    // through their own drawing.
+    const notice = await screen.findByTestId("project-map-anchors-released");
+    expect(notice).toHaveAttribute("data-count", "1");
+    const [released] = useProjectMapStore.getState().releasedShapeIds;
+    expect(notice).toHaveTextContent(released);
+  });
+
   it("writes the arrangement back only when the user saves it", async () => {
     // Arrange
     vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({

@@ -59578,5 +59578,23 @@
     "tr": "Bu grafiği dışa aktar",
     "uk": "Експортувати цей граф",
     "id": "Ekspor grafik ini"
+  },
+  "PROJECT_MAP$ANCHORS_RELEASED": {
+    "en": "Released from a node the analysis dropped, and left where they were: {{ids}}",
+    "ja": "解析が削除したノードから切り離し、その場に残しました: {{ids}}",
+    "zh-CN": "已从分析删除的节点上解除，并留在原处：{{ids}}",
+    "zh-TW": "已從分析刪除的節點上解除，並留在原處：{{ids}}",
+    "ko-KR": "분석에서 삭제된 노드에서 분리하고 그 자리에 두었습니다: {{ids}}",
+    "no": "Løsnet fra en node analysen fjernet, og latt stå der de var: {{ids}}",
+    "ar": "فُصلت عن عقدة أزالها التحليل وتُركت في موضعها: {{ids}}",
+    "de": "Von einem vom Analyselauf entfernten Knoten gelöst und an ihrem Platz gelassen: {{ids}}",
+    "fr": "Détachées d'un nœud supprimé par l'analyse et laissées où elles étaient : {{ids}}",
+    "it": "Staccate da un nodo rimosso dall'analisi e lasciate dov'erano: {{ids}}",
+    "pt": "Soltas de um nó que a análise removeu e deixadas onde estavam: {{ids}}",
+    "es": "Desancladas de un nodo que el análisis eliminó y dejadas donde estaban: {{ids}}",
+    "ca": "Deslligades d'un node que l'anàlisi ha eliminat i deixades on eren: {{ids}}",
+    "tr": "Analizin kaldırdığı bir düğümden ayrıldı ve yerinde bırakıldı: {{ids}}",
+    "uk": "Відʼєднано від вузла, який прибрав аналіз, і залишено на місці: {{ids}}",
+    "id": "Dilepas dari node yang dihapus analisis dan dibiarkan di tempatnya: {{ids}}"
   }
 }
