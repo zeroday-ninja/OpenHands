@@ -71,6 +71,7 @@ import { ProjectMapInspector } from "./project-map-inspector";
 import { useWorkGraph } from "#/hooks/query/use-work-graph";
 import { FeatureAnnouncement } from "#/components/features/feature-trials/feature-announcement";
 import { featureTrialsOn } from "#/features/feature-trials";
+import { UnusedFeatureList } from "#/components/features/feature-trials/unused-feature-list";
 import { ProjectMapWaiting } from "./project-map-waiting";
 import {
   conversationIdOf,
@@ -262,6 +263,7 @@ export function ProjectMapPage() {
     >
       <FeatureAnnouncement trials={featureTrialsOn("/map")} />
       <ProjectMapWaiting />
+      <UnusedFeatureList />
       <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <div className="flex flex-col">
           <h2 className="text-xl font-medium text-contrast">
