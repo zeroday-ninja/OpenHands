@@ -744,4 +744,69 @@ describe("ProjectMapCanvas", () => {
       1,
     );
   });
+
+  it("deletes what was drawn and leaves the analysis alone", () => {
+    // The handler says why: "an analysed node is a claim the next analysis
+    // will make again, so it is hidden rather than deleted." Deleting one
+    // would be undone by the next regeneration anyway, and in the meantime
+    // the committed document would disagree with the repository.
+    //
+    // Delete is the destructive key and appeared nowhere in these tests.
+    stubFrame();
+    renderCanvas();
+    act(() => {
+      useProjectMapStore.getState().addShape({ kind: "box", x: 0, y: 0 });
+    });
+    const [drawn] = useProjectMapStore.getState().document?.canvas.shapes ?? [];
+    const canvas = screen.getByTestId("project-map-canvas");
+
+    // Act: both selected, one key.
+    act(() => {
+      useProjectMapStore.getState().setSelection([drawn.id, "left"]);
+    });
+    fireEvent.keyDown(canvas, { key: "Delete" });
+
+    // Assert
+    const after = useProjectMapStore.getState().document;
+    expect(after?.canvas.shapes).toHaveLength(0);
+    expect(after?.nodes.some((node) => node.id === "left")).toBe(true);
+  });
+
+  it("leaves a deleted parent's child and its lines behind", () => {
+    // Two invariants in the same path, both about not losing more than was
+    // asked for: "a child whose parent is gone becomes a root rather than
+    // vanishing", and "a line whose end is gone ends where that end was".
+    stubFrame();
+    renderCanvas();
+    act(() => {
+      useProjectMapStore.getState().addShape({ kind: "branch", x: 0, y: 0 });
+    });
+    const [root] = useProjectMapStore.getState().document?.canvas.shapes ?? [];
+    act(() => {
+      useProjectMapStore.getState().addBranchChild(root.id);
+    });
+    const shapes = useProjectMapStore.getState().document?.canvas.shapes ?? [];
+    const [parent, child] = shapes;
+    act(() => {
+      useProjectMapStore
+        .getState()
+        .addConnector(
+          { attach: "shape", shape: parent.id, side: null },
+          { attach: "shape", shape: child.id, side: null },
+        );
+      useProjectMapStore.getState().setSelection([parent.id]);
+    });
+    const canvas = screen.getByTestId("project-map-canvas");
+
+    // Act
+    fireEvent.keyDown(canvas, { key: "Delete" });
+
+    // Assert: the child survives as a root, and the line survives with its
+    // loose end where the parent was rather than disappearing with it.
+    const after = useProjectMapStore.getState().document?.canvas;
+    expect(after?.shapes.map((shape) => shape.id)).toEqual([child.id]);
+    expect(after?.shapes[0].parent).toBeNull();
+    expect(after?.connectors).toHaveLength(1);
+    expect(after?.connectors[0].from.attach).toBe("free");
+  });
 });
