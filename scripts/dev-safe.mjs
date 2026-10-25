@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
@@ -137,9 +138,17 @@ export function getOrCreatePersistedSessionApiKey(
  * Load a persisted default API key, generating + persisting one if the file
  * doesn't exist yet.
  *
- * Best-effort: if the file can't be written (e.g. read-only home dir), we
- * fall back to an in-memory key for this process so dev still works -- the
- * key just won't survive a restart.
+ * If the file cannot be written (a read-only home directory, say) the stack
+ * still runs on an in-memory key -- but the *stale file is removed*, which is
+ * the part that was missing. A client finds its key by reading that file, so
+ * leaving the old one there hands it a key this server no longer accepts: the
+ * 401 that follows looks like a broken client rather than a launcher that
+ * could not write. No key file at all is a condition every reader already
+ * handles and can report.
+ *
+ * `ephemeralApiKeyPaths` records which paths ended up ephemeral, so the
+ * launcher can say so where somebody is looking rather than only in a warning
+ * that scrolls past.
  *
  * @param {string} filePath - Where to read/write the key.
  * @param {string} label - Human-readable key label for warning messages.
@@ -171,12 +180,51 @@ export function getOrCreatePersistedApiKey(filePath, label = "API") {
     mkdirSync(path.dirname(filePath), { recursive: true });
     writeFileSync(filePath, `${newKey}\n`, { mode: 0o600 });
   } catch (error) {
+    ephemeralApiKeyPaths.add(filePath);
+    // The stale file is the actual hazard: a client reads it and is refused.
+    // Removing it turns a wrong answer into no answer, which every reader of
+    // this path already copes with.
+    //
+    // It only ever succeeds for the disk-full class of failure — ENOSPC,
+    // EDQUOT, EIO. A read-only directory fails both, because writing and
+    // unlinking need the same permission on the parent, and that case falls
+    // through to the warning below saying what is still on disk.
+    let stale = true;
+    try {
+      rmSync(filePath, { force: true });
+      stale = false;
+    } catch (removalError) {
+      console.warn(
+        `Could not remove the stale ${label} API key at ${filePath}: ` +
+          `${removalError.message}.`,
+      );
+    }
     console.warn(
-      `Could not persist ${label} API key to ${filePath}: ${error.message}. Falling back to in-memory key (will not survive restarts).`,
+      `Could not persist ${label} API key to ${filePath}: ${error.message}. ` +
+        `This stack is running on an in-memory key.` +
+        (stale
+          ? ` ${filePath} still holds an older key that this server will` +
+            ` refuse — delete it, or clients reading it will be rejected.`
+          : ` ${filePath} was removed, so clients will report a missing key` +
+            ` rather than being refused with a stale one.`),
     );
   }
   persistedApiKeyCache.set(filePath, newKey);
   return newKey;
+}
+
+/**
+ * Paths whose key could not be persisted, so the key is this process's only.
+ *
+ * Exported because the warning above is not enough on its own: a launcher
+ * prints a lot, and "the key you will read is not the key I am using" has to
+ * be answerable after the fact by whatever a person actually looks at.
+ */
+export const ephemeralApiKeyPaths = new Set();
+
+/** Whether `filePath` holds a key this process could not persist. */
+export function isEphemeralApiKey(filePath) {
+  return ephemeralApiKeyPaths.has(filePath);
 }
 
 /**
@@ -185,6 +233,7 @@ export function getOrCreatePersistedApiKey(filePath, label = "API") {
  */
 export function resetPersistedSessionApiKeyCache() {
   persistedApiKeyCache.clear();
+  ephemeralApiKeyPaths.clear();
 }
 
 function isEnoentError(error) {
