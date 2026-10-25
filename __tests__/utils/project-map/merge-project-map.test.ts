@@ -272,7 +272,9 @@ describe("mergeProjectMap", () => {
       ],
     };
     const previous = document({ nodes: [node({ id: "a" })], canvas: drawn });
-    const incoming = document({ nodes: [node({ id: "a" }), node({ id: "b" })] });
+    const incoming = document({
+      nodes: [node({ id: "a" }), node({ id: "b" })],
+    });
 
     // Act
     const result = mergeProjectMap(previous, incoming);
@@ -349,5 +351,39 @@ describe("mergeProjectMap", () => {
     // Assert
     expect(ontoBlank.document.canvas.shapes[0].text).toBe("proposed split");
     expect(ontoDrawn.document.canvas.shapes[0].text).toBe("mine");
+  });
+
+  it("reports the release so a surface can say it happened", () => {
+    // The merge computed this from the first version and the store threw it
+    // away, so a shape silently stopped following its subject and the person
+    // who anchored it found out the next time they moved that subject and
+    // nothing came with it. The plan asks for a visible warning, and the
+    // warning can only name what the merge reports.
+    const previous = document({
+      nodes: [node({ id: "gone" }), node({ id: "stays" })],
+      canvas: {
+        view: { mode: "both", layout: "free" },
+        shapes: [
+          shape({
+            id: "note-on-gone",
+            anchor: { layer: "code", node: "gone", dx: 0, dy: 0 },
+          }),
+          shape({
+            id: "note-on-stays",
+            anchor: { layer: "code", node: "stays", dx: 0, dy: 0 },
+          }),
+        ],
+        connectors: [],
+      },
+    });
+
+    const result = mergeProjectMap(
+      previous,
+      document({ nodes: [node({ id: "stays" })] }),
+    );
+
+    // Only the one that lost its node, named by id — a count alone sends a
+    // reader hunting through their own drawing.
+    expect(result.releasedShapeIds).toEqual(["note-on-gone"]);
   });
 });

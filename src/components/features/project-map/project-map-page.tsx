@@ -91,6 +91,15 @@ import { PROJECT_MAP_WARNING_LABELS } from "./project-map-labels";
 
 const ICON_SIZE = 14;
 
+/**
+ * How many released shapes are named before the rest become a count.
+ *
+ * Enough to go and find them, few enough that a regeneration which released a
+ * lot does not push the drawing off the top of the canvas. The same bound and
+ * the same reasoning as the memory-sync conflict line.
+ */
+const RELEASED_SHOWN = 5;
+
 export function ProjectMapPage() {
   const { t } = useTranslation("openhands");
   const { navigate } = useNavigation();
@@ -136,6 +145,9 @@ export function ProjectMapPage() {
   // or the live graph of what the agents are doing — the canvas draws either
   // the same way, and everything drawn over the top is unaffected.
   const layer = document_?.canvas.view.layer ?? "code";
+  const releasedShapeIds = useProjectMapStore(
+    (state) => state.releasedShapeIds,
+  );
   const { graph: workGraph, contributions: workContributions } = useWorkGraph({
     enabled: layer === "work",
   });
@@ -447,6 +459,25 @@ export function ProjectMapPage() {
                   className="pointer-events-none absolute bottom-4 left-4 text-xs text-feedback-warning"
                 >
                   {t(I18nKey.PROJECT_MAP$WORK_OMISSIONS)}
+                </p>
+              )}
+              {/* A shape whose anchor the regeneration dropped keeps its
+                  place and stops following anything. Said out loud, bounded,
+                  and with the ids named — the same shape as the memory-sync
+                  conflict line, because "some shapes were released" sends a
+                  reader hunting through their own drawing. */}
+              {releasedShapeIds.length > 0 && (
+                <p
+                  data-testid="project-map-anchors-released"
+                  data-count={releasedShapeIds.length}
+                  className="pointer-events-none absolute left-4 top-4 max-w-md text-xs text-feedback-warning"
+                >
+                  {t(I18nKey.PROJECT_MAP$ANCHORS_RELEASED, {
+                    ids: releasedShapeIds.slice(0, RELEASED_SHOWN).join(", "),
+                  })}
+                  {releasedShapeIds.length > RELEASED_SHOWN
+                    ? ` +${releasedShapeIds.length - RELEASED_SHOWN}`
+                    : ""}
                 </p>
               )}
               {layer === "work" && (

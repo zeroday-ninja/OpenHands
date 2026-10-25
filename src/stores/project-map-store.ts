@@ -81,6 +81,13 @@ interface ProjectMapState {
   /** Identity of the file revision the buffer came from, or null when empty. */
   source: string | null;
   document: PlacedProjectMapDocument | null;
+  /**
+   * Shapes the newest revision cut loose, because the node they were anchored
+   * to is gone. They keep their place and stop following anything, which is
+   * worth saying out loud: the alternative is a sticky note that quietly
+   * stopped tracking its subject.
+   */
+  releasedShapeIds: string[];
   dirty: boolean;
   selection: string[];
   /** The keyboard cursor, which may lead the selection. */
@@ -321,6 +328,7 @@ function mapNode(
 export const useProjectMapStore = create<ProjectMapState>((set) => ({
   source: null,
   document: null,
+  releasedShapeIds: [],
   dirty: false,
   selection: [],
   focused: null,
@@ -343,15 +351,27 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
       // regeneration costs nobody their arrangement even when it was never
       // saved. The analysis prompt asks the agent to preserve the same
       // fields; this is the half of that contract Canvas can enforce itself.
-      const document =
+      // The merge also says which shapes it had to cut loose: a shape
+      // anchored to a node the regeneration dropped keeps its place but no
+      // longer follows anything. That was computed and thrown away here, so
+      // the shape silently stopped tracking and the person who anchored it
+      // found out the next time they moved its subject and nothing came with
+      // it. The plan asks for a visible warning; this is what carries it.
+      const merged =
         state.document !== null && state.dirty
-          ? mergeProjectMap(state.document, incoming).document
-          : incoming;
+          ? mergeProjectMap(state.document, incoming)
+          : null;
+      const document = merged ? merged.document : incoming;
       const ids = new Set(document.nodes.map((node) => node.id));
       const noteIds = new Set(document.notes.map((note) => note.id));
       return {
         source,
         document,
+        //: Shapes whose anchor the newest revision dropped, for the surface
+        //: to name. Replaced rather than accumulated: it describes this
+        //: revision, and a list that grew would keep reporting a release the
+        //: reader has already seen.
+        releasedShapeIds: merged ? merged.releasedShapeIds : [],
         dirty: state.document !== null && state.dirty,
         // A selection that survived a reload keeps the inspector pointing at
         // something that still exists.
@@ -380,6 +400,7 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
     set({
       source: null,
       document: null,
+      releasedShapeIds: [],
       dirty: false,
       selection: [],
       focused: null,
