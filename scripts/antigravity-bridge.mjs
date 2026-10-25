@@ -203,13 +203,28 @@ export async function startAntigravityBridge({
       log(`  agy: ${String(chunk).trimEnd()}`),
     );
 
+    // A TCP read is not a line. A long `session/prompt` arrives in several
+    // chunks and the boundary lands wherever the network put it, so anything
+    // after the last newline is held until the rest of it turns up --
+    // forwarding half a line gives the adapter a JSON fragment to parse.
+    let pending = buffered;
     const forward = (text) => {
-      for (const line of text.split("\n")) {
-        if (!line.trim()) continue;
-        child.stdin.write(`${rewriteWorkspace(line, hostWorkspace)}\n`);
+      pending += text;
+      let index = pending.indexOf("\n");
+      while (index !== -1) {
+        const line = pending.slice(0, index);
+        pending = pending.slice(index + 1);
+        if (line.trim()) {
+          child.stdin.write(`${rewriteWorkspace(line, hostWorkspace)}\n`);
+        }
+        index = pending.indexOf("\n");
       }
     };
-    if (buffered) forward(buffered);
+    if (pending) {
+      const carried = pending;
+      pending = "";
+      forward(carried);
+    }
     socket.on("data", (chunk) => forward(String(chunk)));
 
     const stop = () => {
