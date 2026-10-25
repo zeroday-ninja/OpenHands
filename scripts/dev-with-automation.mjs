@@ -1440,6 +1440,45 @@ function startIngress(config) {
 }
 
 /**
+ * Serve Antigravity to sandboxes from this host, which is already signed in.
+ *
+ * `agy` keeps its Google login in the desktop keyring and a container has
+ * none, so the adapter runs here and the sandbox reaches it over the bridge
+ * address it already uses for the API. The credential never crosses.
+ *
+ * Started only when a token is set, which is the opt-in: it opens a port
+ * every container on this host can reach. Run by hand it died with the
+ * terminal that started it, and an Antigravity cycle then failed with "not
+ * installed here" until somebody noticed — a stack that starts it is a stack
+ * where that cannot happen.
+ */
+export function startAntigravityBridgeService(config) {
+  const token = process.env.OH_ANTIGRAVITY_BRIDGE_TOKEN?.trim();
+  if (!token || !config.sandboxBridgeHost) return null;
+
+  const port = Number(process.env.OH_ANTIGRAVITY_BRIDGE_PORT || 8771);
+  logService(
+    "antigravity",
+    `Serving the host's Antigravity login to sandboxes on ${config.sandboxBridgeHost}:${port}`,
+    c.dim,
+  );
+  return spawnService(
+    "antigravity",
+    "node",
+    [join(projectRoot, "bin", "oh-antigravity-bridge.mjs")],
+    {
+      cwd: projectRoot,
+      color: c.dim,
+      env: {
+        OH_ANTIGRAVITY_BRIDGE_TOKEN: token,
+        OH_ANTIGRAVITY_BRIDGE_HOST: config.sandboxBridgeHost,
+        OH_ANTIGRAVITY_BRIDGE_PORT: String(port),
+      },
+    },
+  );
+}
+
+/**
  * Expose the API routes, and nothing else, on the Docker bridge address that
  * sandboxes reach as host.docker.internal. The browser-facing ingress stays on
  * loopback; see `buildConfig` for when this runs.
@@ -2023,6 +2062,7 @@ async function main(options = {}) {
   startIngress(config);
   if (config.sandboxBridgeHost) {
     startSandboxBridgeIngress(config);
+    startAntigravityBridgeService(config);
   }
 
   // Wait for ingress to start
@@ -2062,7 +2102,9 @@ function startStaticFrontend(config, staticDir) {
   const keyPolicy = applySessionKeyPolicy({
     host: config.bindHost,
     sessionApiKey:
-      config.launchAgentServer && !config.isPublic ? config.sessionApiKey : null,
+      config.launchAgentServer && !config.isPublic
+        ? config.sessionApiKey
+        : null,
     authRequired: Boolean(config.launchAgentServer && config.isPublic),
     warn: (msg) => logService("static", msg, c.yellow),
   });

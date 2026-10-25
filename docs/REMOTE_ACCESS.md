@@ -194,14 +194,29 @@ which is already signed in, and the sandbox reaches it over the docker bridge
 the launcher already uses — the same shape as the access gate above: hold the
 secret behind the boundary and pass only the conversation across it.
 
+Put the token in `.env` and the stack starts it for you, on the same bridge
+address sandboxes already use for the API:
+
 ```sh
-export OH_ANTIGRAVITY_BRIDGE_TOKEN=$(openssl rand -hex 24)
-oh-antigravity-bridge
+OH_ANTIGRAVITY_BRIDGE_TOKEN=$(openssl rand -hex 24)
+```
+
+The token is the opt-in — without it nothing starts, because this opens a port
+every container on this host can reach. Run it by hand instead if you prefer:
+
+```sh
+OH_ANTIGRAVITY_BRIDGE_TOKEN=... oh-antigravity-bridge
 ```
 
 Then an agent profile whose `acp_command` opens the port and pipes stdio, with
-the same token delivered as a secret. What crosses is ACP's own JSON-RPC, one
-line at a time.
+the same token. What crosses is ACP's own JSON-RPC, one line at a time.
+
+Two things that will bite otherwise: the profile needs
+`acp_server: "antigravity"`, or the cycle records its builder as `custom` and
+the builder-share measurement counts the wrong runtime; and it needs no
+session mode, because the adapter has no `session/set_mode` and answers
+`-32601`. A cycle on Antigravity also wants a run timeout well above the
+600-second default.
 
 ## What it will not bend
 
