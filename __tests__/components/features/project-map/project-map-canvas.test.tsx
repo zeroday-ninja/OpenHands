@@ -708,4 +708,40 @@ describe("ProjectMapCanvas", () => {
     const clamped = useProjectMapStore.getState().document?.canvas.shapes[0];
     expect(clamped?.width).toBeGreaterThan(0);
   });
+
+  it("typing in a label is typing, not a shortcut", async () => {
+    // The fields live inside the SVG, so their keys bubble through the shapes
+    // and the paper. `fromTextField` is the guard, it is used in three key
+    // handlers, and nothing tested it — while its own comment names exactly
+    // what goes wrong without it: "space pans while writing, Backspace
+    // deletes the selection instead of a character, and Ctrl+Z undoes the
+    // drawing rather than the sentence."
+    stubFrame();
+    const user = userEvent.setup();
+    renderCanvas();
+    act(() => {
+      useProjectMapStore.getState().setViewport({ x: 0, y: 0, scale: 1 });
+      useProjectMapStore.getState().addShape({ kind: "box", x: 0, y: 0 });
+    });
+    const [box] = useProjectMapStore.getState().document?.canvas.shapes ?? [];
+    act(() => {
+      useProjectMapStore.getState().setEditingShape(box.id);
+    });
+    const field = screen.getByRole("textbox");
+
+    // Act: a space, a Backspace, and an undo — all of them inside the field.
+    await user.type(field, "a b");
+    fireEvent.keyDown(field, { key: "Backspace" });
+    fireEvent.keyDown(field, { key: "z", ctrlKey: true });
+
+    // Assert: the space did not pan, the Backspace did not delete the shape,
+    // and the undo did not take the shape back.
+    expect(useProjectMapStore.getState().viewport).toMatchObject({
+      x: 0,
+      y: 0,
+    });
+    expect(useProjectMapStore.getState().document?.canvas.shapes).toHaveLength(
+      1,
+    );
+  });
 });
