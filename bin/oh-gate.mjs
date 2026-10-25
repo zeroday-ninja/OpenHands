@@ -15,6 +15,11 @@ import {
 } from "../scripts/access-gate.mjs";
 import { discoverStack, StackNotFound } from "../scripts/stack-discovery.mjs";
 import { lanAddress, runGateSelfTest } from "../scripts/gate-self-test.mjs";
+import {
+  checkEveryRedirect,
+  checkLines,
+  setupLines,
+} from "../scripts/gate-setup.mjs";
 
 async function selfTest() {
   const host = lanAddress();
@@ -58,7 +63,30 @@ async function selfTest() {
   process.exit(report.ok ? 0 : 1);
 }
 
+async function setup() {
+  const host = process.env.OH_GATE_HOST?.trim() || lanAddress() || "127.0.0.1";
+  const port = Number(process.env.OH_GATE_PORT || 8443);
+  const hostname = process.env.OH_GATE_HOSTNAME?.trim() || null;
+  const clientId = process.env.OH_GOOGLE_CLIENT_ID?.trim() || null;
+
+  for (const line of setupLines({ host, port, hostname, clientId })) {
+    console.log(line);
+  }
+  if (!clientId) {
+    process.exit(0);
+  }
+
+  console.log("\n  asking Google…");
+  const report = await checkEveryRedirect({ clientId, host, port, hostname });
+  for (const line of checkLines(report)) console.log(line);
+  process.exit(report.ok ? 0 : 1);
+}
+
 async function run() {
+  if (process.argv.includes("setup")) {
+    await setup();
+    return;
+  }
   if (process.argv.includes("--self-test")) {
     await selfTest();
     return;

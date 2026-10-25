@@ -146,6 +146,59 @@ describe("reading Google's answer", () => {
     expect(emailFromIdToken(token, { clientId: "client-id" })).toBeNull();
   });
 
+  it("names the device, because Google refuses a private IP without it", () => {
+    // Found by asking Google. A LAN redirect URI without these two is:
+    //
+    //   invalid_request: device_id and device_name are required for
+    //   private IP: http://192.168.4.60:8443/oh/callback
+    //
+    // which is the address another machine on the LAN actually uses — so the
+    // sign-in could never have completed, with any client, however correctly
+    // registered.
+    const url = new URL(
+      authorizeUrl({
+        clientId: "client-id",
+        redirectUri: "http://192.168.4.60:8443/cb",
+        state: "state",
+      }),
+    );
+
+    expect(url.searchParams.get("device_name")).toBeTruthy();
+    expect(url.searchParams.get("device_id")).toMatch(/^[0-9a-f]{32}$/);
+  });
+
+  it("gives one machine the same device id every time", () => {
+    // Google wants it to identify the device, so a value that changed per
+    // request would describe a new machine on every sign-in.
+    const of = (redirectUri: string) =>
+      new URL(
+        authorizeUrl({ clientId: "c", redirectUri, state: "s" }),
+      ).searchParams.get("device_id");
+
+    expect(of("http://192.168.4.60:8443/cb")).toBe(
+      of("http://192.168.4.60:9999/cb"),
+    );
+    expect(of("http://192.168.4.60:8443/cb")).not.toBe(
+      of("http://192.168.4.61:8443/cb"),
+    );
+  });
+
+  it("hashes the host into the device id rather than sending its name", () => {
+    // The redirect URI has to carry the host — Google matches on it. The
+    // device id does not, and it only needs to be the same one each time, so
+    // it is a digest rather than a second copy of somebody's network layout.
+    const deviceId = new URL(
+      authorizeUrl({
+        clientId: "client-id",
+        redirectUri: "http://workshop-nas.lan:8443/cb",
+        state: "state",
+      }),
+    ).searchParams.get("device_id");
+
+    expect(deviceId).toMatch(/^[0-9a-f]{32}$/);
+    expect(deviceId).not.toContain("workshop");
+  });
+
   it("asks for an account rather than silently reusing one", () => {
     const url = new URL(
       authorizeUrl({
@@ -190,7 +243,9 @@ describe("a real gate in front of a real upstream", () => {
       // The launcher injects the key into served HTML. Here is that HTML.
       response.end(`<html><script>window.KEY="${SESSION_KEY}"</script></html>`);
     });
-    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+    await new Promise<void>((resolve) =>
+      upstream.listen(0, "127.0.0.1", resolve),
+    );
     const upstreamPort = (upstream.address() as { port: number }).port;
 
     gate = await startAccessGate(
@@ -322,7 +377,11 @@ describe("a real gate in front of a real upstream", () => {
   });
 
   it("refuses somebody else's verified account, by name", async () => {
-    const cookie = signSession("stranger@else.test", Date.now() + 60_000, SECRET);
+    const cookie = signSession(
+      "stranger@else.test",
+      Date.now() + 60_000,
+      SECRET,
+    );
 
     const response = await fetch(base, {
       headers: { cookie: `${COOKIE_NAME}=${encodeURIComponent(cookie)}` },
