@@ -7,7 +7,13 @@ import {
   improveVerdictExplanationKey,
 } from "./improve-verdict-badge";
 
-function ReviewEntry({ review }: { review: ImproveCycleReview }) {
+function ReviewEntry({
+  review,
+  conversationsGone,
+}: {
+  review: ImproveCycleReview;
+  conversationsGone: boolean;
+}) {
   const { t } = useTranslation("openhands");
   // The runtime is the whole point of the review: it is what makes the check
   // independent of the builder. Name it even when the service did not report
@@ -52,7 +58,7 @@ function ReviewEntry({ review }: { review: ImproveCycleReview }) {
             verdict={review.verdict ?? null}
             testId="improve-review-verdict-badge"
           />
-          {review.conversation_id ? (
+          {review.conversation_id && !conversationsGone ? (
             <ImproveConversationLink
               conversationId={review.conversation_id}
               label={t(I18nKey.AUTOMATIONS$IMPROVE$VIEW_REVIEW_CONVERSATION)}
@@ -130,8 +136,15 @@ function ReviewEntry({ review }: { review: ImproveCycleReview }) {
  */
 export function ImproveCycleReviews({
   reviews,
+  conversationsGone = false,
 }: {
   reviews: ImproveCycleReview[];
+  /**
+   * The cycle's sandbox was deleted with it, so none of these conversations
+   * can be opened. Passed down rather than read here: it is a fact about the
+   * cycle, and a reviewer's record does not carry it.
+   */
+  conversationsGone?: boolean;
 }) {
   const { t } = useTranslation("openhands");
 
@@ -152,6 +165,7 @@ export function ImproveCycleReviews({
               // their own; the runtime plus position is what identifies one.
               key={`${review.runtime ?? index}-${review.conversation_id ?? index}`}
               review={review}
+              conversationsGone={conversationsGone}
             />
           ))}
         </ul>

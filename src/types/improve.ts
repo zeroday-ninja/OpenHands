@@ -216,6 +216,15 @@ export interface ImproveCycle {
   builder_profile_id: string | null;
   builder_runtime: string | null;
   builder_conversation_id: string | null;
+  /**
+   * Closed by the janitor because its run ended and nobody reported it.
+   *
+   * It carries no verdict on purpose — an absence of evidence is not a
+   * judgement — and its sandbox is gone, which is why the conversation link
+   * must not be offered for one. Optional because the automation service is
+   * versioned separately: a deployment from before the reaper sends nothing.
+   */
+  reaped?: boolean;
   summary: string | null;
   branch: string | null;
   pr_url: string | null;
