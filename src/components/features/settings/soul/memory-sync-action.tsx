@@ -13,6 +13,14 @@ import { soulUnsupportedReasonFor } from "#/api/soul-service/soul-service.api";
 import { useSyncMemoryAcrossBackends } from "#/hooks/mutation/use-sync-memory-across-backends";
 import { BrandButton } from "#/components/features/settings/brand-button";
 
+/**
+ * How many conflicting ids to name before summarising the rest.
+ *
+ * Enough to go and find them, few enough that a sync which went badly does
+ * not bury the two lines above it that say what actually synced.
+ */
+const CONFLICTS_SHOWN = 5;
+
 export function MemorySyncAction() {
   const { t } = useTranslation("openhands");
   const { backends } = useActiveBackendContext();
@@ -24,7 +32,11 @@ export function MemorySyncAction() {
   if (eligible.length < 2) return null;
 
   const result = sync.data;
-  const conflicts = result?.backends.flatMap((entry) => entry.conflicts) ?? [];
+  // Deduplicated: the same entry conflicting on three backends is one entry
+  // to go and look at, and listing it three times reads as three problems.
+  const conflicts = [
+    ...new Set(result?.backends.flatMap((entry) => entry.conflicts) ?? []),
+  ];
 
   return (
     <div data-testid="memory-sync" className="flex flex-col gap-2">
@@ -78,7 +90,19 @@ export function MemorySyncAction() {
             >
               {t(I18nKey.SETTINGS$IDENTITY_MEMORY_SYNC_CONFLICTS, {
                 count: conflicts.length,
-              })}
+              })}{" "}
+              {/* The ids, not just how many. "Open MEMORY.md to reconcile
+                  them" is an instruction to search a file that may be months
+                  long; these are what to search for. Ids are identifiers, so
+                  there is nothing here to translate. */}
+              <code
+                data-testid="memory-sync-conflict-ids"
+                className="font-mono break-all"
+              >
+                {conflicts.slice(0, CONFLICTS_SHOWN).join(", ")}
+                {conflicts.length > CONFLICTS_SHOWN &&
+                  ` +${conflicts.length - CONFLICTS_SHOWN}`}
+              </code>
             </li>
           )}
         </ul>
