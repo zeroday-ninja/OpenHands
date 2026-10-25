@@ -208,8 +208,31 @@ every container on this host can reach. Run it by hand instead if you prefer:
 OH_ANTIGRAVITY_BRIDGE_TOKEN=... oh-antigravity-bridge
 ```
 
-Then an agent profile whose `acp_command` opens the port and pipes stdio, with
-the same token. What crosses is ACP's own JSON-RPC, one line at a time.
+Then an agent profile whose `acp_command` dials the port and pipes stdio. Ask
+the bridge for it rather than assembling it by hand:
+
+```sh
+oh-antigravity-bridge --profile-command
+```
+
+What crosses is ACP's own JSON-RPC, one line at a time.
+
+**The token is not in the profile.** The printed command reads it from
+`OH_ANTIGRAVITY_BRIDGE_TOKEN` in the sandbox's environment, which the agent
+server fills from its secret store:
+
+```sh
+curl -X PUT "$STACK/api/settings/secrets" -H "X-Session-API-Key: $KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"OH_ANTIGRAVITY_BRIDGE_TOKEN","value":"...","description":"Antigravity bridge"}'
+```
+
+The agent-profile store is secret-free at rest by design, so a token baked
+into a launch command is readable by anyone who can read a profile and cannot
+be rotated without rewriting one. The secret store is the half of this that
+already knows how to hold a secret. If the profile narrows `secret_refs`, the
+token's name has to be in the list — and so does whatever the fallback runtime
+needs.
 
 Two things that will bite otherwise: the profile needs
 `acp_server: "antigravity"`, or the cycle records its builder as `custom` and
@@ -236,6 +259,11 @@ CLI at a directory nobody asked for.
 **Off unless started.** It opens a port every container on this host can
 reach, so it is token-gated, and the token is checked before the adapter is
 spawned at all.
+
+**A refusal is said on both sides.** The socket closes with the reason and the
+bridge logs it with the peer address. Refusing silently and logging only the
+accepted connections is how a wrong token looked identical to a bridge that
+was not running.
 
 ## The trade-off, stated
 

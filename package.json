@@ -16,7 +16,8 @@
   "bin": {
     "agent-canvas": "bin/agent-canvas.mjs",
     "oh": "bin/oh.mjs",
-    "oh-gate": "bin/oh-gate.mjs"
+    "oh-gate": "bin/oh-gate.mjs",
+    "oh-antigravity-bridge": "bin/oh-antigravity-bridge.mjs"
   },
   "engines": {
     "node": ">=24"

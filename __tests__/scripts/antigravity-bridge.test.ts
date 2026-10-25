@@ -161,6 +161,32 @@ describe("a running bridge", () => {
     ).rejects.toThrow(/needs a token/);
   });
 
+  it("says on this side why it refused, not only down the socket", async () => {
+    // The far side is an ACP client, which reports a refusal as "Connection
+    // closed". A bridge that logs only its successes leaves the one case
+    // worth explaining invisible on both ends.
+    const said: string[] = [];
+    bridge = await startAntigravityBridge({
+      token: "right",
+      command: ["cat"],
+      host: "127.0.0.1",
+      port: 0,
+      docker: fakeDocker({ a: { ip: "10.9.9.9", workspace: "/w" } }),
+      log: (line: string) => said.push(line),
+    });
+    const { port } = bridge.server.address() as { port: number };
+
+    await new Promise<void>((resolve) => {
+      const socket = net.connect(port, "127.0.0.1", () =>
+        socket.write("right\n"),
+      );
+      socket.on("data", () => socket.destroy());
+      socket.on("close", () => resolve());
+    });
+
+    expect(said.join("\n")).toMatch(/refused .*no container/);
+  });
+
   it("refuses the wrong token before spawning anything", async () => {
     bridge = await startAntigravityBridge({
       token: "right",

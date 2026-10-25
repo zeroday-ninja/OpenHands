@@ -154,8 +154,14 @@ export async function startAntigravityBridge({
 
   const server = net.createServer((socket) => {
     void serve(socket).catch((error) => {
+      const reason = String(error?.message ?? error);
+      // Said here, not only down the socket. The far side is an ACP client
+      // that reports a refusal as "Connection closed", so a bridge that logs
+      // only its successes leaves the one case worth explaining invisible on
+      // both ends.
+      log(`  refused ${socket.remoteAddress ?? "a connection"}: ${reason}`);
       socket.end(
-        `${JSON.stringify({ jsonrpc: "2.0", error: { code: -32000, message: String(error.message ?? error) } })}\n`,
+        `${JSON.stringify({ jsonrpc: "2.0", error: { code: -32000, message: reason } })}\n`,
       );
     });
   });

@@ -52,6 +52,9 @@ const NODE_ENV_PILOT_TESTS = [
   // Opens real sockets and spawns real processes, for the same reason the
   // gate suites do: the failure worth catching is one that slips past.
   "__tests__/scripts/antigravity-bridge.test.ts",
+  // Runs the generated shim with python3 to check what it says when it
+  // cannot work.
+  "__tests__/scripts/antigravity-shim.test.ts",
 ];
 
 const normalizeBasePath = (value?: string) => {
