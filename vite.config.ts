@@ -49,6 +49,9 @@ const NODE_ENV_PILOT_TESTS = [
   // The redirect-URI list reads this host's real network interfaces, and the
   // verdict cases stub `fetch` -- which under jsdom is MSW's.
   "__tests__/scripts/gate-client-setup.test.ts",
+  // Opens real sockets and spawns real processes, for the same reason the
+  // gate suites do: the failure worth catching is one that slips past.
+  "__tests__/scripts/antigravity-bridge.test.ts",
 ];
 
 const normalizeBasePath = (value?: string) => {
