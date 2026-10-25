@@ -139,13 +139,48 @@ export function readCookie(header, name) {
 }
 
 /**
+ * A stable, non-identifying name for this machine, for `device_id` below.
+ *
+ * Hashed rather than sent raw: Google only needs it to be the same device
+ * each time, and a hostname is a detail about somebody's network that the
+ * request does not otherwise carry.
+ */
+export function deviceIdFor(hostname) {
+  return crypto
+    .createHash("sha256")
+    .update(`oh-gate:${hostname}`)
+    .digest("hex")
+    .slice(0, 32);
+}
+
+/**
  * Where to send a browser to sign in.
  *
  * `state` is signed the same way the session is, so the callback can tell its
  * own redirect from somebody else's — which is what stops a login being
  * forged by a link.
+ *
+ * `device_id` and `device_name` are not optional here, which is the whole
+ * reason this gate works on a LAN address at all. Google refuses a redirect
+ * URI on a private IP without them:
+ *
+ *     invalid_request: device_id and device_name are required for
+ *     private IP: http://192.168.4.60:8443/oh/callback
+ *
+ * That is the address another machine on the LAN actually uses, so without
+ * these two the sign-in could never have completed — with any client, however
+ * correctly registered. They are sent for every redirect rather than only
+ * private ones: Google treats them as surplus on a public host and on
+ * loopback, and a rule that fires only on some addresses is a rule that goes
+ * untested on the others.
  */
-export function authorizeUrl({ clientId, redirectUri, state, authUrl = GOOGLE_AUTH_URL }) {
+export function authorizeUrl({
+  clientId,
+  redirectUri,
+  state,
+  authUrl = GOOGLE_AUTH_URL,
+  deviceName = "OpenHands Agent Canvas",
+}) {
   const url = new URL(authUrl);
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("redirect_uri", redirectUri);
@@ -155,6 +190,8 @@ export function authorizeUrl({ clientId, redirectUri, state, authUrl = GOOGLE_AU
   // `select_account` rather than `none`: this host is shared with a personal
   // Google session often enough that silently reusing it is the wrong guess.
   url.searchParams.set("prompt", "select_account");
+  url.searchParams.set("device_id", deviceIdFor(new URL(redirectUri).hostname));
+  url.searchParams.set("device_name", deviceName);
   return url.toString();
 }
 

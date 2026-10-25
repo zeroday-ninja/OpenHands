@@ -24,6 +24,47 @@ oh-gate
 It prints the redirect URI to register with the Google client. Run it beside a
 stack that is already up; it finds the stack and the key the same way `oh` does.
 
+## Creating the Google client
+
+```sh
+oh-gate setup
+```
+
+It prints the console URL, **every** redirect URI to register — the LAN
+address, loopback and `localhost`, because Google matches the redirect URI
+exactly and a client registered for one of them fails on the others — and the
+variables to set. Run it again once the client exists and it asks Google
+whether that client works here, before you open a browser:
+
+```
+What Google says about this client:
+
+  ok    http://192.168.4.60:8443/__oh/auth/callback
+  FAIL  http://localhost:8443/__oh/auth/callback
+          redirect_uri_mismatch
+
+The client exists, but this redirect URI is not on its list. Add the URI
+printed above to the client's Authorised redirect URIs, exactly, including
+the port.
+```
+
+No credentials are sent: the client secret is not part of that request, and no
+sign-in is started.
+
+### Why `device_id` and `device_name` are on the authorize URL
+
+Because Google refuses a LAN redirect without them:
+
+```
+invalid_request: device_id and device_name are required for
+private IP: http://192.168.4.60:8443/__oh/auth/callback
+```
+
+That is the address another machine on the LAN uses, so the sign-in could not
+have completed without them — with any client, however correctly registered.
+`device_id` is a digest of the redirect host rather than its name: Google only
+needs the device to be the same one each time.
+
 ## Checking it before you have a Google client
 
 A Google OAuth client belongs to a Google account, so it is the one part of
