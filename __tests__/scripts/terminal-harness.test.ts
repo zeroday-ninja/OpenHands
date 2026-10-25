@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   colourEnabled,
+  renderBuilderShare,
   renderEvent,
   renderTranscript,
 } from "../../scripts/tui/render.mjs";
@@ -422,3 +423,61 @@ function applyUnified(before: string, lines: string[]): string {
   out.push(...source.slice(cursor));
   return out.length ? `${out.join("\n")}\n` : "";
 }
+
+describe("reading whether the rotation is even", () => {
+  const SHARE = {
+    window_days: 7,
+    days_covered: 7,
+    evenness_gap: 8.3,
+    target_gap: 20,
+    within_target: true,
+    runtimes: [
+      { runtime: "claude-code", cycles: 12, share: 0.4 },
+      { runtime: "codex", cycles: 10, share: 0.3333 },
+      { runtime: "antigravity", cycles: 8, share: 0.2667 },
+    ],
+    unattributed_cycles: 0,
+    misattributed_cycles: 0,
+    work_redone: 0,
+    handoffs_waiting: 0,
+    handoffs_unsaved: 0,
+  };
+
+  it("tells a target not yet answerable from one that failed", () => {
+    // Three states, not two. A gap measured over three days says nothing
+    // about a target defined over seven, and printing it as a failure is how
+    // a number nobody can act on gets acted on.
+    const partial = renderBuilderShare(
+      { ...SHARE, days_covered: 3, within_target: null, evenness_gap: 25.4 },
+      { name: "rotating", colour: false },
+    ).join("\n");
+    const failed = renderBuilderShare(
+      { ...SHARE, within_target: false, evenness_gap: 25.4 },
+      { name: "rotating", colour: false },
+    ).join("\n");
+
+    expect(partial).toContain("3 of 7 days have cycles");
+    expect(partial).not.toContain("outside target");
+    expect(failed).toContain("outside target");
+  });
+
+  it("names every fault it has, and nothing in place of the ones it has not", () => {
+    // The handoffs that lost their branch are the measure that sat at zero
+    // for a week while five of six handoffs preserved nothing, so it is the
+    // one that has to be legible here.
+    const lines = renderBuilderShare(
+      { ...SHARE, handoffs_unsaved: 2, work_redone: 0 },
+      { name: "rotating", colour: false },
+    ).join("\n");
+
+    expect(lines).toContain("2 handoff(s) lost their branch");
+    expect(lines).not.toContain("redid handed-over work");
+    expect(lines).toContain("claude-code 40% (12)");
+  });
+
+  it("says nothing at all about a program with no cycles in the window", () => {
+    // An empty table under a heading reads as "this ran and produced
+    // nothing", which is a different claim from "it has not run".
+    expect(renderBuilderShare({ ...SHARE, runtimes: [] })).toEqual([]);
+  });
+});
