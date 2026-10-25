@@ -286,3 +286,59 @@ export function renderDiff(diff, colour = true) {
     return line;
   });
 }
+
+/**
+ * The rotation's own measure, as the lines a person reads.
+ *
+ * Milestone 4's number had no reader anywhere: the runtime ledger says which
+ * subscription has usage left, and nothing said whether the work was being
+ * spread across the ones that do. Reading it took a curl.
+ *
+ * Here rather than in the command because the three states of
+ * `within_target` are the whole point and each is a different sentence —
+ * `null` is "not answerable yet", not "failing".
+ */
+export function renderBuilderShare(share, options = {}) {
+  const { name = "", colour = true } = options;
+  const runtimes = share?.runtimes ?? [];
+  if (runtimes.length === 0) return [];
+  const spread = runtimes
+    .map(
+      (entry) =>
+        `${entry.runtime} ${Math.round((entry.share ?? 0) * 100)}% (${entry.cycles})`,
+    )
+    .join("  ");
+  // A gap measured over two days says nothing about a target defined over
+  // seven, so an unanswerable verdict says which it is rather than reading
+  // as a pass or a failure.
+  const verdict =
+    share.within_target === null || share.within_target === undefined
+      ? `not yet answerable — ${share.days_covered} of ${share.window_days} days have cycles`
+      : share.within_target
+        ? "within target"
+        : "outside target";
+  const lines = [
+    "",
+    `${name}, over ${share.window_days} days`,
+    paint(`    ${spread}`, "dim", colour),
+    paint(
+      `    gap ${share.evenness_gap} against ${share.target_gap}: ${verdict}`,
+      share.within_target === false ? "yellow" : "dim",
+      colour,
+    ),
+  ];
+  // Only the non-zero faults, and nothing in place of the others: a row of
+  // zeroes is what makes a reader stop reading this part.
+  return [
+    ...lines,
+    ...[
+      [share.handoffs_unsaved, "handoff(s) lost their branch"],
+      [share.work_redone, "cycle(s) redid handed-over work"],
+      [share.misattributed_cycles, "cycle(s) filed under the wrong runtime"],
+      [share.unattributed_cycles, "cycle(s) with no runtime on record"],
+      [share.handoffs_waiting, "handoff(s) still waiting"],
+    ]
+      .filter(([count]) => count > 0)
+      .map(([count, what]) => paint(`    ${count} ${what}`, "yellow", colour)),
+  ];
+}

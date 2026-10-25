@@ -18,6 +18,7 @@ import { createClient } from "./client.mjs";
 import {
   colourEnabled,
   paint,
+  renderBuilderShare,
   renderDiff,
   renderTranscript,
 } from "./render.mjs";
@@ -708,7 +709,37 @@ async function showBudget(client, write, colour) {
   if (payload?.earliest_reset) {
     write(paint(`first one back at ${payload.earliest_reset}`, "dim", colour));
   }
+  await showBuilderShare(client, write, colour);
   return 0;
+}
+
+/**
+ * Whether the rotation is actually even, which is the thing it is for.
+ *
+ * Milestone 4's number had no reader: the ledger above says which runtime has
+ * usage left, and nothing said whether the work was being spread over the
+ * ones that do. Reading it needed a curl, so for a week it was only ever
+ * looked at by whoever remembered to.
+ *
+ * Per program, because evenness is a per-program question — a program with
+ * one builder is at 100% by construction and that is not a fault — and only
+ * for the ones that rotate.
+ */
+async function showBuilderShare(client, write, colour) {
+  const payload = await client.automation("GET", "");
+  const items = payload?.automations ?? payload?.items ?? payload ?? [];
+  const rotating = (Array.isArray(items) ? items : []).filter((item) => {
+    if (item?.preset_metadata?.preset_type !== "improve") return false;
+    const config = item.preset_metadata?.improve ?? {};
+    return (config.rotate_builder ?? []).length > 1;
+  });
+  for (const program of rotating) {
+    const share = await client.automation(
+      "GET",
+      `/improve/builder-share?days=7&automation_id=${program.id}`,
+    );
+    renderBuilderShare(share, { name: program.name, colour }).forEach(write);
+  }
 }
 
 export { PARITY_ACTIONS };

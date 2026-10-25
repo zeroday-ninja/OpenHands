@@ -102,7 +102,8 @@ export const PARITY_ACTIONS = [
   },
   {
     id: "budget",
-    action: "Read which runtimes have usage left",
+    action:
+      "Read which runtimes have usage left, and whether the rotation is even",
     where: "terminal",
     how: "oh budget",
   },
