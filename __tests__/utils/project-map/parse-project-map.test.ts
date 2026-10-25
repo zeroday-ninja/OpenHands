@@ -6,6 +6,40 @@ import {
 import { PROJECT_MAP_VERSION } from "#/types/project-map";
 
 /** The smallest document the page should accept. */
+/**
+ * A map as the analysis writes one: every field it emits, in its order.
+ *
+ * `minimalDocument` deliberately omits what the generator always writes, so
+ * it is the wrong input for a byte-identity claim — it round-trips with those
+ * fields filled in, which is the parser doing its job.
+ */
+function generatedDocument() {
+  return {
+    version: PROJECT_MAP_VERSION,
+    generated_at: "2026-10-24T06:00:00Z",
+    commit: "a443236",
+    groups: [{ id: "ui", label: "Canvas UI", accent: "1", collapsed: false }],
+    nodes: [
+      {
+        id: "src/routes/map.tsx",
+        kind: "route",
+        label: "map route",
+        path: "src/routes/map.tsx",
+        group: "ui",
+        summary: "The /map surface.",
+        size: 5,
+        x: 80,
+        y: 80,
+        pinned: false,
+        hidden: false,
+        tags: [],
+      },
+    ],
+    edges: [],
+    notes: [],
+  };
+}
+
 function minimalDocument() {
   return {
     version: PROJECT_MAP_VERSION,
@@ -331,7 +365,8 @@ describe("parseProjectMap", () => {
     // Assert: the drawing survives, released in place, and the repair is
     // counted. Losing hand-drawn work to a stale reference is the one thing
     // this layer must never do.
-    if (!result.ok) throw new Error(`expected a parsed document: ${result.reason}`);
+    if (!result.ok)
+      throw new Error(`expected a parsed document: ${result.reason}`);
     const [shape] = result.document.canvas!.shapes;
     expect(shape.anchor).toBeNull();
     expect(shape.x).toBe(320);
@@ -367,7 +402,8 @@ describe("parseProjectMap", () => {
 
     // Assert: untouched. Repairing it would delete every annotation the user
     // attached to running work the moment the file is read.
-    if (!result.ok) throw new Error(`expected a parsed document: ${result.reason}`);
+    if (!result.ok)
+      throw new Error(`expected a parsed document: ${result.reason}`);
     expect(result.document.canvas!.shapes[0].anchor).toEqual({
       layer: "work",
       node: "cycle:abc",
@@ -396,7 +432,8 @@ describe("parseProjectMap", () => {
     const result = parseProjectMap(JSON.stringify(raw));
 
     // Assert
-    if (!result.ok) throw new Error(`expected a parsed document: ${result.reason}`);
+    if (!result.ok)
+      throw new Error(`expected a parsed document: ${result.reason}`);
     expect(result.document.canvas!.connectors).toHaveLength(1);
     expect(result.document.canvas!.connectors[0].from).toEqual({
       attach: "free",
@@ -424,7 +461,8 @@ describe("parseProjectMap", () => {
   it("writes a document nobody has drawn on without adding a canvas block", () => {
     // Arrange: a committed map with no authored layer at all.
     const result = parseProjectMap(JSON.stringify(minimalDocument()));
-    if (!result.ok) throw new Error(`expected a parsed document: ${result.reason}`);
+    if (!result.ok)
+      throw new Error(`expected a parsed document: ${result.reason}`);
 
     // Act
     const written = serializeProjectMap(result.document);
@@ -434,16 +472,41 @@ describe("parseProjectMap", () => {
     expect(Object.keys(JSON.parse(written) as object)).not.toContain("canvas");
   });
 
+  it("gives back a generated map byte for byte when nobody drew on it", () => {
+    // The milestone's own pass/fail metric, and stronger than the assertion
+    // above it: the canvas key being absent would still hold if the
+    // serializer started adding a field, reordering keys or changing the
+    // indent — and any of those puts the whole file in somebody's diff the
+    // first time they open the map and save.
+    //
+    // The fixture is shaped like what the analysis actually writes — every
+    // field present, in its order — because that is the only input the claim
+    // is about. A minimal document that omits the fields the generator
+    // always writes round-trips with them added, which is correct and is a
+    // different question.
+    const committed = `${JSON.stringify(generatedDocument(), null, 2)}\n`;
+
+    // Act
+    const result = parseProjectMap(committed);
+    if (!result.ok)
+      throw new Error(`expected a parsed document: ${result.reason}`);
+
+    // Assert
+    expect(serializeProjectMap(result.document)).toBe(committed);
+  });
+
   it("round-trips a drawing so the editor and the file agree", () => {
     // Arrange
     const result = parseProjectMap(JSON.stringify(drawnDocument()));
-    if (!result.ok) throw new Error(`expected a parsed document: ${result.reason}`);
+    if (!result.ok)
+      throw new Error(`expected a parsed document: ${result.reason}`);
 
     // Act
     const again = parseProjectMap(serializeProjectMap(result.document));
 
     // Assert
-    if (!again.ok) throw new Error(`expected a parsed document: ${again.reason}`);
+    if (!again.ok)
+      throw new Error(`expected a parsed document: ${again.reason}`);
     expect(again.document.canvas).toEqual(result.document.canvas);
   });
 });
