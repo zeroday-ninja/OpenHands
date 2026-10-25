@@ -14,9 +14,11 @@
 import process from "node:process";
 import {
   BridgeRefused,
+  DEFAULT_BRIDGE_HOST,
   DEFAULT_BRIDGE_PORT,
   startAntigravityBridge,
 } from "../scripts/antigravity-bridge.mjs";
+import { shimCommand } from "../scripts/antigravity-shim.mjs";
 
 const USAGE = `oh-antigravity-bridge — serve Antigravity to sandboxes
 
@@ -26,8 +28,12 @@ const USAGE = `oh-antigravity-bridge — serve Antigravity to sandboxes
   OH_ANTIGRAVITY_ADAPTER        how to start the adapter on this host,
                                 default: the SDK checkout's own python
 
-The sandbox side is an agent profile whose acp_command opens the port and
-pipes stdio. See docs/REMOTE_ACCESS.md.`;
+  --profile-command             print the acp_command for the sandbox-side
+                                agent profile and exit
+
+The sandbox side is an agent profile whose acp_command dials this port and
+pipes stdio. It carries no token: that arrives from the agent server's secret
+store. See docs/REMOTE_ACCESS.md.`;
 
 function adapterCommand() {
   const configured = process.env.OH_ANTIGRAVITY_ADAPTER?.trim();
@@ -51,18 +57,34 @@ function adapterCommand() {
   ];
 }
 
+/**
+ * Where this invocation would listen.
+ *
+ * The daemon and `--profile-command` read it the same way on purpose: a
+ * printed command that dials a port the bridge is not on fails as "that
+ * token is not this bridge's", which reads like a credential problem.
+ */
+function endpoint() {
+  return {
+    host: process.env.OH_ANTIGRAVITY_BRIDGE_HOST?.trim() || DEFAULT_BRIDGE_HOST,
+    port: Number(process.env.OH_ANTIGRAVITY_BRIDGE_PORT || DEFAULT_BRIDGE_PORT),
+  };
+}
+
 async function run() {
   if (process.argv.includes("--help") || process.argv.includes("-h")) {
     console.log(USAGE);
     return;
   }
+  if (process.argv.includes("--profile-command")) {
+    console.log(shimCommand(endpoint()));
+    return;
+  }
   const token = process.env.OH_ANTIGRAVITY_BRIDGE_TOKEN?.trim();
-  const host = process.env.OH_ANTIGRAVITY_BRIDGE_HOST?.trim();
   const bridge = await startAntigravityBridge({
     token,
     command: adapterCommand(),
-    ...(host ? { host } : {}),
-    port: Number(process.env.OH_ANTIGRAVITY_BRIDGE_PORT || DEFAULT_BRIDGE_PORT),
+    ...endpoint(),
   });
   const stop = () => void bridge.close().then(() => process.exit(0));
   process.once("SIGINT", stop);
