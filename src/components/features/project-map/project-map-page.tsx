@@ -71,6 +71,7 @@ import { ProjectMapInspector } from "./project-map-inspector";
 import { useWorkGraph } from "#/hooks/query/use-work-graph";
 import { ProjectMapWorkExport } from "./project-map-work-export";
 import { FeatureAnnouncement } from "#/components/features/feature-trials/feature-announcement";
+import { FeatureFeedback } from "#/components/features/feature-trials/feature-feedback";
 import { featureTrialsOn } from "#/features/feature-trials";
 import { UnusedFeatureList } from "#/components/features/feature-trials/unused-feature-list";
 import { ProjectMapWaiting } from "./project-map-waiting";
@@ -277,6 +278,11 @@ export function ProjectMapPage() {
       className="flex h-full min-h-0 flex-col gap-3 p-4 lg:px-8"
     >
       <FeatureAnnouncement trials={featureTrialsOn("/map")} />
+      {/* The same list, so a surface that introduces its features also asks
+          how they went — the announcement carries a rating on its last step
+          and then never returns, which left the one chance to say anything
+          at the moment before the feature had been used. */}
+      <FeatureFeedback trials={featureTrialsOn("/map")} />
       <ProjectMapWaiting />
       <UnusedFeatureList />
       <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">

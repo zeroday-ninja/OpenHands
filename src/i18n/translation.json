@@ -52829,6 +52829,24 @@
     "uk": "Крок {{current}} з {{total}}",
     "id": "Langkah {{current}} dari {{total}}"
   },
+  "FEATURE$FEEDBACK$ASK": {
+    "en": "You have been using {{feature}}. How is it going?",
+    "ja": "{{feature}} をお使いですね。いかがですか？",
+    "zh-CN": "你一直在用{{feature}}。感觉如何？",
+    "zh-TW": "你一直在用{{feature}}。感覺如何？",
+    "ko-KR": "{{feature}}를 써 보셨네요. 어떤가요?",
+    "no": "Du har brukt {{feature}}. Hvordan går det?",
+    "ar": "لقد كنت تستخدم {{feature}}. كيف تجده؟",
+    "de": "Du benutzt {{feature}}. Wie läuft es?",
+    "fr": "Vous utilisez {{feature}}. Qu'en pensez-vous ?",
+    "it": "Hai usato {{feature}}. Come va?",
+    "pt": "Você andou usando {{feature}}. Como está?",
+    "es": "Has estado usando {{feature}}. ¿Cómo va?",
+    "ca": "Has estat fent servir {{feature}}. Com va?",
+    "tr": "{{feature}} kullanıyorsun. Nasıl gidiyor?",
+    "uk": "Ви користуєтеся {{feature}}. Як воно?",
+    "id": "Kamu sudah memakai {{feature}}. Bagaimana rasanya?"
+  },
   "FEATURE$RATE$PROMPT": {
     "en": "Was this any use?",
     "ja": "これは役に立ちましたか？",
