@@ -50,8 +50,11 @@ function buildAutomation(overrides: Partial<Automation> = {}): Automation {
   };
 }
 
-function renderRoute(automationId = AUTOMATION_ID) {
-  loaderData = { automationId, isCatalogEntry: false };
+function renderRoute(
+  automationId = AUTOMATION_ID,
+  setupRejection: string | null = null,
+) {
+  loaderData = { automationId, isCatalogEntry: false, setupRejection };
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -100,9 +103,12 @@ describe("the setup route with an id the catalog does not claim", () => {
     } as Parameters<typeof clientLoader>[0]);
 
     // Assert
+    // No rejection either: an id nobody published is a dead link, and saying
+    // it was refused would blame the package for a mistyped URL.
     expect(data).toEqual({
       automationId: AUTOMATION_ID,
       isCatalogEntry: false,
+      setupRejection: null,
     });
   });
 
@@ -151,5 +157,18 @@ describe("the setup route with an id the catalog does not claim", () => {
     expect(
       await screen.findByText("AUTOMATIONS$DETAIL$NOT_FOUND_TITLE"),
     ).toBeInTheDocument();
+  });
+
+  it("says a refused manifest was refused, not that nothing exists", () => {
+    // Without this the page fell through to the automation lookup, which
+    // answers "no such automation" — a different claim from "the catalog
+    // published this and this host would not run it", and the one that sends
+    // a reader looking for a typo instead of a package defect.
+    renderRoute(AUTOMATION_ID, 'setup.version must be "1.0"');
+
+    expect(screen.getByTestId("automation-manifest-rejected")).toBeVisible();
+    expect(
+      screen.getByTestId("automation-manifest-rejected-reason"),
+    ).toHaveTextContent("setup.version");
   });
 });

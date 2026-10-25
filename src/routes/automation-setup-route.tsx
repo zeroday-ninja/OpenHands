@@ -46,7 +46,17 @@ export const clientLoader = ({ params }: Route.ClientLoaderArgs) => {
     throw new Response(null, { status: 404, statusText: "Not Found" });
   }
 
-  return { automationId: entry?.id ?? automationId, isCatalogEntry: !!entry };
+  // A refused entry is neither a catalog entry nor a missing one. Without
+  // this it fell through to the automation lookup and the page said there was
+  // no such automation — which is a different claim from "the catalog
+  // published this and this host would not run it".
+  const rejection = entry ? null : SETUP_REGISTRY.rejectionFor(automationId);
+
+  return {
+    automationId: entry?.id ?? automationId,
+    isCatalogEntry: !!entry,
+    setupRejection: rejection?.reason ?? null,
+  };
 };
 
 function CatalogEntrySetup({ automationId }: { automationId: string }) {
@@ -111,7 +121,12 @@ function ExistingAutomationSetup({ automationId }: { automationId: string }) {
 }
 
 function AutomationSetupRoutePage() {
-  const { automationId, isCatalogEntry } = useLoaderData<typeof clientLoader>();
+  const { automationId, isCatalogEntry, setupRejection } =
+    useLoaderData<typeof clientLoader>();
+
+  // Said before the automation lookup, because the lookup's answer would be
+  // "no such automation" and that is not what happened.
+  if (setupRejection) return <RejectedManifestNotice reason={setupRejection} />;
 
   return isCatalogEntry ? (
     <CatalogEntrySetup automationId={automationId} />
