@@ -52,6 +52,8 @@ export interface UseWorkGraphOptions {
 
 export interface UseWorkGraphResult {
   graph: MergedWorkGraph;
+  /** What each deployment contributed, which is what an export attests to. */
+  contributions: readonly WorkGraphContribution[];
   /** No deployment has answered yet, though at least one was asked. */
   isPending: boolean;
   isFetching: boolean;
@@ -184,7 +186,11 @@ export function useWorkGraph(
     })
     .join("\u0001");
 
-  const graph = React.useMemo(() => {
+  // The contributions, not only the merged result: an export has to say what
+  // each deployment contributed — including the ones that could not be asked,
+  // because an absent backend and a backend with no work are the same empty
+  // space otherwise. Memoised on the same signature so the two cannot drift.
+  const { graph, contributions } = React.useMemo(() => {
     const contributions: WorkGraphContribution[] = queryable.map(
       (backend, index) => {
         const result = results[index];
@@ -211,7 +217,7 @@ export function useWorkGraph(
       },
     );
 
-    return mergeWorkGraphs(contributions);
+    return { graph: mergeWorkGraphs(contributions), contributions };
   }, [signature]);
 
   // Read back from the merge rather than from the responses: the backend node
@@ -233,6 +239,7 @@ export function useWorkGraph(
 
   return {
     graph,
+    contributions,
     isPending: askedAnyone && results.every((result) => result.isPending),
     isFetching: results.some((result) => result.isFetching),
   };

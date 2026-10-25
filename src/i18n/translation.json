@@ -59542,5 +59542,23 @@
     "tr": "Bazı işler gösterilmiyor. Nedenini görmek için bir düğümde denetçiyi açın.",
     "uk": "Частину роботи не показано. Відкрийте інспектор на вузлі, щоб дізнатися чому.",
     "id": "Sebagian pekerjaan tidak ditampilkan. Buka inspektur pada simpul untuk melihat alasannya."
+  },
+  "PROJECT_MAP$WORK_EXPORT": {
+    "en": "Export this graph",
+    "ja": "このグラフを書き出す",
+    "zh-CN": "导出此图",
+    "zh-TW": "匯出此圖",
+    "ko-KR": "이 그래프 내보내기",
+    "no": "Eksporter denne grafen",
+    "ar": "تصدير هذا المخطط",
+    "de": "Diesen Graphen exportieren",
+    "fr": "Exporter ce graphe",
+    "it": "Esporta questo grafo",
+    "pt": "Exportar este grafo",
+    "es": "Exportar este grafo",
+    "ca": "Exporta aquest graf",
+    "tr": "Bu grafiği dışa aktar",
+    "uk": "Експортувати цей граф",
+    "id": "Ekspor grafik ini"
   }
 }

@@ -69,6 +69,7 @@ import { buildProjectMapAnalysisPrompt } from "./project-map-analysis-prompt";
 import { ProjectMapCanvas } from "./project-map-canvas";
 import { ProjectMapInspector } from "./project-map-inspector";
 import { useWorkGraph } from "#/hooks/query/use-work-graph";
+import { ProjectMapWorkExport } from "./project-map-work-export";
 import { FeatureAnnouncement } from "#/components/features/feature-trials/feature-announcement";
 import { featureTrialsOn } from "#/features/feature-trials";
 import { UnusedFeatureList } from "#/components/features/feature-trials/unused-feature-list";
@@ -135,7 +136,9 @@ export function ProjectMapPage() {
   // or the live graph of what the agents are doing — the canvas draws either
   // the same way, and everything drawn over the top is unaffected.
   const layer = document_?.canvas.view.layer ?? "code";
-  const { graph: workGraph } = useWorkGraph({ enabled: layer === "work" });
+  const { graph: workGraph, contributions: workContributions } = useWorkGraph({
+    enabled: layer === "work",
+  });
   const workLayer = React.useMemo(
     () => (layer === "work" ? workGraphToDerivedLayer(workGraph) : null),
     [layer, workGraph],
@@ -445,6 +448,14 @@ export function ProjectMapPage() {
                 >
                   {t(I18nKey.PROJECT_MAP$WORK_OMISSIONS)}
                 </p>
+              )}
+              {layer === "work" && (
+                <div className="absolute bottom-4 right-4">
+                  <ProjectMapWorkExport
+                    graph={workGraph}
+                    contributions={workContributions}
+                  />
+                </div>
               )}
               <ProjectMapChatDock
                 document={document_}
