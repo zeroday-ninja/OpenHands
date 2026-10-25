@@ -14,7 +14,10 @@ import {
 import { v4 as uuidv4 } from "uuid";
 import { AgentKind, Provider } from "#/types/settings";
 import type { ConversationRuntimeContext } from "#/api/conversation-file-upload.api";
-import { getAgentServerWorkingDir } from "../agent-server-config";
+import {
+  DEFAULT_WORKING_DIR,
+  getAgentServerWorkingDir,
+} from "../agent-server-config";
 import {
   resolveConversationHooksProjectDir,
   resolveNewConversationWorkspace,
@@ -950,12 +953,18 @@ class AgentServerConversationService {
     filePath?: string,
   ): Promise<string> {
     if (getActiveBackend().backend.kind === "cloud") {
-      // Cloud exposes a per-conversation file endpoint; the sandbox
-      // working dir is fixed (`/workspace/project`), so PLAN.md lives at
-      // a known absolute path. Mirrors OpenHands' readConversationFile.
+      // Cloud exposes a per-conversation file endpoint, and its sandbox
+      // working dir is the default one, so PLAN.md lives at a known absolute
+      // path. Mirrors OpenHands' readConversationFile.
+      //
+      // Built from `DEFAULT_WORKING_DIR` rather than written out: the
+      // repository's own rule is that the default working directory is named
+      // in one place, and two copies of it here would have gone on being
+      // right only for as long as nobody changed the one that matters.
+      const cloudWorkingDir = `/${DEFAULT_WORKING_DIR}`;
       const path = requirePathInsideDirectory(
-        filePath ?? "/workspace/project/.agents_tmp/PLAN.md",
-        "/workspace/project",
+        filePath ?? `${cloudWorkingDir}/.agents_tmp/PLAN.md`,
+        cloudWorkingDir,
       );
       return readCloudConversationFile(conversationId, path);
     }
