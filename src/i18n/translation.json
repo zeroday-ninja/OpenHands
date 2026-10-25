@@ -51893,6 +51893,24 @@
     "uk": "Розмова виконавця",
     "id": "Percakapan pembuat"
   },
+  "AUTOMATIONS$IMPROVE$CONVERSATION_GONE": {
+    "en": "Its sandbox is gone; this is the stored report",
+    "ja": "サンドボックスは削除済み。これは保存されたレポートです",
+    "zh-CN": "沙箱已删除；这是已保存的报告",
+    "zh-TW": "沙箱已刪除；這是已儲存的報告",
+    "ko-KR": "샌드박스가 삭제되었습니다. 저장된 보고서입니다",
+    "no": "Sandkassen er borte; dette er den lagrede rapporten",
+    "ar": "اختفت بيئة التشغيل؛ هذا هو التقرير المحفوظ",
+    "de": "Die Sandbox ist weg; dies ist der gespeicherte Bericht",
+    "fr": "Son bac à sable n'existe plus ; voici le rapport enregistré",
+    "it": "La sandbox non c'è più; questo è il report salvato",
+    "pt": "A sandbox desapareceu; este é o relatório guardado",
+    "es": "Su sandbox ya no existe; este es el informe guardado",
+    "ca": "El seu sandbox ja no existeix; aquest és l'informe desat",
+    "tr": "Sandbox'ı yok; bu kaydedilmiş rapor",
+    "uk": "Пісочниці більше немає; це збережений звіт",
+    "id": "Sandbox-nya sudah hilang; ini laporan yang tersimpan"
+  },
   "AUTOMATIONS$IMPROVE$VIEW_REVIEW_CONVERSATION": {
     "en": "Review conversation",
     "ja": "レビューの会話",

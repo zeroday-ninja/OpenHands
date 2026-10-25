@@ -466,6 +466,33 @@ describe("AutomationImprove packaged code", () => {
 });
 
 describe("AutomationImprove cycle history", () => {
+  it("does not offer a conversation a reaped cycle no longer has", async () => {
+    // Arrange: the janitor closed this cycle because its run ended and
+    // nobody reported it, which deletes the sandbox with it. The link was
+    // offered anyway and led nowhere — and the card already holds what
+    // survives, which is the stored report.
+    vi.mocked(AutomationService.listImproveCycles).mockResolvedValue({
+      cycles: [{ ...reviewedCycle, reaped: true }],
+      total: 1,
+    });
+
+    // Act
+    renderPage();
+    const card = await screen.findByTestId("improve-cycle-card");
+
+    // Assert
+    expect(
+      within(card).queryByTestId("improve-builder-conversation-link"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(card).getByTestId("improve-builder-conversation-gone"),
+    ).toBeVisible();
+    // And no reviewer's conversation either: they were in the same sandbox.
+    expect(
+      within(card).queryByTestId("improve-review-conversation-link"),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows the builder's work, its cited sources and the reviewer's own runtime", async () => {
     renderPage();
 

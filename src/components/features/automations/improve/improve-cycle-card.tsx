@@ -72,7 +72,18 @@ export function ImproveCycleCard({ cycle }: { cycle: ImproveCycle }) {
                 {builderRuntime}
               </span>
             </span>
-            {cycle.builder_conversation_id ? (
+            {/* A reaped cycle's sandbox was deleted with it, so its
+                conversation cannot be opened. The link used to be offered
+                anyway and led nowhere; what survives is the stored report,
+                which is the rest of this card. */}
+            {cycle.reaped === true ? (
+              <span
+                data-testid="improve-builder-conversation-gone"
+                className="text-xs text-muted"
+              >
+                {t(I18nKey.AUTOMATIONS$IMPROVE$CONVERSATION_GONE)}
+              </span>
+            ) : cycle.builder_conversation_id ? (
               <ImproveConversationLink
                 conversationId={cycle.builder_conversation_id}
                 label={t(I18nKey.AUTOMATIONS$IMPROVE$VIEW_BUILDER_CONVERSATION)}
@@ -173,7 +184,10 @@ export function ImproveCycleCard({ cycle }: { cycle: ImproveCycle }) {
       ) : null}
 
       <ImproveCitedSources sources={cycle.sources} />
-      <ImproveCycleReviews reviews={cycle.reviews} />
+      <ImproveCycleReviews
+        reviews={cycle.reviews}
+        conversationsGone={cycle.reaped === true}
+      />
       {/* Last, and visibly its own thing: everything above is about the
           repository, this is about the user. */}
       <ImproveSoulSuggestions suggestions={cycle.soul_suggestions} />
