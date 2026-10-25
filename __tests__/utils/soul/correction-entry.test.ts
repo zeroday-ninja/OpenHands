@@ -12,7 +12,6 @@ import { describe, expect, it } from "vitest";
 import {
   correctionEntry,
   correctionEntryId,
-  withCorrection,
 } from "#/utils/soul/correction-entry";
 
 const AT = new Date("2026-10-25T11:22:33.456Z");
@@ -27,6 +26,18 @@ const CORRECTION = {
 };
 
 describe("filing a correction in MEMORY.md", () => {
+  it("carries the id the server's union keys on", () => {
+    // The entry is sent as a one-line log and merged by the server, so the id
+    // is what makes sending it twice the same as sending it once. Derived from
+    // the lesson's, because capture retries and two tabs are ordinary.
+    expect(correctionEntryId(CORRECTION.lessonId)).toBe(
+      `lesson-${CORRECTION.lessonId}`,
+    );
+    expect(correctionEntry(CORRECTION)).toContain(
+      `<!-- id: lesson-${CORRECTION.lessonId} -->`,
+    );
+  });
+
   it("writes an entry the cross-backend merge can parse", () => {
     // The merge takes a union by entry id, which is what lets a correction
     // captured on one machine reach the others by the sync that already
@@ -43,36 +54,6 @@ describe("filing a correction in MEMORY.md", () => {
     // user has to give again.
     expect(entry).toContain(CORRECTION.text);
     expect(entry).toContain("Captured from thumbs down.");
-  });
-
-  it("appends without disturbing what the user wrote", () => {
-    // MEMORY.md is theirs. A writer that reordered or reformatted it would be
-    // rewriting the document, which is the one thing SOUL.md's own text
-    // forbids and which this document inherits by being in the same set.
-    const existing =
-      "## 2026-10-01T00:00:00Z — Something earlier\n<!-- id: mem-abc -->\n\nTheir own words.\n";
-
-    const after = withCorrection(existing, CORRECTION);
-
-    expect(after.startsWith(existing.trimEnd())).toBe(true);
-    expect(after).toContain(CORRECTION.text);
-  });
-
-  it("writing the same correction twice writes it once", () => {
-    // Capture retries, two tabs, and a sync bringing the entry back are all
-    // ordinary. The entry id is derived from the lesson's, so none of them
-    // can double it.
-    const once = withCorrection("", CORRECTION);
-
-    expect(withCorrection(once, CORRECTION)).toBe(once);
-  });
-
-  it("starts the document when there is nothing there yet", () => {
-    // MEMORY.md does not exist until something is learned, so the first
-    // correction must not leave a leading blank line in a file it created.
-    const first = withCorrection("", CORRECTION);
-
-    expect(first.startsWith("## ")).toBe(true);
   });
 
   it("names the scope alone when the correction named no subject", () => {

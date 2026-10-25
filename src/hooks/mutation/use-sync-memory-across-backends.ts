@@ -102,7 +102,7 @@ export function useSyncMemoryAcrossBackends() {
       await Promise.all(
         reachable.map(async (candidate) => {
           try {
-            const merged = await SoulService.mergeMemory(candidate, logs);
+            const merged = await SoulService.mergeMemoryInto(candidate, logs);
             results.push({
               backendId: candidate.id,
               backendName: candidate.name,

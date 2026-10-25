@@ -200,7 +200,19 @@ class SoulService {
    * in, running it twice changes nothing, and an entry can only ever appear
    * or stay.
    */
-  static mergeMemory(
+  static mergeMemory(logs: string[]): Promise<MemoryMergeResponse> {
+    return withClient((client) =>
+      client.post<MemoryMergeResponse>(MEMORY_MERGE_PATH, { logs }),
+    );
+  }
+
+  /**
+   * The same, into a named backend.
+   *
+   * Takes the backend explicitly for the reason the reads here do: syncing
+   * writes to backends other than the active one, which nothing else needs.
+   */
+  static mergeMemoryInto(
     backend: Backend,
     logs: string[],
   ): Promise<MemoryMergeResponse> {

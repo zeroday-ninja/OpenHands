@@ -19,7 +19,14 @@
  *
  * **Idempotent on the lesson id.** Capture can be retried, two tabs can be
  * open, and a sync can bring the same entry back. The entry id is derived from
- * the lesson's, so writing it twice is writing it once.
+ * the lesson's, which is what the server's union keys on — so filing it twice
+ * is filing it once, and no reader has to merge prose.
+ *
+ * The entry is all this builds. It used to splice itself into the document
+ * too, which meant reading the document and writing it back whole: two
+ * corrections filed close together each read the same document and the second
+ * write dropped the first's entry. The document is append-only and the server
+ * owns the union, so one entry is sent and nothing here holds the rest of it.
  */
 
 /** The id a correction's memory entry carries, derived from the lesson's. */
@@ -67,23 +74,4 @@ export function correctionEntry(input: CorrectionEntryInput): string {
     body,
     "",
   ].join("\n");
-}
-
-/**
- * `document` with the correction appended, or unchanged if it is already there.
- *
- * Appended rather than merged in place: the log is ordered by timestamp when it
- * is read, so the writer does not have to find the right position — and a
- * writer that rearranged the user's file would be rewriting it.
- */
-export function withCorrection(
-  document: string,
-  input: CorrectionEntryInput,
-): string {
-  if (document.includes(`<!-- id: ${correctionEntryId(input.lessonId)} -->`)) {
-    return document;
-  }
-  const existing = document.trimEnd();
-  const entry = correctionEntry(input);
-  return existing ? `${existing}\n\n${entry}` : entry;
 }

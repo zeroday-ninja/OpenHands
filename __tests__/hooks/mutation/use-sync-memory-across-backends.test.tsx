@@ -22,7 +22,7 @@ vi.mock("#/api/soul-service/soul-service.api", async (importOriginal) => {
     default: {
       ...actual.default,
       getIdentityDocumentFrom: vi.fn(),
-      mergeMemory: vi.fn(),
+      mergeMemoryInto: vi.fn(),
     },
   };
 });
@@ -88,7 +88,7 @@ describe("useSyncMemoryAcrossBackends", () => {
         size_bytes: 10,
       }),
     );
-    vi.mocked(SoulService.mergeMemory).mockResolvedValue({
+    vi.mocked(SoulService.mergeMemoryInto).mockResolvedValue({
       content: "merged",
       entry_count: 2,
       added: 1,
@@ -104,7 +104,7 @@ describe("useSyncMemoryAcrossBackends", () => {
 
     // Assert: both logs reach both machines, which is what makes the result
     // the same whichever order the requests finished in.
-    const calls = vi.mocked(SoulService.mergeMemory).mock.calls;
+    const calls = vi.mocked(SoulService.mergeMemoryInto).mock.calls;
     expect(calls).toHaveLength(2);
     for (const [, logs] of calls) {
       expect(logs).toHaveLength(2);
@@ -129,7 +129,7 @@ describe("useSyncMemoryAcrossBackends", () => {
         };
       },
     );
-    vi.mocked(SoulService.mergeMemory).mockResolvedValue({
+    vi.mocked(SoulService.mergeMemoryInto).mockResolvedValue({
       content: "merged",
       entry_count: 1,
       added: 0,
