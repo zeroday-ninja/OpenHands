@@ -198,6 +198,7 @@ export function ProjectMapPage() {
   const setViewport = useProjectMapStore((state) => state.setViewport);
   const overview = useProjectMapStore((state) => state.overview);
   const setOverview = useProjectMapStore((state) => state.setOverview);
+  const setChatOpen = useProjectMapStore((state) => state.setChatOpen);
   // Which file the page last decided an opening height for, and last framed.
   // See the effect below; cleared when the user points the page elsewhere.
   const framedRevision = React.useRef<string | null>(null);
@@ -371,6 +372,12 @@ export function ProjectMapPage() {
         ...(launchWorkingDir === null ? {} : { workingDir: launchWorkingDir }),
       });
       setMapConversationId(conversation.conversation_id);
+      // The page, not the dock, decides this. Reading the map again through
+      // the new conversation puts the loading notice over the canvas, which
+      // unmounts the dock; a dock that mounts already bound cannot tell a
+      // conversation that just started from one it merely remembers, and so
+      // stayed shut on the very press that started the work.
+      setChatOpen(true);
     } catch {
       // The mutation's own toast covers the request; this keeps a thrown
       // launch from leaving an unhandled rejection behind.

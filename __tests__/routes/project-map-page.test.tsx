@@ -678,6 +678,36 @@ describe("the project map page", () => {
     expect(screen.getByTestId("project-map-legend")).toBeInTheDocument();
   });
 
+  it("shows the conversation it started when the map is rebuilt", async () => {
+    // Arrange: a drawn map, rebuilt. Reading it again through the new
+    // conversation puts the loading notice over the canvas, which unmounts
+    // the dock — the press that starts the work must still show it.
+    everythingAnnounced();
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+    expect(screen.getByTestId("project-map-chat-dock")).toHaveAttribute(
+      "data-open",
+      "false",
+    );
+
+    // Act
+    await user.click(screen.getByTestId("project-map-regenerate"));
+
+    // Assert
+    await waitFor(() =>
+      expect(screen.getByTestId("project-map-chat-dock")).toHaveAttribute(
+        "data-open",
+        "true",
+      ),
+    );
+  });
+
   it("opens the rail for the part you click", async () => {
     // Arrange
     everythingAnnounced();
