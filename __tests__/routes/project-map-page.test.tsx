@@ -916,6 +916,34 @@ describe("the project map page", () => {
     expect(screen.queryByTestId("project-map-work-empty")).toBeNull();
   });
 
+  it("says whose folder it is drawing until you choose one", async () => {
+    // Arrange: nothing chosen, so the page reads the backend's own working
+    // directory — an honest answer to a question nobody asked.
+    everythingAnnounced();
+    saveWorkspaces([HAZARD]);
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+
+    // Assert
+    expect(screen.getByTestId("project-map-not-chosen")).toHaveTextContent(
+      copy("PROJECT_MAP$NOT_YOURS_YET"),
+    );
+
+    // Act: choose one, and the page stops explaining itself.
+    await chooseRepository(user, "hazard");
+
+    // Assert
+    await waitFor(() =>
+      expect(screen.queryByTestId("project-map-not-chosen")).toBeNull(),
+    );
+  });
+
   it("keeps the view you chose for a map that can fold", async () => {
     // Arrange: a map big enough to open as its layers.
     everythingAnnounced();
