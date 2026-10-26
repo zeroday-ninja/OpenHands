@@ -12,6 +12,7 @@ import { getStatusColor, cn } from "#/utils/utils";
 import { AgentState } from "#/types/agent-state";
 import DebugStackframeDot from "#/icons/debug-stackframe-dot.svg?react";
 import { ServerStatusContextMenu } from "../controls/server-status-context-menu";
+import { conversationStatusLabelKey } from "../conversation-panel/conversation-status-dot";
 import { ConversationName } from "./conversation-name";
 import { ConversationGitActionsToggle } from "./conversation-git-actions-toggle";
 import { ConversationOverviewToggle } from "./conversation-overview-toggle";
@@ -150,6 +151,16 @@ export function ConversationNameWithStatus() {
           ) : null}
         </div>
         <ConversationName />
+        {/* The status in words, beside the name. The dot carries the colour
+            and opens the server menu; what a reader wants to know first —
+            did this finish, or did it stop — was a hover away. */}
+        <span
+          data-testid="conversation-status-chip"
+          data-status={executionStatus ?? "unknown"}
+          className="ml-2 shrink-0 rounded-md bg-contrast/10 px-2 py-0.5 text-micro text-muted"
+        >
+          {t(conversationStatusLabelKey(executionStatus) as I18nKey)}
+        </span>
       </div>
       <div className="mr-2 flex shrink-0 items-center gap-1">
         <ConversationGitActionsToggle />

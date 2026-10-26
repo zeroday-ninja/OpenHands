@@ -165,6 +165,21 @@ describe("conversation name status controls", () => {
     mocks.providers = [{ name: "provider-1" }];
   });
 
+  it("says the status in words beside the name", () => {
+    // Arrange: a conversation that has stopped. The dot carries the colour
+    // and opens the server menu; which state it is in was a hover away.
+    mocks.conversation = { execution_status: ExecutionStatus.FINISHED };
+    mocks.curAgentState = AgentState.FINISHED;
+
+    // Act
+    renderSubject();
+
+    // Assert
+    const chip = screen.getByTestId("conversation-status-chip");
+    expect(chip).toHaveAttribute("data-status", ExecutionStatus.FINISHED);
+    expect(chip).toHaveTextContent("COMMON$FINISHED");
+  });
+
   it("pauses an active conversation without triggering its parent", () => {
     const { onParentClick } = renderSubject();
 
