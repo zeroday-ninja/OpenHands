@@ -916,6 +916,22 @@ export function ProjectMapCanvas({
     });
   };
 
+  /**
+   * The plates' handlers, stable for the life of the canvas.
+   *
+   * `React.memo` on a plate is only worth anything if its props hold still,
+   * and a handler defined in the render body is a new prop every time. These
+   * forward to the current implementation through a ref, so a plate that
+   * skipped a render still calls today's closure rather than yesterday's.
+   */
+  const latestNodePointerDown = React.useRef(handleNodePointerDown);
+  latestNodePointerDown.current = handleNodePointerDown;
+  const onNodePointerDown = React.useCallback(
+    (event: React.PointerEvent<SVGGElement>, node: PlacedProjectMapNode) =>
+      latestNodePointerDown.current(event, node),
+    [],
+  );
+
   const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
     if (drag?.pointerId !== event.pointerId) return;
     if (drag.kind === "pan") {
@@ -1040,6 +1056,18 @@ export function ProjectMapCanvas({
       else setSelection([node.id]);
     }
   };
+
+  const latestNodeKeyDown = React.useRef(handleNodeKeyDown);
+  latestNodeKeyDown.current = handleNodeKeyDown;
+  const onNodeKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<SVGGElement>, node: PlacedProjectMapNode) =>
+      latestNodeKeyDown.current(event, node),
+    [],
+  );
+  const onNodeFocus = React.useCallback(
+    (node: PlacedProjectMapNode) => setFocused(node.id),
+    [setFocused],
+  );
 
   /**
    * Keyboard on a drawn shape.
@@ -1436,9 +1464,9 @@ export function ProjectMapCanvas({
                 focused={focused === node.id}
                 lit={focusIds.size === 0 || focusIds.has(node.id)}
                 showPath={detailed}
-                onFocus={(target) => setFocused(target.id)}
-                onKeyDown={handleNodeKeyDown}
-                onPointerDown={handleNodePointerDown}
+                onFocus={onNodeFocus}
+                onKeyDown={onNodeKeyDown}
+                onPointerDown={onNodePointerDown}
               />
             ))}
 
