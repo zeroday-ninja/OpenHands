@@ -61036,5 +61036,23 @@
     "uk": "Зміна, що чекає на вас",
     "ca": "Un canvi que t'espera",
     "id": "Perubahan yang menunggu Anda"
+  },
+  "PROJECT_MAP$OVERVIEW_HINT_WORK": {
+    "en": "Each block is a kind of work, with how many of it there is. The lines count the relations running between two kinds. Click one to open it.",
+    "zh-CN": "每个方块是一类工作，并标出它的数量。线上的数字表示两类之间的关联数量。点击其中一个即可打开。",
+    "zh-TW": "每個方塊是一類工作，並標出它的數量。線上的數字表示兩類之間的關聯數量。點選其中一個即可打開。",
+    "de": "Jeder Block ist eine Art Arbeit, mit ihrer Anzahl. Die Linien zählen die Beziehungen zwischen zwei Arten. Klicke einen an, um ihn zu öffnen.",
+    "ko-KR": "각 블록은 작업의 한 종류이며 그 개수를 보여 줍니다. 선의 숫자는 두 종류 사이의 관계 수입니다. 하나를 클릭하면 열립니다.",
+    "no": "Hver blokk er en type arbeid, med hvor mye av det som finnes. Linjene teller relasjonene mellom to typer. Klikk en for å åpne den.",
+    "it": "Ogni blocco è un tipo di lavoro, con quanto ce n'è. Le linee contano le relazioni fra due tipi. Fai clic su uno per aprirlo.",
+    "pt": "Cada bloco é um tipo de trabalho, com quanto existe dele. As linhas contam as relações entre dois tipos. Clique num deles para o abrir.",
+    "es": "Cada bloque es un tipo de trabajo, con cuánto hay de él. Las líneas cuentan las relaciones entre dos tipos. Haz clic en uno para abrirlo.",
+    "ar": "كل كتلة نوع من العمل مع عدده. وتَعُدّ الخطوط العلاقات بين نوعين. انقر على واحدة لفتحها.",
+    "fr": "Chaque bloc est un type de travail, avec sa quantité. Les lignes comptent les relations entre deux types. Cliquez sur l'un d'eux pour l'ouvrir.",
+    "tr": "Her blok bir iş türüdür ve ondan kaç tane olduğunu gösterir. Çizgiler iki tür arasındaki ilişkileri sayar. Açmak için birine tıklayın.",
+    "ja": "各ブロックは仕事の種類で、その件数を示します。線の数字は 2 つの種類の間の関係の数です。クリックすると開きます。",
+    "uk": "Кожен блок — вид роботи з її кількістю. Лінії рахують зв'язки між двома видами. Клацніть один, щоб відкрити його.",
+    "ca": "Cada bloc és un tipus de feina, amb quanta n'hi ha. Les línies compten les relacions entre dos tipus. Fes clic en un per obrir-lo.",
+    "id": "Setiap blok adalah satu jenis pekerjaan, dengan jumlahnya. Garis menghitung relasi antara dua jenis. Klik salah satu untuk membukanya."
   }
 }
