@@ -916,6 +916,33 @@ describe("the project map page", () => {
     expect(screen.queryByTestId("project-map-work-empty")).toBeNull();
   });
 
+  it("keeps the view you chose for a map that can fold", async () => {
+    // Arrange: a map big enough to open as its layers.
+    everythingAnnounced();
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: bigMapFile(),
+    });
+    const user = userEvent.setup();
+    const { unmount } = renderWithProviders(<MapRoute />, {
+      navigation: { currentPath: "/map" },
+    });
+    await screen.findByTestId("project-map-overview");
+
+    // Act: ask for the detail instead, then come back.
+    await user.click(screen.getByTestId("project-map-view-details"));
+    expect(screen.queryByTestId("project-map-overview")).toBeNull();
+    unmount();
+    useProjectMapStore.getState().reset();
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+
+    // Assert: the size rule decides for a drawing you have said nothing
+    // about; once you have said something it stops deciding every visit.
+    expect(screen.queryByTestId("project-map-overview")).toBeNull();
+  });
+
   it("remembers the side panel when you open it yourself", async () => {
     // Arrange
     everythingAnnounced();
