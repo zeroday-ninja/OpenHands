@@ -10,6 +10,7 @@ import { useCloseOnEscape } from "#/hooks/use-close-on-escape";
 import { useUserProviders } from "#/hooks/use-user-providers";
 import { getStatusColor, cn } from "#/utils/utils";
 import { AgentState } from "#/types/agent-state";
+import { ExecutionStatus } from "#/types/agent-server/core/base/common";
 import DebugStackframeDot from "#/icons/debug-stackframe-dot.svg?react";
 import { ServerStatusContextMenu } from "../controls/server-status-context-menu";
 import { conversationStatusLabelKey } from "../conversation-panel/conversation-status-dot";
@@ -41,6 +42,18 @@ export function ConversationNameWithStatus() {
   const isStartingStatus =
     curAgentState === AgentState.LOADING || curAgentState === AgentState.INIT;
   const isStopStatus = isExecutionErrored(executionStatus);
+
+  /**
+   * What the live agent says, when it says anything the record cannot know
+   * yet. `null` leaves the conversation's own execution status to speak.
+   */
+  const liveStatus: ExecutionStatus | null = (() => {
+    if (isStartingStatus || curAgentState === AgentState.RUNNING)
+      return ExecutionStatus.RUNNING;
+    if (curAgentState === AgentState.PAUSED) return ExecutionStatus.PAUSED;
+    if (curAgentState === AgentState.ERROR) return ExecutionStatus.ERROR;
+    return null;
+  })();
 
   const statusColor = getStatusColor({
     isPausing: false,
@@ -153,13 +166,23 @@ export function ConversationNameWithStatus() {
         <ConversationName />
         {/* The status in words, beside the name. The dot carries the colour
             and opens the server menu; what a reader wants to know first —
-            did this finish, or did it stop — was a hover away. */}
+            did this finish, or did it stop — was a hover away.
+
+            The word follows the live agent while it is working, not the
+            conversation record: that record is polled every thirty seconds
+            and nothing invalidates it when the agent moves, so the chip
+            could read "Finished" beside a dot pulsing green. Where the two
+            disagree the agent in front of you is the truth. */}
         <span
           data-testid="conversation-status-chip"
-          data-status={executionStatus ?? "unknown"}
+          data-status={liveStatus ?? executionStatus ?? "unknown"}
           className="ml-2 shrink-0 rounded-md bg-contrast/10 px-2 py-0.5 text-micro text-muted"
         >
-          {t(conversationStatusLabelKey(executionStatus) as I18nKey)}
+          {t(
+            conversationStatusLabelKey(
+              liveStatus ?? executionStatus,
+            ) as I18nKey,
+          )}
         </span>
       </div>
       <div className="mr-2 flex shrink-0 items-center gap-1">

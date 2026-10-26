@@ -180,6 +180,22 @@ describe("conversation name status controls", () => {
     expect(chip).toHaveTextContent("COMMON$FINISHED");
   });
 
+  it("follows the live agent when the record has not caught up", () => {
+    // Arrange: the conversation record still says finished — it is polled
+    // every thirty seconds and nothing invalidates it when the agent moves
+    // — while the agent in front of the reader is running.
+    mocks.conversation = { execution_status: ExecutionStatus.FINISHED };
+    mocks.curAgentState = AgentState.RUNNING;
+
+    // Act
+    renderSubject();
+
+    // Assert: the word agrees with the dot beside it.
+    const chip = screen.getByTestId("conversation-status-chip");
+    expect(chip).toHaveAttribute("data-status", ExecutionStatus.RUNNING);
+    expect(chip).toHaveTextContent("COMMON$WORKING");
+  });
+
   it("pauses an active conversation without triggering its parent", () => {
     const { onParentClick } = renderSubject();
 
