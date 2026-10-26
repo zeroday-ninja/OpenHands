@@ -2062,6 +2062,12 @@ function eventText(event) {
   ).replace(/\s+/g, " ");
 }
 
+// Home — the "What do you want to work on?" screen, with the composer and
+// Open Workspace on it — is /conversations. `/` is a redirect: the project
+// map by default, or whatever page is pinned as home, so a verb that needs
+// Home asks for it by name rather than through the front door.
+const HOME_ROUTE = "/conversations";
+
 // The Open Workspace folder browser has no path field: walk it to PATH.
 const WORKSPACE_MODES = ["local_repo", "new_worktree"];
 
@@ -2080,7 +2086,7 @@ async function openWorkspace(run, name, { stay, mode } = {}) {
       hint: "Create it first, for example: control-openhands fixture git-repo --name qa-repo",
     });
   const want = realpathSync(resolve(path));
-  if (!stay) await browserCall(run, "goto", { target: "/" });
+  if (!stay) await browserCall(run, "goto", { target: HOME_ROUTE });
   await browserCall(run, "click", {
     selector: "testid=open-workspace-button",
     timeout: 30_000,
@@ -2151,7 +2157,8 @@ async function cmdConversation({ positional, flags }) {
         stay: flags.stay,
         mode: flags.mode,
       });
-    else if (!flags["stay"]) await browserCall(run, "goto", { target: "/" });
+    else if (!flags["stay"])
+      await browserCall(run, "goto", { target: HOME_ROUTE });
     // Home and conversation pages share the composer: a contenteditable
     // testid=chat-input with testid=submit-button beside it.
     await browserCall(run, "wait", {
