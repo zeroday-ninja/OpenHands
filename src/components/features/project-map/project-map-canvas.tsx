@@ -1544,6 +1544,14 @@ export function ProjectMapCanvas({
                   key={note.id}
                   note={note}
                   anchorRect={note.anchor === null ? null : rectOf(note.anchor)}
+                  // A note about a part that has faded to context fades with
+                  // it. Left at full strength it read as a label floating
+                  // over the drawing, attached to nothing.
+                  lit={
+                    focusIds.size === 0 ||
+                    note.anchor === null ||
+                    focusIds.has(note.anchor)
+                  }
                 />
               ))}
 
@@ -1692,9 +1700,12 @@ function noteRemoveCross(left: number, top: number): string {
 function ProjectMapNoteMark({
   note,
   anchorRect,
+  lit = true,
 }: {
   note: ProjectMapNote;
   anchorRect: Rect | null;
+  /** False while the part it is about is faded to context. */
+  lit?: boolean;
 }) {
   const { t } = useTranslation("openhands");
   const editingNote = useProjectMapStore((state) => state.editingNote);
@@ -1717,7 +1728,7 @@ function ProjectMapNoteMark({
   const removeTop = note.y - NOTE_REMOVE_SIZE / 2;
 
   return (
-    <g data-testid={`project-map-note-${note.id}`}>
+    <g data-testid={`project-map-note-${note.id}`} opacity={lit ? 1 : 0.18}>
       {anchorRect !== null && (
         <path
           d={`M${note.x} ${note.y}L${anchorRect.x + anchorRect.width / 2} ${anchorRect.y + anchorRect.height / 2}`}

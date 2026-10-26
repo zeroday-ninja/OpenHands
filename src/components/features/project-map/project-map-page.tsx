@@ -932,7 +932,12 @@ export function ProjectMapPage() {
               {overview && paperGroups >= 2 && (
                 <p
                   data-testid="project-map-overview-hint"
-                  className="pointer-events-none absolute left-4 top-4 max-w-md text-xs text-muted"
+                  // On a background, because a sentence drawn straight onto
+                  // the paper is unreadable the moment a plate lands under
+                  // it — "the explanatory text is the first thing the
+                  // drawing destroys", in the words of someone meeting the
+                  // page for the first time.
+                  className="pointer-events-none absolute left-4 top-4 max-w-md rounded-md bg-canvas-base/85 px-2 py-1 text-xs text-muted"
                 >
                   {/* The work graph has machines, programs and cycles on
                       it, not files: the hint that explains the blocks has
@@ -986,7 +991,7 @@ export function ProjectMapPage() {
                   // phone the sentence wrapped under the button, which does
                   // still work — the paragraph ignores the pointer — but the
                   // end of the sentence was unreadable.
-                  className="pointer-events-none absolute bottom-3 left-4 right-28 max-w-md text-xs text-muted"
+                  className="pointer-events-none absolute bottom-3 left-4 right-28 max-w-md rounded-md bg-canvas-base/85 px-2 py-1 text-xs text-muted"
                 >
                   {t(I18nKey.PROJECT_MAP$DETAIL_HINT)}
                 </p>
