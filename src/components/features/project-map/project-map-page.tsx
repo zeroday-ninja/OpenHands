@@ -39,6 +39,7 @@ import {
   Crosshair,
   Eye,
   Maximize2,
+  PanelRight,
   RefreshCw,
   Save,
   Sparkles,
@@ -91,6 +92,8 @@ import { ProjectMapWorkExport } from "./project-map-work-export";
 import { FeatureAnnouncement } from "#/components/features/feature-trials/feature-announcement";
 import { FeatureFeedback } from "#/components/features/feature-trials/feature-feedback";
 import { featureTrialsOn } from "#/features/feature-trials";
+import { useFeatureTrialStore } from "#/stores/feature-trial-store";
+import { useParkedImproveCycles } from "#/hooks/query/use-improve-program";
 import { UnusedFeatureList } from "#/components/features/feature-trials/unused-feature-list";
 import { ProjectMapWaiting } from "./project-map-waiting";
 import {
@@ -111,6 +114,12 @@ import {
 import { PROJECT_MAP_WARNING_LABELS } from "./project-map-labels";
 
 const ICON_SIZE = 14;
+
+/**
+ * The rail's count is a plural phrase, which the typed key enum has no entry
+ * for — only its `_one` and `_other` forms exist.
+ */
+const RAIL_WAITING_I18N_KEY = "PROJECT_MAP$RAIL_WAITING";
 
 /**
  * How many released shapes are named before the rest become a count.
@@ -415,6 +424,28 @@ export function ProjectMapPage() {
               commit: document_.commit,
             });
 
+  // The rail holds the selection, the key and whatever waits on a person.
+  // None of that is the page's subject, and all of it was taking a quarter
+  // of the width on a map that had nothing selected and nothing waiting.
+  // So it folds, and says from the toolbar what it is holding.
+  const mapTrials = featureTrialsOn("/map");
+  const trialRecords = useFeatureTrialStore((state) => state.records);
+  const unannounced = mapTrials.some(
+    (trial) => !trialRecords[trial.id]?.announcedAt,
+  );
+  const parked = useParkedImproveCycles();
+  const waiting = parked.data?.cycles.length ?? 0;
+  const [railOpen, setRailOpen] = React.useState(false);
+  const selected = useProjectMapStore((state) => state.selection).length;
+  // It opens itself for the two things a person asked for without saying so:
+  // a feature introducing itself, and the part they just clicked.
+  React.useEffect(() => {
+    if (unannounced) setRailOpen(true);
+  }, [unannounced]);
+  React.useEffect(() => {
+    if (selected > 0) setRailOpen(true);
+  }, [selected]);
+
   const page = (
     <div
       data-testid="project-map-page"
@@ -631,6 +662,26 @@ export function ProjectMapPage() {
                   mode={document_.canvas.view.mode}
                   layer={layer}
                 />
+                <button
+                  type="button"
+                  data-testid="project-map-rail-toggle"
+                  aria-expanded={railOpen}
+                  data-waiting={waiting}
+                  title={t(I18nKey.PROJECT_MAP$RAIL_HINT)}
+                  className={`${PROJECT_MAP_BUTTON_CLASS} ${
+                    waiting > 0 ? "border-warning/50 text-warning" : ""
+                  }`}
+                  onClick={() => setRailOpen(!railOpen)}
+                >
+                  <PanelRight size={ICON_SIZE} aria-hidden />
+                  {waiting > 0
+                    ? t(RAIL_WAITING_I18N_KEY, { count: waiting })
+                    : t(
+                        railOpen
+                          ? I18nKey.PROJECT_MAP$RAIL_HIDE
+                          : I18nKey.PROJECT_MAP$RAIL_SHOW,
+                      )}
+                </button>
               </div>
             </div>
             {/* The dock is positioned against this box rather than the page so
@@ -721,8 +772,9 @@ export function ProjectMapPage() {
               />
             </div>
           </div>
-          <aside className="flex w-full shrink-0 flex-col gap-5 overflow-y-auto rounded-lg border border-border-subtle bg-base-secondary p-4 lg:w-88 custom-scrollbar">
-            {/* Beside the canvas, never above it. These used to stack on top
+          {railOpen && (
+            <aside className="flex w-full shrink-0 flex-col gap-5 overflow-y-auto rounded-lg border border-border-subtle bg-base-secondary p-4 lg:w-88 custom-scrollbar">
+              {/* Beside the canvas, never above it. These used to stack on top
                 of the page, and with three parked changes waiting the canvas
                 — the thing this page is for — was below the fold entirely.
                 The plan's own words are "the canvas takes the width": work
@@ -731,18 +783,19 @@ export function ProjectMapPage() {
                 visible without displacing the drawing. Each renders nothing
                 when it has nothing to say, so the rail is the inspector and
                 the legend on an ordinary day. */}
-            <FeatureAnnouncement trials={featureTrialsOn("/map")} />
-            <FeatureFeedback trials={featureTrialsOn("/map")} />
-            <ProjectMapWaiting />
-            <UnusedFeatureList />
-            <div className="flex flex-col gap-2">
-              <span className={PROJECT_MAP_SECTION_LABEL_CLASS}>
-                {t(I18nKey.PROJECT_MAP$INSPECTOR_TITLE)}
-              </span>
-              <ProjectMapInspector document={document_} />
-            </div>
-            <ProjectMapLegend document={document_} />
-          </aside>
+              <FeatureAnnouncement trials={featureTrialsOn("/map")} />
+              <FeatureFeedback trials={featureTrialsOn("/map")} />
+              <ProjectMapWaiting />
+              <UnusedFeatureList />
+              <div className="flex flex-col gap-2">
+                <span className={PROJECT_MAP_SECTION_LABEL_CLASS}>
+                  {t(I18nKey.PROJECT_MAP$INSPECTOR_TITLE)}
+                </span>
+                <ProjectMapInspector document={document_} />
+              </div>
+              <ProjectMapLegend document={document_} />
+            </aside>
+          )}
         </div>
       )}
     </div>
