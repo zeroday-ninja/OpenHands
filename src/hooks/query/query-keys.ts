@@ -122,8 +122,11 @@ export const WORK_GRAPH_QUERY_KEYS = {
  */
 export const PROJECT_MAP_QUERY_KEYS = {
   all: ["project-map"] as const,
-  byWorkspace: (backendId: string, conversationId: string | null) =>
-    ["project-map", backendId, conversationId] as const,
+  byWorkspace: (
+    backendId: string,
+    conversationId: string | null,
+    workingDir: string | null = null,
+  ) => ["project-map", backendId, conversationId, workingDir] as const,
 } as const;
 
 export const TOOL_CATALOG_QUERY_KEYS = {

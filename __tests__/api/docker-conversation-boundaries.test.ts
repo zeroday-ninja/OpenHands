@@ -122,15 +122,42 @@ describe("conversation runtime boundaries", () => {
     expect(paths).toEqual(["/server_info"]);
   });
 
-  it.each(["/home/user/project", "/workspace", "relative/project"])(
-    "rejects selected host folder %s rather than discarding it",
-    async (workingDir) => {
-      await expect(
-        resolveNewConversationWorkspace({ conversationId: cid, workingDir }),
-      ).rejects.toThrow(i18n.t(I18nKey.HOME$ISOLATED_WORKSPACE_NOTICE));
-      expect(paths).toEqual(["/server_info"]);
+  it.each([
+    ["/home/user/project", "/home/user/project"],
+    ["relative/project", "/home/agent/relative/project"],
+  ])(
+    "mounts host folder %s into the sandbox rather than refusing it",
+    async (workingDir, mounted) => {
+      // The Docker runtime binds any working dir other than its own
+      // `/workspace` at `/workspace` inside the container, so a folder a
+      // person chose reaches the sandbox as its working directory. It is
+      // resolved against the host's home, since the runtime insists on an
+      // absolute path; hooks still come from inside the sandbox, never from
+      // the host's view of the folder.
+      expect(
+        await resolveNewConversationWorkspace({
+          conversationId: cid,
+          workingDir,
+        }),
+      ).toEqual({ workingDir: mounted, hooksProjectDir: null, isolated: true });
+      expect(paths[0]).toBe("/server_info");
+      expect(paths.some((path) => path.includes("/hooks"))).toBe(false);
     },
   );
+
+  it("keeps the sandbox's own directory when that is what is asked for", async () => {
+    expect(
+      await resolveNewConversationWorkspace({
+        conversationId: cid,
+        workingDir: "/workspace",
+      }),
+    ).toEqual({
+      workingDir: "/workspace",
+      hooksProjectDir: null,
+      isolated: true,
+    });
+    expect(paths).toEqual(["/server_info"]);
+  });
 
   it("rejects selected host repository metadata", async () => {
     await expect(

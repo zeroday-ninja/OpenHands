@@ -48,18 +48,31 @@ export async function resolveNewConversationWorkspace(options: {
   const clientOptions = getAgentServerClientOptions();
   const info = await getConversationServerInfo(clientOptions);
   if (usesIsolatedWorkspace(info)) {
-    if (
-      options.selectedRepository ||
-      (options.workingDir !== undefined &&
-        !(
-          options.parentConversationId &&
-          options.workingDir === ISOLATED_WORKSPACE_DIR
-        ))
-    ) {
+    // A repository from a Git provider has to be cloned, and nothing in the
+    // sandbox holds a token to clone it with.
+    if (options.selectedRepository) {
       throw new Error(i18n.t(I18nKey.HOME$ISOLATED_WORKSPACE_NOTICE));
     }
+    // A folder on the host, though, is mounted: the Docker runtime takes any
+    // working dir other than its own `/workspace` as a host path and binds it
+    // there, which is how the automation's cycles already hand a clone to
+    // their sandboxes. Refusing it here — as this did — was the only thing
+    // keeping a person from pointing a sandbox at their own repository. The
+    // path is still resolved against the host's home (spec WUP-001) because
+    // the runtime insists on an absolute one; `/workspace` itself is the
+    // sandbox default, and a delegated child passes its parent's to share it.
+    const hostDir = options.workingDir;
+    if (hostDir === undefined || hostDir === ISOLATED_WORKSPACE_DIR) {
+      return {
+        workingDir: ISOLATED_WORKSPACE_DIR,
+        hooksProjectDir: null,
+        isolated: true,
+      };
+    }
     return {
-      workingDir: ISOLATED_WORKSPACE_DIR,
+      workingDir: await resolveAbsoluteAgentServerPath(hostDir),
+      // Hooks are loaded by the sandbox from what it mounts, never from the
+      // host's view of the folder.
       hooksProjectDir: null,
       isolated: true,
     };

@@ -1,5 +1,11 @@
 import React from "react";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "../../test-utils";
@@ -46,6 +52,8 @@ import {
 } from "#/api/backend-registry/active-store";
 import type { Backend } from "#/api/backend-registry/types";
 import { useProjectMapStore } from "#/stores/project-map-store";
+import { useProjectMapWorkspaceStore } from "#/stores/project-map-workspace-store";
+import WorkspacesService from "#/api/workspaces-service/workspaces-service.api";
 import { useEventStore } from "#/stores/use-event-store";
 import {
   SecurityRisk,
@@ -289,11 +297,29 @@ describe("the project map page", () => {
     });
     useProjectMapStore.getState().reset();
     useEventStore.getState().clearEvents();
+    // The folder a page was pointed at is remembered across reloads, so each
+    // case starts with none chosen.
+    window.localStorage.clear();
+    useProjectMapWorkspaceStore.setState({ selectionByBackendId: {} });
+    // The repository picker lists saved workspaces and, in dev builds, the
+    // children of an implicit `/projects` parent. Answered here so no case
+    // reaches past MSW to whatever is listening on the test backend's port.
+    server.use(
+      http.get(`${localBackend.host}/api/file/search_subdirs`, () =>
+        HttpResponse.json({ items: [], next_page_id: null }),
+      ),
+    );
     setRegisteredBackends([localBackend]);
     setActiveSelection({ backendId: localBackend.id });
   });
 
   afterEach(() => {
+    // The binding outlives the page by design — a launch that settles after
+    // the user has moved on is still remembered — so every case that starts a
+    // conversation waits for it to be bound before ending, or the next case
+    // inherits a conversation it never started.
+    useProjectMapWorkspaceStore.setState({ selectionByBackendId: {} });
+    window.localStorage.clear();
     vi.restoreAllMocks();
     useEventStore.getState().clearEvents();
     useProjectMapStore.getState().reset();
@@ -427,6 +453,12 @@ describe("the project map page", () => {
     expect(options.initialUserMsg).toContain(PROJECT_MAP_FILE_PATH);
     expect(options.initialUserMsg).not.toContain(ABSOLUTE_PATH);
     expect(options.workingDirOverride).toBeUndefined();
+    // And the page follows the conversation it started.
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("project-map-analysis-running"),
+      ).toHaveTextContent("conversation-1"),
+    );
   });
 
   it("explains a malformed document instead of rendering a blank canvas", async () => {
@@ -581,6 +613,12 @@ describe("the project map page", () => {
       { initialUserMsg?: string },
     ];
     expect(options.initialUserMsg).toBe(shown);
+    await waitFor(() =>
+      expect(screen.getByTestId("project-map-conversation")).toHaveAttribute(
+        "data-conversation-id",
+        "conversation-1",
+      ),
+    );
   });
 
   it("keeps unsaved moves when a regenerated file arrives under them", async () => {
@@ -1088,6 +1126,148 @@ describe("the project map page", () => {
       expect(screen.getByTestId("project-map-unsaved")).toBeInTheDocument();
     },
   );
+
+  /** A saved workspace on the backend's host, as the picker lists it. */
+  const HAZARD = {
+    id: "/home/agent/repos/hazard",
+    name: "hazard",
+    path: "/home/agent/repos/hazard",
+  };
+
+  /** The saved-workspaces list the picker draws from. */
+  function saveWorkspaces(workspaces: (typeof HAZARD)[]) {
+    vi.spyOn(WorkspacesService, "listWorkspaces").mockResolvedValue({
+      workspaces,
+      workspaceParents: [],
+    });
+  }
+
+  /** Picks a saved workspace in the picker, the way a person would. */
+  async function chooseRepository(
+    user: ReturnType<typeof userEvent.setup>,
+    name: string,
+  ) {
+    await user.click(await screen.findByTestId("workspace-dropdown"));
+    const menu = await screen.findByTestId("workspace-dropdown-menu");
+    await user.click(await within(menu).findByText(name));
+  }
+
+  it("reads the map from the repository the user chose, and remembers it", async () => {
+    // Arrange: the backend's own directory has no map; the chosen folder has
+    // one. Only a read aimed at that folder, on the host, finds it.
+    saveWorkspaces([HAZARD]);
+    const read = vi
+      .spyOn(ProjectMapService, "readProjectMap")
+      .mockImplementation(async (target) =>
+        target?.workingDir
+          ? {
+              workspace: {
+                conversationId: null,
+                workingDir: target.workingDir,
+              },
+              absolutePath: `${target.workingDir}/${PROJECT_MAP_FILE_PATH}`,
+              raw: mapFile(),
+            }
+          : emptyRead(target),
+      );
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    // The empty state leads with the question the page used to answer
+    // silently.
+    const empty = await screen.findByTestId("project-map-empty");
+    expect(
+      within(empty).getByTestId("project-map-workspace-picker"),
+    ).toBeInTheDocument();
+
+    // Act
+    await chooseRepository(user, "hazard");
+
+    // Assert: the drawing is that folder's, read from the host by its path,
+    // and the page says so.
+    await screen.findByTestId("project-map-canvas");
+    expect(read).toHaveBeenLastCalledWith({
+      conversationId: null,
+      workingDir: HAZARD.path,
+    });
+    expect(screen.getByTestId("project-map-workspace")).toHaveTextContent(
+      HAZARD.path,
+    );
+    // The picker now sits in the header, showing the choice, for switching.
+    expect(screen.getByTestId("project-map-workspace-picker")).toHaveAttribute(
+      "data-path",
+      HAZARD.path,
+    );
+    // And the choice outlives this page: it is written through for the next
+    // visit, under the backend it was made on.
+    const persisted = JSON.parse(
+      window.localStorage.getItem("project-map-workspace") ?? "{}",
+    ).state.selectionByBackendId as Record<string, { path: string | null }>;
+    expect(Object.values(persisted).map((entry) => entry.path)).toEqual([
+      HAZARD.path,
+    ]);
+  });
+
+  it("generates the chosen repository's map inside a sandbox mounted on it", async () => {
+    // Arrange: a Docker backend, and a chosen folder with no map yet.
+    clearCachedAgentServerInfo();
+    server.use(
+      http.get(`${localBackend.host}/server_info`, () =>
+        HttpResponse.json({
+          version: "1.57.0",
+          uptime: 0,
+          idle_time: 0,
+          conversation_runtime: "docker",
+        }),
+      ),
+    );
+    saveWorkspaces([HAZARD]);
+    vi.spyOn(ProjectMapService, "readProjectMap").mockImplementation(
+      async (target) =>
+        target?.workingDir
+          ? {
+              workspace: {
+                conversationId: null,
+                workingDir: target.workingDir,
+              },
+              absolutePath: `${target.workingDir}/${PROJECT_MAP_FILE_PATH}`,
+              raw: null,
+            }
+          : emptyRead(target),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-empty");
+    await chooseRepository(user, "hazard");
+    await waitFor(() =>
+      expect(screen.getByTestId("project-map-workspace")).toHaveTextContent(
+        HAZARD.path,
+      ),
+    );
+
+    // Act
+    await user.click(screen.getByTestId("project-map-generate"));
+
+    // Assert: the conversation is attached to the folder — the runtime mounts
+    // it as the sandbox's working directory — and told the repository-relative
+    // name, because the host's absolute path names nothing in there.
+    await waitFor(() => expect(launchConversation).toHaveBeenCalledTimes(1));
+    const [, options] = launchConversation.mock.calls[0] as [
+      unknown,
+      { initialUserMsg?: string; workingDirOverride?: string },
+    ];
+    expect(options.workingDirOverride).toBe(HAZARD.path);
+    expect(options.initialUserMsg).toContain(PROJECT_MAP_FILE_PATH);
+    expect(options.initialUserMsg).not.toContain(HAZARD.path);
+    // The page keeps watching the folder, with the conversation bound to it.
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("project-map-analysis-running"),
+      ).toHaveTextContent("conversation-1"),
+    );
+    expect(screen.getByTestId("project-map-workspace")).toHaveTextContent(
+      HAZARD.path,
+    );
+  });
 
   it("says which kind of backend cannot serve the map, for the harness too", async () => {
     // Arrange: the active backend only reaches the page through its provider.
