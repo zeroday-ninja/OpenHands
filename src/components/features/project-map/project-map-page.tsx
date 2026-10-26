@@ -90,6 +90,7 @@ import { buildProjectMapAnalysisPrompt } from "./project-map-analysis-prompt";
 import { ProjectMapCanvas } from "./project-map-canvas";
 import { ProjectMapInspector } from "./project-map-inspector";
 import { useWorkGraph } from "#/hooks/query/use-work-graph";
+import { WORK_GRAPH_BACKEND_NODE_KIND } from "#/types/work-graph";
 import { ProjectMapWorkExport } from "./project-map-work-export";
 import { FeatureAnnouncement } from "#/components/features/feature-trials/feature-announcement";
 import { FeatureFeedback } from "#/components/features/feature-trials/feature-feedback";
@@ -361,6 +362,18 @@ export function ProjectMapPage() {
     };
   }, [document_, layer, workLayer]);
   const paperGroups = paper?.groups.length ?? 0;
+
+  /**
+   * How much work is on the graph, machines aside.
+   *
+   * Every backend that answers contributes a node for itself, so "the graph
+   * is empty" was never true once anyone answered — and "Nothing has run
+   * yet" could not be read on a machine that had, nor on one that had not.
+   * What a person means by nothing having run is no runs, cycles or agents.
+   */
+  const workNodeCount = workGraph.nodes.filter(
+    (node) => node.kind !== WORK_GRAPH_BACKEND_NODE_KIND,
+  ).length;
 
   // Applied once the map is in: opening a document sets the layer it names,
   // so asking before that would be answered and then overruled.
@@ -1000,7 +1013,7 @@ export function ProjectMapPage() {
                   in is a lie the reader has no way to check: assembling the
                   graph takes seconds, and on this machine it starts with one
                   backend node and no work. Say which it is. */}
-              {layer === "work" && workGraph.nodes.length === 0 && (
+              {layer === "work" && workNodeCount === 0 && (
                 <p
                   data-testid={
                     workFetching

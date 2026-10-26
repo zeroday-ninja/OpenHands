@@ -33,6 +33,11 @@ const BACKEND: Backend = {
 
 const PIN_KEY = getPinnedHomeRouteKey(BACKEND.id, null);
 
+/** What the router hands a loader: the request for the address asked for. */
+function at(path: string) {
+  return { request: new Request(`http://localhost${path}`) };
+}
+
 describe("the index route with a pinned home page", () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -51,7 +56,7 @@ describe("the index route with a pinned home page", () => {
     window.localStorage.setItem(PIN_KEY, JSON.stringify("/customize"));
 
     // Act
-    const result = clientLoader();
+    const result = clientLoader(at("/"));
 
     // Assert
     expect(result).toBeInstanceOf(Response);
@@ -60,6 +65,23 @@ describe("the index route with a pinned home page", () => {
 
   // With no pin, the map: the canvas is where the work is, and a front door
   // that opened on the conversation list said the opposite every time.
+  it("carries the query through to wherever / goes", () => {
+    // `/?previewOnboardingStep=2` is a documented way in. Dropping the
+    // search string made it a plain redirect with no preview and no error.
+    expect(clientLoader(at("/?previewOnboardingStep=2"))).toEqual(
+      redirect("/map?previewOnboardingStep=2"),
+    );
+  });
+
+  it("sends / to the conversations list with nothing registered", () => {
+    // The map's only content there is "no backend" — the same dead end as
+    // a cloud backend, by another name.
+    setRegisteredBackends([]);
+    setActiveSelection(null);
+
+    expect(clientLoader(at("/"))).toEqual(redirect("/conversations"));
+  });
+
   it("sends / to the conversations list on a backend the map cannot serve", () => {
     // Arrange: a cloud backend. The map reads a file from a local workspace,
     // so it can only say "unsupported here" — which is what the front door
@@ -76,11 +98,11 @@ describe("the index route with a pinned home page", () => {
     setActiveSelection({ backendId: cloud.id });
 
     // Act and assert
-    expect(clientLoader()).toEqual(redirect("/conversations"));
+    expect(clientLoader(at("/"))).toEqual(redirect("/conversations"));
   });
 
   it("sends / to the map when no pin is set", () => {
-    expect(clientLoader()).toEqual(redirect("/map"));
+    expect(clientLoader(at("/"))).toEqual(redirect("/map"));
   });
 
   it("falls back to the map when the stored pin does not resolve, leaving the value intact", () => {
@@ -89,7 +111,7 @@ describe("the index route with a pinned home page", () => {
       window.localStorage.setItem(PIN_KEY, rawValue);
 
       // Act & Assert
-      expect(clientLoader()).toEqual(redirect("/map"));
+      expect(clientLoader(at("/"))).toEqual(redirect("/map"));
       expect(window.localStorage.getItem(PIN_KEY)).toBe(rawValue);
     }
   });
@@ -100,7 +122,7 @@ describe("the index route with a pinned home page", () => {
     window.localStorage.setItem(PIN_KEY, JSON.stringify("/automations"));
 
     // Act & Assert
-    expect(clientLoader()).toEqual(redirect("/map"));
+    expect(clientLoader(at("/"))).toEqual(redirect("/map"));
   });
 
   it("ignores a pin stored for a different backend", () => {
@@ -111,6 +133,6 @@ describe("the index route with a pinned home page", () => {
     );
 
     // Act & Assert
-    expect(clientLoader()).toEqual(redirect("/map"));
+    expect(clientLoader(at("/"))).toEqual(redirect("/map"));
   });
 });
