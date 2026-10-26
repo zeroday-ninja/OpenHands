@@ -668,6 +668,9 @@ describe("the project map page", () => {
       "title",
     );
     expect(screen.getByTestId("project-map-legend")).toHaveAttribute("open");
+    expect(
+      await screen.findByTestId("project-map-chat-dock-toggle"),
+    ).toHaveAttribute("title");
     // Nothing was chosen, so the picker names the folder the map was read
     // from rather than asking beside a map it is already showing.
     expect(screen.getByTestId("project-map-workspace-picker")).toHaveAttribute(
