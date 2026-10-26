@@ -72,6 +72,8 @@ import {
 const launchConversation = vi.hoisted(() => vi.fn());
 /** The live work graph, empty unless a case puts work on it. */
 const workGraphNodes = vi.hoisted(() => ({ current: [] as unknown[] }));
+/** Whether that graph is still being assembled from the backends. */
+const workGraphFetching = vi.hoisted(() => ({ current: false }));
 
 /**
  * The shared test i18n instance carries no resources, so `t()` returns the key
@@ -119,7 +121,7 @@ vi.mock("#/hooks/query/use-work-graph", () => ({
     },
     contributions: [],
     isPending: false,
-    isFetching: false,
+    isFetching: workGraphFetching.current,
   }),
 }));
 
@@ -346,6 +348,8 @@ describe("the project map page", () => {
     useEventStore.getState().clearEvents();
     useProjectMapStore.getState().reset();
     useFeatureTrialStore.setState({ records: {} });
+    workGraphNodes.current = [];
+    workGraphFetching.current = false;
     setActiveSelection(null);
     setRegisteredBackends([]);
   });
@@ -853,6 +857,31 @@ describe("the project map page", () => {
         "oh:1/local/agent:a1",
       ]),
     );
+  });
+
+  it("says it is still asking, rather than that nothing has run", async () => {
+    // Arrange: the work graph answers eventually. While it is answering the
+    // page has no nodes, which is indistinguishable from an idle machine —
+    // and "Nothing has run yet" is a claim the reader cannot check.
+    everythingAnnounced();
+    workGraphNodes.current = [];
+    workGraphFetching.current = true;
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+
+    // Act
+    act(() => useProjectMapStore.getState().setLayer("work"));
+
+    // Assert
+    expect(
+      await screen.findByTestId("project-map-work-assembling"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("project-map-work-empty")).toBeNull();
   });
 
   it("opens the rail for the part you click", async () => {
