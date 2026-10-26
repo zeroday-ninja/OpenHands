@@ -116,6 +116,21 @@ export const FEATURE_TRIALS: readonly FeatureTrial[] = [
     ],
   },
   {
+    id: "map-links",
+    kind: "widget",
+    shippedOn: "2026-10-26",
+    titleKey: I18nKey.FEATURE$MAPLINKS$TITLE,
+    summaryKey: I18nKey.FEATURE$MAPLINKS$SUMMARY,
+    route: "/automations",
+    steps: [
+      {
+        titleKey: I18nKey.FEATURE$MAPLINKS$STEP1_TITLE,
+        bodyKey: I18nKey.FEATURE$MAPLINKS$STEP1_BODY,
+        testId: "automations-see-on-the-map",
+      },
+    ],
+  },
+  {
     id: "home-host-folders",
     kind: "widget",
     shippedOn: "2026-10-26",
