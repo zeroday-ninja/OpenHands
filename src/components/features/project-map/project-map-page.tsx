@@ -220,16 +220,16 @@ export function ProjectMapPage() {
   // the toolbar is the only thing that decides. Read from the navigation
   // context rather than the router's own hook, because this page is rendered
   // outside a router in tests and inside a host app when embedded.
+  // The context's path is the pathname in the app and carries the query in
+  // tests, so both are read: whichever has it, has it. The address is a
+  // dependency in its own right — a link that changes only the query would
+  // otherwise be answered with the previous one.
+  const addressQuery =
+    typeof window === "undefined" ? "" : window.location.search;
   const askedQuery = React.useMemo(() => {
-    const query =
-      currentPath.split("?")[1] ??
-      (typeof window === "undefined"
-        ? undefined
-        : window.location.search.replace(/^\?/, ""));
-    return query === undefined || query === ""
-      ? null
-      : new URLSearchParams(query);
-  }, [currentPath]);
+    const query = currentPath.split("?")[1] ?? addressQuery.replace(/^\?/, "");
+    return query === "" ? null : new URLSearchParams(query);
+  }, [currentPath, addressQuery]);
   const askedForConversation = askedQuery?.get("conversation") ?? null;
   // The context's path is the pathname in the app and carries the query in
   // tests, so both are read: whichever has it, has it.
@@ -401,16 +401,6 @@ export function ProjectMapPage() {
   const selectedAskedAgent = React.useRef(false);
   const setSelection = useProjectMapStore((state) => state.setSelection);
   React.useEffect(() => {
-    console.log(
-      "[agent-link]",
-      JSON.stringify({
-        asked: askedForConversation,
-        layer,
-        workFetching,
-        nodes: workGraph.nodes.length,
-        done: selectedAskedAgent.current,
-      }),
-    );
     if (selectedAskedAgent.current || askedForConversation === null) return;
     if (layer !== "work" || workFetching) return;
     const agent = workGraph.nodes.find(
@@ -739,8 +729,9 @@ export function ProjectMapPage() {
               onClick={toggleShowHidden}
             >
               <Eye size={ICON_SIZE} aria-hidden />
-              {/* The word goes below 1536px, where these controls wrapped onto
-                  a second row and took the height out of the drawing. Each
+              {/* These two lose their word below 1536px, the three below
+                  them below 1280px: six labelled controls wrapped onto a
+                  second row and took the height out of the drawing. Each
                   already says itself on hover, and the icon stays. */}
               <span className="hidden 2xl:inline">
                 {t(I18nKey.PROJECT_MAP$SHOW_HIDDEN)}
@@ -754,8 +745,9 @@ export function ProjectMapPage() {
               onClick={() => void refetch()}
             >
               <RefreshCw size={ICON_SIZE} aria-hidden />
-              {/* The word goes below 1536px, where these controls wrapped onto
-                  a second row and took the height out of the drawing. Each
+              {/* These two lose their word below 1536px, the three below
+                  them below 1280px: six labelled controls wrapped onto a
+                  second row and took the height out of the drawing. Each
                   already says itself on hover, and the icon stays. */}
               <span className="hidden 2xl:inline">
                 {t(I18nKey.PROJECT_MAP$REFRESH)}
@@ -770,9 +762,6 @@ export function ProjectMapPage() {
               onClick={() => void generate()}
             >
               <Sparkles size={ICON_SIZE} aria-hidden />
-              {/* The word goes below 1536px, where these controls wrapped onto
-                  a second row and took the height out of the drawing. Each
-                  already says itself on hover, and the icon stays. */}
               <span className="hidden xl:inline">
                 {t(I18nKey.PROJECT_MAP$REGENERATE)}
               </span>
