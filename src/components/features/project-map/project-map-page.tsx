@@ -863,6 +863,17 @@ export function ProjectMapPage() {
                     )}
                   </div>
                 )}
+              {/* What a plate and a line are, for a reader who has never
+                  seen one. On the paper rather than in the rail, which is
+                  folded by default — the key nobody opens is no key. */}
+              {!overview && layer === "code" && (
+                <p
+                  data-testid="project-map-detail-hint"
+                  className="pointer-events-none absolute bottom-3 left-4 max-w-md text-xs text-muted"
+                >
+                  {t(I18nKey.PROJECT_MAP$DETAIL_HINT)}
+                </p>
+              )}
               {layer === "work" && workGraph.nodes.length === 0 && (
                 <p
                   data-testid="project-map-work-empty"
@@ -942,7 +953,10 @@ export function ProjectMapPage() {
                   editable={layer === "code"}
                 />
               </div>
-              <ProjectMapLegend document={paper ?? document_} />
+              <ProjectMapLegend
+                document={paper ?? document_}
+                waiting={waitingParts.size > 0}
+              />
             </aside>
           )}
         </div>
