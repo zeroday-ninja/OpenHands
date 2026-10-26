@@ -132,6 +132,17 @@ interface ProjectMapState {
    * plates opens as its eight layers, and clicking one opens the detail.
    */
   overview: boolean;
+  /**
+   * Which derived layer is on the paper.
+   *
+   * A view, like `overview` and `showHidden`. It used to be written into the
+   * committed document, so looking at the live work graph marked the map
+   * unsaved and, if saved, told every machine that opened the repository to
+   * start on the agents rather than the code. What a person is looking at
+   * right now is not a fact about the repository. A document that already
+   * carries one is still honoured when it opens, and never rewritten.
+   */
+  layer: ProjectMapLayerId;
 
   hydrate: (source: string, document: PlacedProjectMapDocument) => void;
   reset: () => void;
@@ -350,6 +361,7 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
   viewport: INITIAL_VIEWPORT,
   showHidden: false,
   overview: false,
+  layer: "code",
 
   hydrate: (source, incoming) =>
     set((state) => {
@@ -376,6 +388,9 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
       return {
         source,
         document,
+        // A document that already names a layer opens on it; switching away
+        // is this session's business and is never written back.
+        layer: document.canvas.view.layer ?? "code",
         //: Shapes whose anchor the newest revision dropped, for the surface
         //: to name. Replaced rather than accumulated: it describes this
         //: revision, and a list that grew would keep reporting a release the
@@ -423,6 +438,7 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
       viewport: INITIAL_VIEWPORT,
       showHidden: false,
       overview: false,
+      layer: "code",
     }),
 
   markSaved: () => set({ dirty: false }),
@@ -573,13 +589,7 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
    * Goes through `edit` like any other view change, so switching to watch the
    * agents work and back is one undo step and is saved with everything else.
    */
-  setLayer: (layer) =>
-    set((state) =>
-      editCanvas(state, (canvas) => ({
-        ...canvas,
-        view: { ...canvas.view, layer },
-      })),
-    ),
+  setLayer: (layer) => set({ layer }),
 
   setTool: (tool) => set({ tool }),
   setChatOpen: (chatOpen) => set({ chatOpen }),
