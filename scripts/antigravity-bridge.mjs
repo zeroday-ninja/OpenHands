@@ -233,12 +233,24 @@ export async function startAntigravityBridge({
     }
     socket.on("data", (chunk) => forward(String(chunk)));
 
+    // Both ends of a connection are named when they go. The adapter dying
+    // mid-turn used to leave nothing here — the sandbox saw "Connection
+    // closed" and this side had logged only the banner — so five dead cycles
+    // in one night had no trace on the host at all.
     const stop = () => {
       socket.destroy();
-      if (child && child.exitCode === null) child.kill();
+      if (child?.exitCode === null) child.kill();
     };
-    socket.on("close", stop);
-    child.on("exit", () => socket.end());
+    socket.on("close", () => {
+      log(`  ${peer} closed its connection`);
+      stop();
+    });
+    child.on("exit", (code, signal) => {
+      log(
+        `  adapter for ${peer} exited (code ${code ?? "none"}, signal ${signal ?? "none"})`,
+      );
+      socket.end();
+    });
   }
 
   await new Promise((resolve) => server.listen(port, host, resolve));
