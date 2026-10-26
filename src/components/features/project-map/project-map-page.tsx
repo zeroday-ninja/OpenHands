@@ -208,7 +208,7 @@ export function ProjectMapPage() {
   // Which derived layer is on the paper. The committed analysis of the code,
   // or the live graph of what the agents are doing — the canvas draws either
   // the same way, and everything drawn over the top is unaffected.
-  const layer = document_?.canvas.view.layer ?? "code";
+  const layer = useProjectMapStore((state) => state.layer);
   const releasedShapeIds = useProjectMapStore(
     (state) => state.releasedShapeIds,
   );
