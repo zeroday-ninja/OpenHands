@@ -19,6 +19,7 @@ import { ServerStatusContextMenu } from "../controls/server-status-context-menu"
 import { conversationStatusLabelKey } from "../conversation-panel/conversation-status-dot";
 import { ConversationName } from "./conversation-name";
 import { ConversationGitActionsToggle } from "./conversation-git-actions-toggle";
+import { ConversationOnTheMapLink } from "./conversation-on-the-map-link";
 import { ConversationOverviewToggle } from "./conversation-overview-toggle";
 import { RightPanelToggle } from "./right-panel-toggle";
 import {
@@ -212,6 +213,7 @@ export function ConversationNameWithStatus() {
         </span>
       </div>
       <div className="mr-2 flex shrink-0 items-center gap-1">
+        <ConversationOnTheMapLink />
         <ConversationGitActionsToggle />
         <ConversationOverviewToggle />
         <RightPanelToggle />

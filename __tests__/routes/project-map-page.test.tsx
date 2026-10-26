@@ -819,6 +819,42 @@ describe("the project map page", () => {
     expect(useProjectMapStore.getState().layer).toBe("work");
   });
 
+  it("lands on the agent a transcript came from", async () => {
+    // Arrange: the conversation page links here with its own id, asking the
+    // map where that work sits.
+    everythingAnnounced();
+    workGraphNodes.current = [
+      {
+        key: "oh:1/local/agent:a1",
+        kind: "agent",
+        label: "codex",
+        status: "in_flight",
+        attrs: { role: "builder", conversation_id: "conversation-1" },
+      },
+    ];
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+
+    // Act
+    renderWithProviders(<MapRoute />, {
+      navigation: {
+        currentPath: "/map?layer=work&conversation=conversation-1",
+      },
+    });
+    await screen.findByTestId("project-map-node-oh:1/local/agent:a1");
+
+    // Assert: that agent is the selection, so the rail describes it and the
+    // dock shows what it is doing.
+    await waitFor(() =>
+      expect(useProjectMapStore.getState().selection).toEqual([
+        "oh:1/local/agent:a1",
+      ]),
+    );
+  });
+
   it("opens the rail for the part you click", async () => {
     // Arrange
     everythingAnnounced();
