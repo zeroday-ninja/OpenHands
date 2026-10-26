@@ -61450,5 +61450,23 @@
     "uk": "{{count}} чекають на вас",
     "ca": "{{count}} t'esperen",
     "id": "{{count}} menunggu Anda"
+  },
+  "PROJECT_MAP$NOT_YOURS_YET": {
+    "en": "This is the folder the agent server runs in, not a repository you chose. Pick one above and the map is of that.",
+    "zh-CN": "这是代理服务器运行所在的文件夹，不是你选择的仓库。在上方选择一个，地图就会是那个仓库的。",
+    "zh-TW": "這是代理伺服器執行所在的資料夾，不是你選擇的儲存庫。在上方選擇一個，地圖就會是那個儲存庫的。",
+    "de": "Das ist der Ordner, in dem der Agent-Server läuft, kein von dir gewähltes Repository. Wähle oben eines, dann ist die Karte davon.",
+    "ko-KR": "여기는 에이전트 서버가 실행되는 폴더이며, 당신이 고른 저장소가 아닙니다. 위에서 하나 고르면 그 저장소의 맵이 됩니다.",
+    "no": "Dette er mappa agent-serveren kjører i, ikke et repository du har valgt. Velg ett over, så er kartet av det.",
+    "it": "Questa è la cartella in cui gira l'agent server, non un repository scelto da te. Scegline uno sopra e la mappa sarà di quello.",
+    "pt": "Esta é a pasta onde o agent server corre, não um repositório que escolheu. Escolha um acima e o mapa será desse.",
+    "es": "Esta es la carpeta donde se ejecuta el agent server, no un repositorio que elegiste. Elige uno arriba y el mapa será de ese.",
+    "ar": "هذا هو المجلد الذي يعمل فيه خادم الوكلاء، وليس مستودعًا اخترته. اختر واحدًا بالأعلى لتصبح الخريطة له.",
+    "fr": "C'est le dossier où tourne l'agent server, pas un dépôt que vous avez choisi. Choisissez-en un ci-dessus et la carte sera la sienne.",
+    "tr": "Burası aracı sunucusunun çalıştığı klasör, seçtiğiniz bir depo değil. Yukarıdan birini seçin, harita onun olsun.",
+    "ja": "ここはエージェントサーバーが動いているフォルダーで、あなたが選んだリポジトリではありません。上で選ぶと、その地図になります。",
+    "uk": "Це тека, в якій працює сервер агентів, а не обраний вами репозиторій. Виберіть один вище, і карта буде його.",
+    "ca": "Aquesta és la carpeta on s'executa l'agent server, no un repositori que hagis triat. Tria'n un a dalt i el mapa serà d'aquell.",
+    "id": "Ini folder tempat agent server berjalan, bukan repositori pilihan Anda. Pilih satu di atas dan petanya jadi milik repo itu."
   }
 }

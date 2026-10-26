@@ -742,6 +742,18 @@ export function ProjectMapPage() {
                 }
                 onChange={chooseWorkspace}
               />
+              {/* A first visit lands on whatever map the agent server's own
+                  directory happens to hold — four plates of a scratch
+                  folder, an honest answer to a question nobody asked. Say
+                  so, once, until a repository is chosen. */}
+              {chosenPath === null && (
+                <p
+                  data-testid="project-map-not-chosen"
+                  className="mt-1 max-w-md text-xs text-muted"
+                >
+                  {t(I18nKey.PROJECT_MAP$NOT_YOURS_YET)}
+                </p>
+              )}
             </div>
           )}
           {/* Only when it says something the picker does not: the picker
