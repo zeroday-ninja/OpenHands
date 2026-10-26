@@ -61306,5 +61306,23 @@
     "uk": "Подивитися на карті",
     "ca": "Mira-ho al mapa",
     "id": "Lihat di peta"
+  },
+  "CONVERSATION$ON_THE_MAP": {
+    "en": "See this work on the map",
+    "zh-CN": "在地图上查看这项工作",
+    "zh-TW": "在地圖上檢視這項工作",
+    "de": "Diese Arbeit auf der Karte ansehen",
+    "ko-KR": "이 작업을 맵에서 보기",
+    "no": "Se dette arbeidet på kartet",
+    "it": "Vedi questo lavoro sulla mappa",
+    "pt": "Ver este trabalho no mapa",
+    "es": "Ver este trabajo en el mapa",
+    "ar": "شاهد هذا العمل على الخريطة",
+    "fr": "Voir ce travail sur la carte",
+    "tr": "Bu işi haritada gör",
+    "ja": "この作業をマップで見る",
+    "uk": "Подивитися цю роботу на карті",
+    "ca": "Mira aquesta feina al mapa",
+    "id": "Lihat pekerjaan ini di peta"
   }
 }

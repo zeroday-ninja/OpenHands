@@ -75,6 +75,7 @@ import {
 import {
   fitProjectMapViewBox,
   projectMapBounds,
+  projectMapNodeSize,
 } from "#/utils/project-map/project-map-layout";
 import {
   projectMapOverview,
@@ -131,6 +132,9 @@ const RAIL_WAITING_I18N_KEY = "PROJECT_MAP$RAIL_WAITING";
  * the same reasoning as the memory-sync conflict line.
  */
 const RELEASED_SHOWN = 5;
+
+/** How much of its surroundings an agent framed from a link arrives with. */
+const AGENT_FRAME_MARGIN = 420;
 
 export function ProjectMapPage() {
   const { t, i18n } = useTranslation("openhands");
@@ -216,17 +220,20 @@ export function ProjectMapPage() {
   // the toolbar is the only thing that decides. Read from the navigation
   // context rather than the router's own hook, because this page is rendered
   // outside a router in tests and inside a host app when embedded.
-  const askedForLayer = React.useMemo(() => {
-    // The context's path is the pathname in the app and carries the query in
-    // tests, so both are read: whichever has it, has it.
+  const askedQuery = React.useMemo(() => {
     const query =
       currentPath.split("?")[1] ??
       (typeof window === "undefined"
         ? undefined
         : window.location.search.replace(/^\?/, ""));
-    if (query === undefined || query === "") return null;
-    return new URLSearchParams(query).get("layer");
+    return query === undefined || query === ""
+      ? null
+      : new URLSearchParams(query);
   }, [currentPath]);
+  const askedForConversation = askedQuery?.get("conversation") ?? null;
+  // The context's path is the pathname in the app and carries the query in
+  // tests, so both are read: whichever has it, has it.
+  const askedForLayer = askedQuery?.get("layer") ?? null;
   const appliedAskedLayer = React.useRef(false);
   // The work layer's own layers, named for a reader rather than for the
   // schema. Built here because this is where translation lives.
@@ -385,6 +392,66 @@ export function ProjectMapPage() {
       }),
     );
   }, [layer, paper, workFetching, setOverview, setViewport]);
+
+  // `?conversation=<id>` selects the agent that ran it, so a transcript can
+  // show where its work sits. Waits for the graph: the agent is not on the
+  // paper until the work the link came from has been assembled. Declared
+  // after the effect above on purpose: that one frames the whole layer when
+  // you arrive at it, and would otherwise undo this the moment it ran.
+  const selectedAskedAgent = React.useRef(false);
+  const setSelection = useProjectMapStore((state) => state.setSelection);
+  React.useEffect(() => {
+    console.log(
+      "[agent-link]",
+      JSON.stringify({
+        asked: askedForConversation,
+        layer,
+        workFetching,
+        nodes: workGraph.nodes.length,
+        done: selectedAskedAgent.current,
+      }),
+    );
+    if (selectedAskedAgent.current || askedForConversation === null) return;
+    if (layer !== "work" || workFetching) return;
+    const agent = workGraph.nodes.find(
+      (node) =>
+        node.kind === "agent" &&
+        conversationIdOf(node) === askedForConversation,
+    );
+    if (agent === undefined) return;
+    selectedAskedAgent.current = true;
+    setOverview(false);
+    setSelection([agent.key]);
+    // And put it in front of the reader. Selecting a plate that is somewhere
+    // off the paper is the same as not selecting it: the drawing above 400
+    // plates only renders what is in view, so an unframed agent is not even
+    // drawn.
+    const plate = workLayer?.nodes.find((node) => node.id === agent.key);
+    const frame = frameRef.current?.getBoundingClientRect();
+    if (plate === undefined || !frame || frame.width === 0) return;
+    const size = projectMapNodeSize(plate.size);
+    setViewport(
+      fitProjectMapViewBox(
+        {
+          x: plate.x - AGENT_FRAME_MARGIN,
+          y: plate.y - AGENT_FRAME_MARGIN,
+          width: size.width + AGENT_FRAME_MARGIN * 2,
+          height: size.height + AGENT_FRAME_MARGIN * 2,
+        },
+        frame,
+        { min: PROJECT_MAP_MIN_SCALE, max: 1 },
+      ),
+    );
+  }, [
+    askedForConversation,
+    layer,
+    workFetching,
+    workGraph.nodes,
+    workLayer,
+    setOverview,
+    setSelection,
+    setViewport,
+  ]);
 
   React.useEffect(() => {
     if (data === undefined) return;
