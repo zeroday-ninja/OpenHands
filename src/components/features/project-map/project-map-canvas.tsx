@@ -95,11 +95,13 @@ const GROUP_LABEL_PADDING = 12;
 const DETAIL_SCALE = 0.62;
 /** Opening a layer from the overview lands at least this close. */
 /**
- * How far an opened layer may be shrunk to get its width in frame. Below
- * this the labels stop being readable, which is the whole point of opening
- * it; a layer taller than the frame is panned through instead.
+ * How far an opened layer may be shrunk to get its width in frame.
+ *
+ * `DETAIL_SCALE` exactly, not a hair under it: at 0.6 a layer floored by the
+ * fit arrived with the dot grid and the plates' path lines switched off,
+ * which is most of what opening a layer is for.
  */
-const OPEN_LAYER_MIN_SCALE = 0.6;
+const OPEN_LAYER_MIN_SCALE = DETAIL_SCALE;
 const OPEN_LAYER_MAX_SCALE = 1.25;
 /**
  * A press that travels no further than this, in screen pixels, was a click.

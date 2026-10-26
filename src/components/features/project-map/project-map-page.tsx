@@ -828,7 +828,14 @@ export function ProjectMapPage() {
                   data-testid="project-map-overview-hint"
                   className="pointer-events-none absolute left-4 top-4 max-w-md text-xs text-muted"
                 >
-                  {t(I18nKey.PROJECT_MAP$OVERVIEW_HINT)}
+                  {/* The work graph has machines, programs and cycles on
+                      it, not files: the hint that explains the blocks has
+                      to be about the drawing it is over. */}
+                  {t(
+                    layer === "work"
+                      ? I18nKey.PROJECT_MAP$OVERVIEW_HINT_WORK
+                      : I18nKey.PROJECT_MAP$OVERVIEW_HINT,
+                  )}
                 </p>
               )}
               {/* The way back up, on the paper itself: the View switch is
@@ -869,7 +876,11 @@ export function ProjectMapPage() {
               {!overview && layer === "code" && (
                 <p
                   data-testid="project-map-detail-hint"
-                  className="pointer-events-none absolute bottom-3 left-4 max-w-md text-xs text-muted"
+                  // `right-28` keeps the last line clear of Open chat: on a
+                  // phone the sentence wrapped under the button, which does
+                  // still work — the paragraph ignores the pointer — but the
+                  // end of the sentence was unreadable.
+                  className="pointer-events-none absolute bottom-3 left-4 right-28 max-w-md text-xs text-muted"
                 >
                   {t(I18nKey.PROJECT_MAP$DETAIL_HINT)}
                 </p>
