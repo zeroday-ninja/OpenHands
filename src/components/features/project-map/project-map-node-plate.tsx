@@ -131,22 +131,6 @@ export function ProjectMapNodePlate({
           strokeDasharray={focused && !selected ? "3 2" : undefined}
         />
       )}
-      {/* The rail promises to answer what is waiting "on the map", and a
-          count in a corner of the screen is not on the map. A dot on the
-          part itself is; clicking the part opens the rail with it. */}
-      {waiting && (
-        <circle
-          data-testid="project-map-waiting-mark"
-          cx={width - 6}
-          cy={6}
-          r={5}
-          className="fill-warning stroke-canvas-base"
-          strokeWidth={1.5}
-          vectorEffect="non-scaling-stroke"
-        >
-          <title>{t(I18nKey.PROJECT_MAP$WAITING_PART)}</title>
-        </circle>
-      )}
       <path
         d={silhouette.outline}
         fill="var(--color-surface)"
@@ -200,6 +184,24 @@ export function ProjectMapNodePlate({
         />
       )}
       {node.hidden && <title>{t(I18nKey.PROJECT_MAP$SHOW_HIDDEN)}</title>}
+      {/* Last, so it is on top: a silhouette whose shape reaches its own
+          top-right corner — a route's tag, a component's notch — painted
+          over a mark drawn before it, and three of the five kinds hid it
+          completely. The rail promises to answer what waits "on the map",
+          which a dot under the drawing does not. */}
+      {waiting && (
+        <circle
+          data-testid="project-map-waiting-mark"
+          cx={width - 6}
+          cy={6}
+          r={5}
+          className="fill-warning stroke-canvas-base"
+          strokeWidth={1.5}
+          vectorEffect="non-scaling-stroke"
+        >
+          <title>{t(I18nKey.PROJECT_MAP$WAITING_PART)}</title>
+        </circle>
+      )}
     </g>
   );
 }

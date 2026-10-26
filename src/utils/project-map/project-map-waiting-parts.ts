@@ -80,7 +80,9 @@ export function projectMapWaitingLayers(
 ): Map<string, number> {
   const counts = new Map<string, number>();
   for (const node of document.nodes) {
-    if (node.group === null || !parts.has(node.id)) continue;
+    // Hidden parts are not in a layer's own part count either, so counting
+    // them here made a block say three where two marks were on the paper.
+    if (node.hidden || node.group === null || !parts.has(node.id)) continue;
     counts.set(node.group, (counts.get(node.group) ?? 0) + 1);
   }
   return counts;

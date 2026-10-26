@@ -271,6 +271,14 @@ describe("ProjectMapCanvas", () => {
     expect(screen.getByTestId("project-map-node-right")).not.toHaveAttribute(
       "data-waiting",
     );
+    // Drawn last, so the silhouette cannot paint over it: a shape that
+    // reaches its own top-right corner hid the mark completely.
+    const drawn = Array.from(
+      screen.getByTestId("project-map-node-left").children,
+    );
+    expect(drawn.indexOf(screen.getByTestId("project-map-waiting-mark"))).toBe(
+      drawn.length - 1,
+    );
 
     // Act: folded to layers, the layer holding it carries the count.
     act(() => useProjectMapStore.getState().setOverview(true));
