@@ -15,18 +15,21 @@
  * rather than on another page. Asking what something is, being told, and
  * pointing at it on the drawing are then one activity instead of three.
  *
- * **Which workspace the page is looking at.** The bound conversation is also
- * the answer to that, and this component is its one owner and writer. A
- * conversation under `OH_CONVERSATION_RUNTIME=docker` runs in its own
- * container, so the repository it cloned — and the only copy of
- * `.openhands/project-map.json` that exists — is inside that sandbox and
- * invisible to the agent server's own filesystem. The map therefore follows
- * the conversation: reads, writes, the analysis prompt and the chat's context
- * block all name the workspace of the bound conversation, and only an unbound
- * page falls back to the backend's configured working directory. Either way
- * the workspace is named on screen, because the failure this feature actually
- * has is not an error message — it is a plausible-looking empty map of
- * somewhere else.
+ * **Which workspace the page is looking at.** The folder the user chose, when
+ * they chose one, else the bound conversation's; this component is the one
+ * writer of both, through `useProjectMapWorkspaceStore`. A conversation under
+ * `OH_CONVERSATION_RUNTIME=docker` runs in its own container, and a chosen
+ * folder is what the runtime mounts there as its working directory — so the
+ * repository the agent works on and the file this page reads are one and the
+ * same folder on the host, and the map outlives the sandbox. With nothing
+ * chosen the map follows the conversation instead: the repository it cloned,
+ * and the only copy of `.openhands/project-map.json`, are inside that sandbox
+ * and invisible to the agent server's own filesystem, so reads, writes, the
+ * analysis prompt and the chat's context block all name that workspace. An
+ * unbound page with nothing chosen falls back to the backend's configured
+ * working directory. Either way the workspace is named on screen, because the
+ * failure this feature actually has is not an error message — it is a
+ * plausible-looking empty map of somewhere else.
  */
 
 import React from "react";
@@ -57,6 +60,11 @@ import {
   useProjectMapStore,
 } from "#/stores/project-map-store";
 import {
+  boundConversationFor,
+  selectionForBackend,
+  useProjectMapWorkspaceStore,
+} from "#/stores/project-map-workspace-store";
+import {
   PROJECT_MAP_FILE_PATH,
   PROJECT_MAP_VERSION,
 } from "#/types/project-map";
@@ -83,6 +91,7 @@ import { ProjectMapToolPalette } from "./project-map-tool-palette";
 import { ProjectMapModeSwitch } from "./project-map-mode-switch";
 import { ProjectMapChatDock } from "./project-map-chat-dock";
 import { ProjectMapLegend } from "./project-map-legend";
+import { ProjectMapWorkspacePicker } from "./project-map-workspace-picker";
 import {
   PROJECT_MAP_BUTTON_CLASS,
   PROJECT_MAP_PRIMARY_BUTTON_CLASS,
@@ -106,12 +115,31 @@ export function ProjectMapPage() {
   const { navigate } = useNavigation();
   const { backend } = useActiveBackend();
   const frameRef = React.useRef<SVGSVGElement | null>(null);
-  // The conversation this page is bound to, which is also the workspace the
-  // map is read from and written to. One owner, one writer: every other piece
-  // of the page receives it as a prop or as a hook argument.
-  const [mapConversationId, setMapConversationId] = React.useState<
-    string | null
-  >(null);
+  // The folder this page is a picture of, and the conversation working in it,
+  // remembered per backend. One owner, one writer: the store holds them, this
+  // component is the only thing that changes them, and every other piece of
+  // the page receives them as a prop or as a hook argument.
+  const workspaceSelection = useProjectMapWorkspaceStore((state) =>
+    selectionForBackend(state, backend.id),
+  );
+  const chooseWorkspaceFor = useProjectMapWorkspaceStore(
+    (state) => state.chooseWorkspace,
+  );
+  const bindConversation = useProjectMapWorkspaceStore(
+    (state) => state.bindConversation,
+  );
+  // Only a local backend has a host with folders on it; the map is unsupported
+  // on Cloud regardless, so a choice remembered there is never acted on.
+  const chosenPath = backend.kind === "local" ? workspaceSelection.path : null;
+  const mapConversationId = boundConversationFor(
+    workspaceSelection,
+    chosenPath,
+  );
+  const setMapConversationId = React.useCallback(
+    (conversationId: string | null) =>
+      bindConversation(backend.id, chosenPath, conversationId),
+    [backend.id, bindConversation, chosenPath],
+  );
   const {
     data,
     isLoading,
@@ -121,8 +149,14 @@ export function ProjectMapPage() {
     unavailableRuntimeConversationId,
     attemptedPath,
     refetch,
-  } = useProjectMap(mapConversationId);
-  const saveProjectMap = useSaveProjectMap(mapConversationId);
+  } = useProjectMap({
+    conversationId: mapConversationId,
+    workingDir: chosenPath,
+  });
+  const saveProjectMap = useSaveProjectMap({
+    conversationId: mapConversationId,
+    workingDir: chosenPath,
+  });
   const createConversation = useCreateConversation();
   // Whether a conversation gets its own container. It decides what the
   // analysis can be told: a sandbox cannot see the directory this page reads
@@ -136,6 +170,7 @@ export function ProjectMapPage() {
   const dirty = useProjectMapStore((state) => state.dirty);
   const showHidden = useProjectMapStore((state) => state.showHidden);
   const hydrate = useProjectMapStore((state) => state.hydrate);
+  const reset = useProjectMapStore((state) => state.reset);
   const markSaved = useProjectMapStore((state) => state.markSaved);
   const toggleShowHidden = useProjectMapStore(
     (state) => state.toggleShowHidden,
@@ -220,6 +255,31 @@ export function ProjectMapPage() {
   // the page reads are the same file, even when the agent's own working
   // directory is somewhere else.
   const mapPath = attemptedPath ?? PROJECT_MAP_FILE_PATH;
+  // Except inside a sandbox, where the host's absolute path names nothing:
+  // the sandbox mounts the folder this page reads *as* its working directory,
+  // so there the file is the repository-relative one.
+  const agentMapPath = isolated ? PROJECT_MAP_FILE_PATH : mapPath;
+  // The directory a conversation started from this page is attached to. The
+  // chosen folder when there is one — on a Docker backend the runtime mounts
+  // it, which is what puts the repository inside the sandbox — else, on a
+  // host workspace, the directory the map was read from. An isolated sandbox
+  // with nothing chosen keeps its own, and the page follows it.
+  const launchWorkingDir =
+    chosenPath ?? (isolated ? null : (workspace?.workingDir ?? null));
+
+  /**
+   * Points the page at another folder.
+   *
+   * The editor buffer goes first. `hydrate` merges unsaved moves into a new
+   * revision of the *same* file, which is right for a regeneration and wrong
+   * for a different repository: it would carry one map's drawn shapes onto
+   * another's canvas. A different folder is a different document.
+   */
+  const chooseWorkspace = (path: string | null) => {
+    if (path === chosenPath) return;
+    reset();
+    chooseWorkspaceFor(backend.id, path);
+  };
 
   /**
    * Starts the analysis and binds it to the page.
@@ -234,16 +294,16 @@ export function ProjectMapPage() {
   const generate = async () => {
     try {
       const conversation = await createConversation.mutateAsync({
-        // An isolated conversation owns its workspace and the page follows it,
-        // so the only file it can write is the one in its own working
-        // directory — there is no absolute path to name, and naming this
-        // page's would send it somewhere its container does not have.
+        // An isolated conversation's working directory is the only place it
+        // can write — its own sandbox, or the chosen folder mounted there —
+        // so it is told the repository-relative name, and naming this page's
+        // absolute path would send it somewhere its container does not have.
         // Otherwise the conversation joins the workspace the map is already
         // in and is told that file's absolute path. `attemptedPath` rather
         // than `mapPath`: a path the page never resolved is not an absolute
         // one, and claiming it is would be the same mistake again.
         query: buildProjectMapAnalysisPrompt(isolated ? null : attemptedPath),
-        ...(isolated || !workspace ? {} : { workingDir: workspace.workingDir }),
+        ...(launchWorkingDir === null ? {} : { workingDir: launchWorkingDir }),
       });
       setMapConversationId(conversation.conversation_id);
     } catch {
@@ -285,6 +345,18 @@ export function ProjectMapPage() {
           <p className="text-sm text-tertiary-light">
             {t(I18nKey.PROJECT_MAP$SUBTITLE)}
           </p>
+          {/* The empty state carries the picker, with its hint, until a folder
+              is chosen or a map is found; after that it sits here, compact,
+              for switching. Never both at once. */}
+          {backend.kind === "local" &&
+            (chosenPath !== null || document_ !== null) && (
+              <div className="mt-2">
+                <ProjectMapWorkspacePicker
+                  value={chosenPath}
+                  onChange={chooseWorkspace}
+                />
+              </div>
+            )}
           <WorkspaceLabel workspace={workspace} backendName={backend.name} />
         </div>
         {document_ !== null && (
@@ -419,6 +491,15 @@ export function ProjectMapPage() {
           pending={createConversation.isPending}
           conversationId={mapConversationId}
           workspace={workspace}
+          chooser={
+            backend.kind === "local" && chosenPath === null ? (
+              <ProjectMapWorkspacePicker
+                value={chosenPath}
+                onChange={chooseWorkspace}
+                hint
+              />
+            ) : null
+          }
           onGenerate={() => void generate()}
           onRefresh={() => void refetch()}
           onOpenConversation={(conversationId) =>
@@ -488,11 +569,9 @@ export function ProjectMapPage() {
               )}
               <ProjectMapChatDock
                 document={document_}
-                mapPath={mapPath}
+                mapPath={agentMapPath}
                 conversationId={boundConversationId}
-                launchWorkingDir={
-                  isolated ? null : (workspace?.workingDir ?? null)
-                }
+                launchWorkingDir={launchWorkingDir}
                 onConversationStarted={setMapConversationId}
                 onDetach={() => setMapConversationId(null)}
               />
@@ -636,6 +715,7 @@ function EmptyState({
   pending,
   conversationId,
   workspace,
+  chooser,
   onGenerate,
   onRefresh,
   onOpenConversation,
@@ -644,6 +724,12 @@ function EmptyState({
   /** The conversation the page is bound to, which is writing the map. */
   conversationId: string | null;
   workspace: ProjectMapWorkspace | null;
+  /**
+   * The repository picker, while no folder is chosen. It comes before the
+   * generate button because generating a map of the wrong directory is the
+   * mistake this state used to invite.
+   */
+  chooser: React.ReactNode;
   onGenerate: () => void;
   onRefresh: () => void;
   onOpenConversation: (conversationId: string) => void;
@@ -660,6 +746,7 @@ function EmptyState({
       <p className="text-sm leading-relaxed text-text-secondary">
         {t(I18nKey.PROJECT_MAP$EMPTY_BODY)}
       </p>
+      {chooser}
       {conversationId !== null && workspace !== null && (
         <p
           data-testid="project-map-analysis-running"

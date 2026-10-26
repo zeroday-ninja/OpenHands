@@ -86,7 +86,17 @@ export function useResolvedWorkspaces(): UseResolvedWorkspacesResult {
   });
 
   const isLoading = isLoadingList || parentQueries.some((q) => q.isLoading);
-  const isError = isErrorList || parentQueries.some((q) => q.isError);
+  // A failed probe of an implicit parent is not an error anyone can act on:
+  // `/projects` simply does not exist on most hosts, and reporting "some
+  // folders could not be loaded" for it sent people looking for a folder of
+  // theirs that was fine. Only the list and the parents they added count.
+  const isError =
+    isErrorList ||
+    parentQueries.some(
+      (q, index) =>
+        q.isError &&
+        !IMPLICIT_WORKSPACE_PARENTS.includes(workspaceParents[index]),
+    );
 
   // Stable string fingerprint that changes whenever any parent's subdir
   // results change. Avoids spreading timestamps into the `useMemo` deps,
