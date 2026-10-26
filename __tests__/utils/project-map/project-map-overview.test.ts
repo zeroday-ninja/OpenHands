@@ -56,6 +56,51 @@ function document(
 }
 
 describe("projectMapOverview", () => {
+  it("says where each layer's parts live, in the repository's own words", () => {
+    // Arrange: everything under src/, so src/ says nothing and is stripped;
+    // an external part has no path and names no folder.
+    const overview = projectMapOverview(
+      document([
+        node("src/web/a.ts", "web"),
+        node("src/web/b.ts", "web"),
+        node("src/web/c.ts", "web"),
+        node("src/public/d.css", "web"),
+        node("src/public/e.css", "web"),
+        node("src/scripts/f.ts", "web"),
+        node("src/index.ts", "web"),
+        node("src/api/g.ts", "api"),
+        node("ext:stripe", "api", { path: null }),
+        node("src/server/research/x.ts", "data"),
+        node("src/server/research/y.ts", "data"),
+        node("src/server/engine/z.ts", "data"),
+        node("src/server/char.ts", "data"),
+      ]),
+    );
+
+    // Assert: a layer sharing no folder names its three fullest entries,
+    // folders before a lone file; a layer under one folder is named by it
+    // and by what inside it holds the most parts, which is a file when the
+    // layer's parts are files.
+    expect(overview.blocks.map((block) => block.where)).toEqual([
+      "web/, public/, scripts/",
+      "api/g.ts",
+      "server/{research/, engine/, char.ts}",
+    ]);
+  });
+
+  it("names nothing for a layer with no parts, and a lone part by its file", () => {
+    // Every path in a one-part map shares every folder, so the folders say
+    // nothing and the file is the whole of what is left to say.
+    const overview = projectMapOverview(
+      document([node("src/api/g.ts", "api")]),
+    );
+    expect(overview.blocks.map((block) => block.where)).toEqual([
+      "",
+      "g.ts",
+      "",
+    ]);
+  });
+
   it("draws one block per layer with its visible parts, in a near-square grid", () => {
     // Arrange: three layers; one part hidden, one in no layer at all.
     const doc = document([

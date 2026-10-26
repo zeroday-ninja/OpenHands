@@ -15,6 +15,7 @@
 
 import type {
   PlacedProjectMapDocument,
+  PlacedProjectMapNode,
   ProjectMapGroup,
 } from "#/types/project-map";
 
@@ -29,6 +30,14 @@ export interface ProjectMapOverviewBlock {
   group: ProjectMapGroup;
   /** Visible parts in the layer. */
   count: number;
+  /**
+   * Where those parts live, in the repository's own words: the folder they
+   * all share and, inside it, whatever holds the most of them —
+   * `server/{research/, engine.js}` — or the fullest root entries when they
+   * share no folder. A layer's name is the analysis's invention; its folders
+   * are what a maintainer recognises first. Empty for a layer with no parts.
+   */
+  where: string;
   x: number;
   y: number;
   width: number;
@@ -64,6 +73,81 @@ export function projectMapWantsOverview(
   );
 }
 
+/** How many folders a block names; the rest are the detail level's. */
+const FOLDERS_PER_BLOCK = 3;
+
+/**
+ * The leading folders every path shares — `src/` in most repositories —
+ * which say nothing about any one layer and are stripped before naming.
+ */
+function sharedLeadingFolders(paths: string[]): string {
+  if (paths.length === 0) return "";
+  const first = paths[0].split("/").slice(0, -1);
+  let shared = first.length;
+  for (const path of paths.slice(1)) {
+    const parts = path.split("/").slice(0, -1);
+    let same = 0;
+    while (same < shared && same < parts.length && parts[same] === first[same])
+      same += 1;
+    shared = same;
+    if (shared === 0) break;
+  }
+  return shared === 0 ? "" : `${first.slice(0, shared).join("/")}/`;
+}
+
+/** The first folder (or lone file) under `prefix` in each path, counted. */
+function namesUnder(paths: string[], prefix: string): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const path of paths) {
+    const rest = path.startsWith(prefix) ? path.slice(prefix.length) : path;
+    const slash = rest.indexOf("/");
+    const name = slash === -1 ? rest : `${rest.slice(0, slash)}/`;
+    if (name === "") continue;
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/** Fullest first; folders before lone files; then by name. */
+function byFullness(
+  [a, countA]: [string, number],
+  [b, countB]: [string, number],
+): number {
+  return (
+    countB - countA ||
+    Number(b.endsWith("/")) - Number(a.endsWith("/")) ||
+    a.localeCompare(b)
+  );
+}
+
+/**
+ * Where a layer's parts live, `shared` being the folders every path in the
+ * document has in common (`src/`, usually), stripped first because they say
+ * nothing about any one layer. A layer whose parts all sit under one folder
+ * is named by it, and by the folders inside it where they differ —
+ * `server/{research/, engine/}` — or by the folder alone when nothing inside
+ * it is a folder. A layer spread over the root names the fullest root
+ * folders, then lone files. At most three names either way.
+ */
+export function projectMapOverviewWhere(
+  paths: string[],
+  shared: string,
+): string {
+  const relative = paths.map((path) =>
+    path.startsWith(shared) ? path.slice(shared.length) : path,
+  );
+  if (relative.length === 0) return "";
+  const own = sharedLeadingFolders(relative);
+  const names = [...namesUnder(relative, own).entries()]
+    .sort(byFullness)
+    .map(([name]) => name);
+  const inside = names.slice(0, FOLDERS_PER_BLOCK);
+  if (own === "") return inside.join(", ");
+  if (inside.length === 0) return own;
+  if (inside.length === 1) return `${own}${inside[0]}`;
+  return `${own}{${inside.join(", ")}}`;
+}
+
 /** Blocks per row: a near-square grid reads better than one long line. */
 export function projectMapOverviewColumns(groups: number): number {
   return Math.max(1, Math.ceil(Math.sqrt(groups)));
@@ -83,9 +167,18 @@ export function projectMapOverview(
 
   const columns = projectMapOverviewColumns(document.groups.length);
   const { width, height } = PROJECT_MAP_OVERVIEW_BLOCK;
+  const pathOf = (node: PlacedProjectMapNode): string[] =>
+    node.path === null ? [] : [node.path];
+  const shared = sharedLeadingFolders(visible.flatMap(pathOf));
   const blocks = document.groups.map((group, index) => ({
     group,
     count: visible.filter((node) => groupOf.get(node.id) === group.id).length,
+    where: projectMapOverviewWhere(
+      visible
+        .filter((node) => groupOf.get(node.id) === group.id)
+        .flatMap(pathOf),
+      shared,
+    ),
     x: (index % columns) * (width + PROJECT_MAP_OVERVIEW_GAP),
     y: Math.floor(index / columns) * (height + PROJECT_MAP_OVERVIEW_GAP),
     width,
