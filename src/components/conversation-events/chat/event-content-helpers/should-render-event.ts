@@ -9,6 +9,7 @@ import {
   isConversationStateUpdateEvent,
   isGoalConversationStateUpdateEvent,
   isHookExecutionEvent,
+  isACPAdapterIncidentEvent,
   isACPToolCallEvent,
   isStreamingDeltaEvent,
   isUserRejectObservation,
@@ -164,6 +165,12 @@ export const shouldRenderEvent = (event: OpenHandsEvent) => {
   // ``ToolCallProgress``, which flashed half-formed cards mid-stream; that
   // fan-out is gone, so the running card is now a single clean event.
   if (isACPToolCallEvent(event)) {
+    return true;
+  }
+
+  // An adapter's own report of something it could not translate: shown as a
+  // notice, with whether it was filed as a lesson.
+  if (isACPAdapterIncidentEvent(event)) {
     return true;
   }
 

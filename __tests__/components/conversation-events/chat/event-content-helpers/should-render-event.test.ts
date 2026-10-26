@@ -9,6 +9,7 @@ import {
   createUserMessageEvent,
 } from "test-utils";
 import { ACPToolCallEvent } from "#/types/agent-server/core/events/acp-tool-call-event";
+import { ACPAdapterIncidentEvent } from "#/types/agent-server/core/events/acp-adapter-incident-event";
 import { StreamingDeltaEvent } from "#/types/agent-server/core/events/streaming-delta-event";
 import {
   ActionEvent,
@@ -60,6 +61,22 @@ describe("shouldRenderEvent - PlanningFileEditorAction", () => {
   it("should return true for user message events", () => {
     const event = createUserMessageEvent("msg-1");
 
+    expect(shouldRenderEvent(event)).toBe(true);
+  });
+});
+
+describe("shouldRenderEvent - ACPAdapterIncidentEvent", () => {
+  it("renders an adapter's own incident report", () => {
+    const event: ACPAdapterIncidentEvent = {
+      kind: "ACPAdapterIncidentEvent",
+      id: "inc-1",
+      timestamp: "2026-10-26T05:00:00Z",
+      source: "environment",
+      adapter: "antigravity",
+      what: "step",
+      unrecognised_kind: "review_note",
+      detail: "[unrecognised step: 'review_note']",
+    };
     expect(shouldRenderEvent(event)).toBe(true);
   });
 });
