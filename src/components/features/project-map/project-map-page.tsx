@@ -78,6 +78,10 @@ import {
   projectMapOverview,
   projectMapWantsOverview,
 } from "#/utils/project-map/project-map-overview";
+import {
+  formatRelativeTime,
+  isInvalidTimestamp,
+} from "#/utils/format-relative-time";
 import { displayErrorToast } from "#/utils/custom-toast-handlers";
 import { buildProjectMapAnalysisPrompt } from "./project-map-analysis-prompt";
 import { ProjectMapCanvas } from "./project-map-canvas";
@@ -118,7 +122,7 @@ const ICON_SIZE = 14;
 const RELEASED_SHOWN = 5;
 
 export function ProjectMapPage() {
-  const { t } = useTranslation("openhands");
+  const { t, i18n } = useTranslation("openhands");
   const { navigate } = useNavigation();
   const { backend } = useActiveBackend();
   const frameRef = React.useRef<SVGSVGElement | null>(null);
@@ -390,6 +394,27 @@ export function ProjectMapPage() {
     markSaved();
   };
 
+  // "From commit abc1234, 2 hours ago": the hash alone is a fact a first
+  // visit cannot place; when the analysis was made says how far to trust it.
+  const provenance =
+    document_ === null
+      ? null
+      : document_.commit === null
+        ? t(I18nKey.PROJECT_MAP$NO_COMMIT)
+        : document_.generated_at !== null &&
+            !isInvalidTimestamp(document_.generated_at)
+          ? t(I18nKey.PROJECT_MAP$GENERATED_AGAINST_WHEN, {
+              commit: document_.commit,
+              when: formatRelativeTime(
+                document_.generated_at,
+                i18n.language,
+                t,
+              ),
+            })
+          : t(I18nKey.PROJECT_MAP$GENERATED_AGAINST, {
+              commit: document_.commit,
+            });
+
   const page = (
     <div
       data-testid="project-map-page"
@@ -409,8 +434,17 @@ export function ProjectMapPage() {
           {backend.kind === "local" &&
             (chosenPath !== null || document_ !== null) && (
               <div className="mt-2">
+                {/* With nothing chosen the map still comes from somewhere —
+                    the backend's own folder — and the picker names it, so
+                    "Choose a repository…" never sits beside a map the page
+                    is already showing. */}
                 <ProjectMapWorkspacePicker
-                  value={chosenPath}
+                  value={
+                    chosenPath ??
+                    (workspace?.conversationId === null
+                      ? workspace.workingDir
+                      : null)
+                  }
                   onChange={chooseWorkspace}
                 />
               </div>
@@ -421,16 +455,17 @@ export function ProjectMapPage() {
           <div className="flex flex-wrap items-center gap-1.5">
             <span
               data-testid="project-map-provenance"
+              title={t(I18nKey.PROJECT_MAP$PROVENANCE_HINT)}
               className="font-mono text-micro text-muted"
             >
-              {document_.commit === null
-                ? t(I18nKey.PROJECT_MAP$NO_COMMIT)
-                : t(I18nKey.PROJECT_MAP$GENERATED_AGAINST, {
-                    commit: document_.commit,
-                  })}
+              {provenance}
             </span>
+            {/* Every control says on hover what it does and to which file:
+                "Re-read the file" and "Regenerate" were the two buttons a
+                first visit was most afraid to press. */}
             <button
               type="button"
+              title={t(I18nKey.PROJECT_MAP$FIT_HINT)}
               className={PROJECT_MAP_BUTTON_CLASS}
               onClick={() => fitToView()}
             >
@@ -440,6 +475,7 @@ export function ProjectMapPage() {
             <button
               type="button"
               data-testid="project-map-show-hidden"
+              title={t(I18nKey.PROJECT_MAP$SHOW_HIDDEN_HINT)}
               aria-pressed={showHidden}
               className={PROJECT_MAP_BUTTON_CLASS}
               onClick={toggleShowHidden}
@@ -450,6 +486,7 @@ export function ProjectMapPage() {
             <button
               type="button"
               data-testid="project-map-refresh"
+              title={t(I18nKey.PROJECT_MAP$REFRESH_HINT)}
               className={PROJECT_MAP_BUTTON_CLASS}
               onClick={() => void refetch()}
             >
@@ -459,6 +496,7 @@ export function ProjectMapPage() {
             <button
               type="button"
               data-testid="project-map-regenerate"
+              title={t(I18nKey.PROJECT_MAP$REGENERATE_HINT)}
               className={PROJECT_MAP_BUTTON_CLASS}
               disabled={createConversation.isPending}
               onClick={() => void generate()}
@@ -469,6 +507,7 @@ export function ProjectMapPage() {
             <button
               type="button"
               data-testid="project-map-save"
+              title={t(I18nKey.PROJECT_MAP$SAVE_HINT)}
               className={PROJECT_MAP_PRIMARY_BUTTON_CLASS}
               disabled={!dirty || saveProjectMap.isPending}
               onClick={() => void save()}

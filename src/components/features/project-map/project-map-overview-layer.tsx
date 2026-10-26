@@ -23,7 +23,7 @@ const LABEL_INSET = 18;
 /** Average advance of the label font at `LABEL_SIZE`, for a width-based cut. */
 const LABEL_ADVANCE = 9.5;
 const PARTS_SIZE = 12;
-const LINK_LABEL_SIZE = 11;
+const LINK_LABEL_SIZE = 12;
 
 function fit(text: string, width: number): string {
   const room = Math.max(
@@ -112,7 +112,10 @@ export function ProjectMapOverviewLayer({
               y={geometry.label.y - 4}
               textAnchor="middle"
               fontSize={LINK_LABEL_SIZE}
-              className="fill-muted font-mono"
+              paintOrder="stroke"
+              strokeWidth={4}
+              strokeLinejoin="round"
+              className="fill-text-secondary stroke-canvas-base font-mono"
             >
               {link.count}
             </text>
