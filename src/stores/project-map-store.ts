@@ -557,12 +557,15 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
   setEditingNote: (id) => set({ editingNote: id }),
 
   setMode: (mode) =>
-    set((state) =>
-      editCanvas(state, (canvas) => ({
+    set((state) => ({
+      ...editCanvas(state, (canvas) => ({
         ...canvas,
         view: { ...canvas.view, mode },
       })),
-    ),
+      // The drawing is not shown in the analysis mode, so a drawing tool in
+      // hand there would put invisible shapes on the paper. It goes down.
+      tool: mode === "derived" ? "select" : state.tool,
+    })),
 
   /**
    * Which derived layer is on the paper.
