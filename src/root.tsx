@@ -130,6 +130,27 @@ function AgentServerBootstrapLoading() {
 }
 
 /**
+ * What the window shows before any of the code below it has run.
+ *
+ * This app is `ssr: false`, so React Router renders this one component into
+ * the served HTML and nothing else can paint until the route modules and
+ * their `clientLoader`s are done: about a second in the built app and ten in
+ * the dev server. Without it that whole wait is a blank window, which reads
+ * as a page that has stopped rather than one that is still arriving — and
+ * React Router says so itself, logging a notice into the gap where this
+ * markup belongs.
+ *
+ * It is deliberately the same card the app shows while it waits for a
+ * backend, so the indicator someone is already watching does not jump when
+ * React takes over. It is deliberately wordless: the shell is prerendered as
+ * `lang="en"` before any stored locale can be read, and a turning spinner
+ * needs no translation.
+ */
+export function HydrateFallback() {
+  return <AgentServerBootstrapLoading />;
+}
+
+/**
  * When the active backend is unreachable, the rest of the app cannot
  * render (most queries chain off of `/server_info`). Drop a minimal
  * placeholder behind the Manage Backends modal so the user can edit,
