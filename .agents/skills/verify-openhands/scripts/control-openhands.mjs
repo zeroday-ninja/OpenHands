@@ -2474,6 +2474,7 @@ createInterface({ input: process.stdin }).on("line", (line) => {
 /** The variants `fixture project-map` can write. */
 const PROJECT_MAP_FIXTURE_VARIANTS = [
   "small",
+  "wall",
   "regenerated",
   "warnings",
   "unsupported-version",
@@ -2686,6 +2687,95 @@ function projectMapFixture(variant) {
         to: "qa/src/api/cache.ts",
         kind: "reads",
       });
+    return `${JSON.stringify(document, null, 2)}\n`;
+  }
+  if (variant === "wall") {
+    // A map the page opens as its layers: more than the forty visible parts
+    // that make a wall, over three layers. One layer is a single tall column
+    // and two are blocks, because opening a layer fits its width and floors
+    // the scale — the tall one lands on the floor, the blocks land on a fit.
+    document.commit = "qa9012w";
+    document.generated_at = "2026-10-22T08:00:00Z";
+    document.notes = [];
+    document.groups = [
+      { id: "qa-tall", label: "QA_Tall", accent: "1" },
+      { id: "qa-wide", label: "QA_Wide", accent: "3" },
+      { id: "qa-rest", label: "QA_Rest", accent: "5" },
+    ];
+    const layers = [
+      {
+        group: "qa-tall",
+        name: "Tall",
+        folder: "tall",
+        kind: "module",
+        columns: 1,
+        left: 0,
+      },
+      {
+        group: "qa-wide",
+        name: "Wide",
+        folder: "wide",
+        kind: "component",
+        columns: 3,
+        left: 420,
+      },
+      {
+        group: "qa-rest",
+        name: "Rest",
+        folder: "rest",
+        kind: "service",
+        columns: 3,
+        left: 1560,
+      },
+    ];
+    // Fifteen parts a layer, forty-five in all, every plate the same size so
+    // a layer's bounds are arithmetic rather than a measurement.
+    document.nodes = layers.flatMap((layer) =>
+      Array.from({ length: 15 }, (unused, index) => {
+        const number = String(index + 1).padStart(2, "0");
+        const id = `qa/src/${layer.folder}/part-${number}.ts`;
+        return {
+          id,
+          kind: layer.kind,
+          label: `QA_${layer.name} ${number}`,
+          path: id,
+          group: layer.group,
+          summary: `Part ${number} of the QA ${layer.name} layer.`,
+          size: 20,
+          x: layer.left + (index % layer.columns) * 360,
+          y: Math.floor(index / layer.columns) * 140,
+        };
+      }),
+    );
+    const chain = (folder, from, to, kind) => ({
+      from: `qa/src/${folder}/part-${from}.ts`,
+      to: `qa/src/${folder}/part-${to}.ts`,
+      kind,
+    });
+    // Inside each layer a chain, and between layers three and two relations,
+    // so each line on the folded view carries a count nothing else does.
+    document.edges = [
+      ...layers.flatMap((layer) =>
+        Array.from({ length: 14 }, (unused, index) =>
+          chain(
+            layer.folder,
+            String(index + 1).padStart(2, "0"),
+            String(index + 2).padStart(2, "0"),
+            "imports",
+          ),
+        ),
+      ),
+      ...["01", "02", "03"].map((number) => ({
+        from: `qa/src/tall/part-${number}.ts`,
+        to: `qa/src/wide/part-${number}.ts`,
+        kind: "calls",
+      })),
+      ...["01", "02"].map((number) => ({
+        from: `qa/src/wide/part-${number}.ts`,
+        to: `qa/src/rest/part-${number}.ts`,
+        kind: "reads",
+      })),
+    ];
     return `${JSON.stringify(document, null, 2)}\n`;
   }
   if (variant === "warnings") {
@@ -5258,9 +5348,10 @@ control-openhands fixture folder [--name qa-folder]
 control-openhands fixture image [--name qa-image] [--width 160 --height 96]   # PNG under evidence/_fixtures
 control-openhands fixture file [--name qa-note.txt] [--content TEXT]
 control-openhands fixture tarball [--name qa-tarball]   # evidence/_fixtures/qa-tarball.tar.gz (main.py prints pong)
-control-openhands fixture project-map [--variant small|regenerated|warnings|unsupported-version|invalid-field|not-json] [--remove|--unreadable]
+control-openhands fixture project-map [--variant small|wall|regenerated|warnings|unsupported-version|invalid-field|not-json] [--remove|--unreadable]
         # .openhands/project-map.json in the backend's working dir (workspace/project under
         # the agent server's home), the document the /map page reads; prints the path.
+        # wall is 45 parts over three layers, the map the page opens as its layers;
         # --remove deletes it again (the empty state); --unreadable leaves a directory there
 control-openhands fixture skill [--name qa-hello] [--repo qa-repo] [--trigger qa-ping] [--body TEXT] [--commit]
         # SKILL.md in the run's private ~/.agents/skills, or in a fixture repo's .agents/skills;
