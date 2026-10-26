@@ -485,7 +485,16 @@ export function ProjectMapPage() {
             : t(I18nKey.PROJECT_MAP$READ_FAILED, { path: attemptedPath })}
         </Notice>
       ) : data?.failure ? (
-        <InvalidNotice failure={data.failure} />
+        <InvalidNotice
+          failure={data.failure}
+          conversationId={mapConversationId}
+          pending={createConversation.isPending}
+          onRefresh={() => void refetch()}
+          onRegenerate={() => void generate()}
+          onOpenConversation={(conversationId) =>
+            navigate(`/conversations/${conversationId}`)
+          }
+        />
       ) : data?.missing || document_ === null ? (
         <EmptyState
           pending={createConversation.isPending}
@@ -675,10 +684,32 @@ function Notice({
   );
 }
 
+/**
+ * A document the parser refused, with the ways out of that state.
+ *
+ * The first real map generated through the picker could not be drawn — the
+ * agent had named the edge fields differently — and this notice offered
+ * nothing but a sentence: the chat dock lives inside the canvas branch, so
+ * the conversation that wrote the file, and could fix it in one turn, was
+ * unreachable from the page. Re-reading, opening that conversation, and
+ * regenerating are all offered here now, the same controls the empty state
+ * has.
+ */
 function InvalidNotice({
   failure,
+  conversationId,
+  pending,
+  onRefresh,
+  onRegenerate,
+  onOpenConversation,
 }: {
   failure: NonNullable<ReturnType<typeof useProjectMap>["data"]>["failure"];
+  /** The conversation bound to this workspace, which may have written the file. */
+  conversationId: string | null;
+  pending: boolean;
+  onRefresh: () => void;
+  onRegenerate: () => void;
+  onOpenConversation: (conversationId: string) => void;
 }) {
   const { t } = useTranslation("openhands");
   if (failure === null) return null;
@@ -707,6 +738,38 @@ function InvalidNotice({
       <p className="text-xs text-muted">
         {t(I18nKey.PROJECT_MAP$INVALID_HINT)}
       </p>
+      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+        <button
+          type="button"
+          data-testid="project-map-invalid-refresh"
+          className={PROJECT_MAP_BUTTON_CLASS}
+          onClick={onRefresh}
+        >
+          <RefreshCw size={ICON_SIZE} aria-hidden />
+          {t(I18nKey.PROJECT_MAP$REFRESH)}
+        </button>
+        {conversationId !== null && (
+          <button
+            type="button"
+            data-testid="project-map-invalid-open-conversation"
+            className={PROJECT_MAP_BUTTON_CLASS}
+            onClick={() => onOpenConversation(conversationId)}
+          >
+            <Maximize2 size={ICON_SIZE} aria-hidden />
+            {t(I18nKey.PROJECT_MAP$OPEN_CONVERSATION)}
+          </button>
+        )}
+        <button
+          type="button"
+          data-testid="project-map-invalid-regenerate"
+          className={PROJECT_MAP_BUTTON_CLASS}
+          disabled={pending}
+          onClick={onRegenerate}
+        >
+          <Sparkles size={ICON_SIZE} aria-hidden />
+          {t(I18nKey.PROJECT_MAP$REGENERATE)}
+        </button>
+      </div>
     </div>
   );
 }
