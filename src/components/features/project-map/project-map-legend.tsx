@@ -40,7 +40,9 @@ export function ProjectMapLegend({
   const usedEdges = new Set(map.edges.map((edge) => edge.kind));
 
   return (
-    <details data-testid="project-map-legend">
+    // Open by default: the key is the one thing in the rail a first visit
+    // needs before clicking anything, and a closed one reads as a heading.
+    <details open data-testid="project-map-legend">
       <summary className={`${PROJECT_MAP_SECTION_LABEL_CLASS} cursor-pointer`}>
         {t(I18nKey.PROJECT_MAP$LEGEND)}
       </summary>

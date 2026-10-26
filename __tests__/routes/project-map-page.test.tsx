@@ -645,12 +645,14 @@ describe("the project map page", () => {
     ).toBeInTheDocument();
   });
 
-  it("draws the map and shows which commit it was generated against", async () => {
+  it("draws the map and says which commit it came from, and when", async () => {
     // Arrange
     vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
       workspace: HOST_WORKSPACE,
       absolutePath: ABSOLUTE_PATH,
-      raw: mapFile(),
+      raw: mapFile({
+        generated_at: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+      }),
     });
 
     // Act
@@ -658,8 +660,19 @@ describe("the project map page", () => {
 
     // Assert
     expect(await screen.findByTestId("project-map-canvas")).toBeInTheDocument();
-    expect(screen.getByTestId("project-map-provenance")).toHaveTextContent(
-      "abc1234",
+    const provenance = screen.getByTestId("project-map-provenance");
+    expect(provenance).toHaveTextContent("abc1234");
+    expect(provenance).toHaveTextContent(/ago/);
+    // The controls say what they do, and the key is open without a click.
+    expect(screen.getByTestId("project-map-regenerate")).toHaveAttribute(
+      "title",
+    );
+    expect(screen.getByTestId("project-map-legend")).toHaveAttribute("open");
+    // Nothing was chosen, so the picker names the folder the map was read
+    // from rather than asking beside a map it is already showing.
+    expect(screen.getByTestId("project-map-workspace-picker")).toHaveAttribute(
+      "data-path",
+      HOST_WORKSPACE.workingDir,
     );
   });
 

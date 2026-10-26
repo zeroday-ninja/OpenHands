@@ -8,6 +8,7 @@
 
 import { useTranslation } from "react-i18next";
 import { I18nKey } from "#/i18n/declaration";
+import { PROJECT_MAP_SECTION_LABEL_CLASS } from "./project-map-controls";
 import {
   PROJECT_MAP_LAYER_IDS,
   PROJECT_MAP_MODES,
@@ -52,8 +53,13 @@ export function ProjectMapModeSwitch({
   const setMode = useProjectMapStore((state) => state.setMode);
   const setLayer = useProjectMapStore((state) => state.setLayer);
 
+  // Each group is captioned in plain words — "Show", "Map of" — because a
+  // row of bare radio labels gave a first visit nothing to read them by.
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-3">
+      <span className={PROJECT_MAP_SECTION_LABEL_CLASS}>
+        {t(I18nKey.PROJECT_MAP$MODE_CAPTION)}
+      </span>
       <div
         data-testid="project-map-mode-switch"
         role="radiogroup"
@@ -83,6 +89,9 @@ export function ProjectMapModeSwitch({
       {/* Which derived layer is on the paper. Separate from the mode above:
           one says whether the drawing is shown, the other says what the
           drawing is over. */}
+      <span className={PROJECT_MAP_SECTION_LABEL_CLASS}>
+        {t(I18nKey.PROJECT_MAP$LAYER_CAPTION)}
+      </span>
       <div
         data-testid="project-map-layer-switch"
         role="radiogroup"

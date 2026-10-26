@@ -9,6 +9,7 @@
 
 import { useTranslation } from "react-i18next";
 import { I18nKey } from "#/i18n/declaration";
+import { PROJECT_MAP_SECTION_LABEL_CLASS } from "./project-map-controls";
 
 export function ProjectMapViewSwitch({
   overview,
@@ -38,30 +39,35 @@ export function ProjectMapViewSwitch({
     },
   ];
   return (
-    <div
-      data-testid="project-map-view-switch"
-      role="radiogroup"
-      aria-label={t(I18nKey.PROJECT_MAP$VIEW_LABEL)}
-      className="flex items-center gap-1 rounded-md border border-border-subtle p-0.5"
-    >
-      {options.map((option) => (
-        <button
-          key={option.testId}
-          type="button"
-          role="radio"
-          aria-checked={overview === option.value}
-          title={t(option.hint)}
-          data-testid={option.testId}
-          className={`rounded px-2 py-1 text-micro ${
-            overview === option.value
-              ? "bg-surface-raised text-content"
-              : "text-muted"
-          }`}
-          onClick={() => onChange(option.value)}
-        >
-          {t(option.key)}
-        </button>
-      ))}
+    <div className="flex items-center gap-1.5">
+      <span className={PROJECT_MAP_SECTION_LABEL_CLASS}>
+        {t(I18nKey.PROJECT_MAP$VIEW_CAPTION)}
+      </span>
+      <div
+        data-testid="project-map-view-switch"
+        role="radiogroup"
+        aria-label={t(I18nKey.PROJECT_MAP$VIEW_LABEL)}
+        className="flex items-center gap-1 rounded-md border border-border-subtle p-0.5"
+      >
+        {options.map((option) => (
+          <button
+            key={option.testId}
+            type="button"
+            role="radio"
+            aria-checked={overview === option.value}
+            title={t(option.hint)}
+            data-testid={option.testId}
+            className={`rounded px-2 py-1 text-micro ${
+              overview === option.value
+                ? "bg-surface-raised text-content"
+                : "text-muted"
+            }`}
+            onClick={() => onChange(option.value)}
+          >
+            {t(option.key)}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
