@@ -550,6 +550,14 @@ export function ProjectMapPage() {
     if (selected > 0) setRailOpen(true);
   }, [selected]);
 
+  // The layer a person opened from the overview, by the name on its block.
+  const openedGroup = useProjectMapStore((state) => state.openedGroup);
+  const openedLayerLabel =
+    openedGroup === null
+      ? null
+      : (paper?.groups.find((group) => group.id === openedGroup)?.label ??
+        openedGroup);
+
   const pickerInHeader =
     backend.kind === "local" && (chosenPath !== null || document_ !== null);
 
@@ -829,15 +837,31 @@ export function ProjectMapPage() {
               {!overview &&
                 paper !== null &&
                 projectMapWantsOverview(paper) && (
-                  <button
-                    type="button"
-                    data-testid="project-map-all-layers"
-                    className={`${PROJECT_MAP_BUTTON_CLASS} absolute left-4 top-4 bg-base-secondary`}
-                    onClick={() => switchView(true)}
-                  >
-                    <ArrowLeft size={ICON_SIZE} aria-hidden />
-                    {t(I18nKey.PROJECT_MAP$ALL_LAYERS)}
-                  </button>
+                  <div className="absolute left-4 top-4 flex items-center gap-2">
+                    <button
+                      type="button"
+                      data-testid="project-map-all-layers"
+                      className={`${PROJECT_MAP_BUTTON_CLASS} bg-base-secondary`}
+                      onClick={() => switchView(true)}
+                    >
+                      <ArrowLeft size={ICON_SIZE} aria-hidden />
+                      {t(I18nKey.PROJECT_MAP$ALL_LAYERS)}
+                    </button>
+                    {/* Which layer you opened, said where you opened it: a
+                        click on one block lands among its neighbours, and
+                        without this nobody could tell whether it had opened
+                        one layer or all of them. */}
+                    {openedLayerLabel !== null && (
+                      <span
+                        data-testid="project-map-opened-layer"
+                        className="rounded-md bg-base-secondary px-2 py-1 text-micro text-muted"
+                      >
+                        {t(I18nKey.PROJECT_MAP$IN_LAYER, {
+                          layer: openedLayerLabel,
+                        })}
+                      </span>
+                    )}
+                  </div>
                 )}
               {layer === "work" && workGraph.nodes.length === 0 && (
                 <p

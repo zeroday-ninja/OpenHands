@@ -94,7 +94,12 @@ const GROUP_LABEL_PADDING = 12;
 /** Below this zoom the grid and the path lines stop helping and start buzzing. */
 const DETAIL_SCALE = 0.62;
 /** Opening a layer from the overview lands at least this close. */
-const OPEN_LAYER_MIN_SCALE = 0.8;
+/**
+ * How far an opened layer may be shrunk to get its width in frame. Below
+ * this the labels stop being readable, which is the whole point of opening
+ * it; a layer taller than the frame is panned through instead.
+ */
+const OPEN_LAYER_MIN_SCALE = 0.6;
 const OPEN_LAYER_MAX_SCALE = 1.25;
 /**
  * A press that travels no further than this, in screen pixels, was a click.
@@ -290,6 +295,8 @@ export function ProjectMapCanvas({
   const showHidden = useProjectMapStore((state) => state.showHidden);
   const overview = useProjectMapStore((state) => state.overview);
   const setOverview = useProjectMapStore((state) => state.setOverview);
+  const openedGroup = useProjectMapStore((state) => state.openedGroup);
+  const setOpenedGroup = useProjectMapStore((state) => state.setOpenedGroup);
   const setViewport = useProjectMapStore((state) => state.setViewport);
   const setSelection = useProjectMapStore((state) => state.setSelection);
   const toggleInSelection = useProjectMapStore(
@@ -365,9 +372,18 @@ export function ProjectMapCanvas({
     const derivedSelection = selection.filter((id) =>
       drawn.some((node) => node.id === id),
     );
-    if (derivedSelection.length === 0) return new Set<string>();
-    return projectMapFocusIds(derivedSelection, layerEdges);
-  }, [selection, layerEdges, drawn]);
+    if (derivedSelection.length > 0)
+      return projectMapFocusIds(derivedSelection, layerEdges);
+    // Nothing selected, but a layer was opened from the overview: that layer
+    // is what the reader asked for, and everything else is context.
+    if (openedGroup !== null)
+      return new Set(
+        drawn
+          .filter((node) => node.group === openedGroup)
+          .map((node) => node.id),
+      );
+    return new Set<string>();
+  }, [selection, layerEdges, drawn, openedGroup]);
 
   const accentOf = React.useCallback(
     (groupId: string | null) => {
@@ -551,15 +567,19 @@ export function ProjectMapCanvas({
   );
 
   /**
-   * From a block to its layer: leave the overview, unfold the group, and put
-   * the viewport on it close enough to read.
+   * From a block to its layer: leave the overview, unfold the group, put the
+   * viewport on it, and say that this is the layer you opened.
    *
-   * The width is fitted and the scale is floored, never the height: a tall
-   * layer is panned down through, not shrunk back into the wall the overview
-   * exists to replace.
+   * Without that last part a click on one block arrived at four layers' worth
+   * of plates — "I clicked one block and I am looking at four group headers",
+   * in the words of someone seeing it for the first time. The rest of the
+   * drawing stays on the paper, because a relation leaving the layer is half
+   * of what a layer means, but it is faded the way a selection's surroundings
+   * already fade.
    */
   const openGroup = (groupId: string) => {
     setOverview(false);
+    setOpenedGroup(groupId);
     const group = paper.groups.find((candidate) => candidate.id === groupId);
     // Only the committed analysis has groups a person can fold; the work
     // layer's are assembled on every fetch, and unfolding one there would
@@ -572,6 +592,9 @@ export function ProjectMapCanvas({
     );
     const frame = frameRef.current?.getBoundingClientRect();
     if (bounds === null || !frame || frame.width === 0) return;
+    // Floored, not fitted outright: a layer fifteen plates tall shrank to
+    // unreadable when the whole of it had to be in frame. The width fits,
+    // the height is panned through, and the fade says which layer this is.
     const fitted = fitProjectMapViewBox(bounds, frame, {
       min: OPEN_LAYER_MIN_SCALE,
       max: OPEN_LAYER_MAX_SCALE,

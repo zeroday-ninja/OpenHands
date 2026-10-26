@@ -60982,5 +60982,23 @@
     "uk": "Ще {{count}} частин не належать до жодного шару",
     "ca": "{{count}} parts més no pertanyen a cap capa",
     "id": "{{count}} bagian lain tidak termasuk lapisan mana pun"
+  },
+  "PROJECT_MAP$IN_LAYER": {
+    "en": "Showing {{layer}}",
+    "zh-CN": "正在显示 {{layer}}",
+    "zh-TW": "正在顯示 {{layer}}",
+    "de": "Zeigt {{layer}}",
+    "ko-KR": "{{layer}} 표시 중",
+    "no": "Viser {{layer}}",
+    "it": "Mostra {{layer}}",
+    "pt": "A mostrar {{layer}}",
+    "es": "Mostrando {{layer}}",
+    "ar": "يعرض {{layer}}",
+    "fr": "Affiche {{layer}}",
+    "tr": "{{layer}} gösteriliyor",
+    "ja": "{{layer}} を表示中",
+    "uk": "Показано {{layer}}",
+    "ca": "Mostrant {{layer}}",
+    "id": "Menampilkan {{layer}}"
   }
 }
