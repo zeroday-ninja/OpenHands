@@ -33,6 +33,7 @@
  */
 
 import React from "react";
+import { useLocalStorage } from "@uidotdev/usehooks";
 import { useTranslation } from "react-i18next";
 import {
   ArrowLeft,
@@ -124,6 +125,9 @@ const ICON_SIZE = 14;
  * for — only its `_one` and `_other` forms exist.
  */
 const RAIL_WAITING_I18N_KEY = "PROJECT_MAP$RAIL_WAITING";
+
+/** Where the side panel's own preference lives, across visits. */
+const PROJECT_MAP_SIDE_PANEL_KEY = "project-map-side-panel";
 
 /**
  * How many released shapes are named before the rest become a count.
@@ -636,7 +640,19 @@ export function ProjectMapPage() {
           ),
     [document_, parked.data, chosenPath, workspace?.workingDir],
   );
-  const [railOpen, setRailOpen] = React.useState(false);
+  /**
+   * Whether the side panel is open, and whether you said so.
+   *
+   * The preference is remembered; the two automatic opens below are not. A
+   * feature introducing itself, or a part you clicked, opens the panel for
+   * now — neither is a decision about every future visit. Opening it
+   * yourself is, and it folded again on the next load until this.
+   */
+  const [railPreference, setRailPreference] = useLocalStorage(
+    PROJECT_MAP_SIDE_PANEL_KEY,
+    false,
+  );
+  const [railOpen, setRailOpen] = React.useState(railPreference === true);
   const selected = useProjectMapStore((state) => state.selection).length;
   // It opens itself for the two things a person asked for without saying so:
   // a feature introducing itself, and the part they just clicked.
@@ -788,7 +804,10 @@ export function ProjectMapPage() {
               className={`${PROJECT_MAP_BUTTON_CLASS} ${
                 waiting > 0 ? "border-warning/50 text-warning" : ""
               }`}
-              onClick={() => setRailOpen(!railOpen)}
+              onClick={() => {
+                setRailOpen(!railOpen);
+                setRailPreference(!railOpen);
+              }}
             >
               <PanelRight size={ICON_SIZE} aria-hidden />
               {waiting > 0

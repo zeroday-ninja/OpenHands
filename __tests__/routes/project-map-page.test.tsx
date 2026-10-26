@@ -916,6 +916,33 @@ describe("the project map page", () => {
     expect(screen.queryByTestId("project-map-work-empty")).toBeNull();
   });
 
+  it("remembers the side panel when you open it yourself", async () => {
+    // Arrange
+    everythingAnnounced();
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    const user = userEvent.setup();
+    const { unmount } = renderWithProviders(<MapRoute />, {
+      navigation: { currentPath: "/map" },
+    });
+    await screen.findByTestId("project-map-canvas");
+
+    // Act: open it, then come back to the page.
+    await user.click(screen.getByTestId("project-map-rail-toggle"));
+    expect(screen.getByTestId("project-map-legend")).toBeInTheDocument();
+    unmount();
+    useProjectMapStore.getState().reset();
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+
+    // Assert: a panel you opened stays open; it used to fold again on every
+    // visit, and the automatic opens are still for now rather than for good.
+    expect(await screen.findByTestId("project-map-legend")).toBeInTheDocument();
+  });
+
   it("opens the rail for the part you click", async () => {
     // Arrange
     everythingAnnounced();
