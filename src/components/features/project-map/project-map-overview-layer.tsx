@@ -39,6 +39,32 @@ function fit(text: string, width: number, advance = LABEL_ADVANCE): string {
     : `${text.slice(0, Math.max(1, room - 1))}…`;
 }
 
+/** Baseline step between the folder line and its continuation. */
+const FOLDERS_LINE = 12.5;
+
+/**
+ * The same cut, over two lines, broken at a space.
+ *
+ * A layer is recognised by the folders its parts live in, and on a block 260
+ * wide half of them ran out of room: `server/{analyzer.js, callgraph.j…` names
+ * one file and the first eleven letters of another. A block has the height for
+ * a second line, and a break at a space keeps a path whole. The ellipsis
+ * survives for what still does not fit after that.
+ */
+function wrap(text: string, width: number, advance: number): string[] {
+  const room = Math.max(1, Math.floor((width - LABEL_INSET * 2) / advance));
+  if (text.length <= room) return [text];
+  const space = text.lastIndexOf(" ", room);
+  // No space in the first line's worth of text: one long path, and cutting it
+  // anywhere else would be arbitrary.
+  const at = space > room / 2 ? space : room;
+  const rest = text.slice(at).trimStart();
+  return [
+    text.slice(0, at).trimEnd(),
+    rest.length <= room ? rest : `${rest.slice(0, Math.max(1, room - 1))}…`,
+  ];
+}
+
 /** Line weight grows with the count, slowly: one relation is one hairline. */
 function weight(count: number): number {
   return 1 + Math.min(4, Math.log2(count));
@@ -208,7 +234,17 @@ export function ProjectMapOverviewLayer({
                 fontSize={FOLDERS_SIZE}
                 className="pointer-events-none fill-muted font-mono"
               >
-                {fit(block.where, block.width, FOLDERS_ADVANCE)}
+                {wrap(block.where, block.width, FOLDERS_ADVANCE).map(
+                  (line, index) => (
+                    <tspan
+                      key={line}
+                      x={block.x + LABEL_INSET}
+                      dy={index === 0 ? 0 : FOLDERS_LINE}
+                    >
+                      {line}
+                    </tspan>
+                  ),
+                )}
               </text>
             )}
           </g>

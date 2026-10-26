@@ -165,6 +165,30 @@ describe("ProjectMapCanvas", () => {
     expect(screen.getByTestId(projectMapNodeDomId("left"))).toBeInTheDocument();
   });
 
+  it("names every folder a layer lives in, even when one line is too short", () => {
+    // Arrange: a layer whose parts live in more folders than a block's width
+    // can hold on one line.
+    stubFrame();
+    useProjectMapStore.getState().hydrate("test-revision", {
+      ...document_,
+      groups: [{ id: "web", label: "Web app", accent: "1", collapsed: false }],
+      nodes: [
+        node({ id: "left", x: 0, y: 0, group: "web", path: "server/analyzer.js" }),
+        node({ id: "right", x: 400, y: 0, group: "web", path: "server/callgraph.js" }),
+        node({ id: "below", x: 0, y: 300, group: "web", path: "server/report-registry.js" }),
+      ],
+      edges: [],
+    });
+    useProjectMapStore.getState().setOverview(true);
+    renderWithProviders(<Harness />);
+
+    // Assert: the last folder is on the block and nothing was cut, where one
+    // line left half of them as `callgraph.j…`.
+    const block = screen.getByTestId("project-map-overview-block-web");
+    expect(block).toHaveTextContent("report-registry.js");
+    expect(block.textContent).not.toContain("…");
+  });
+
   it("puts the layer you opened in the middle, and the rest behind it", () => {
     // Arrange: two layers, the opened one narrower than the frame.
     stubFrame();
