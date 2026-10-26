@@ -54,16 +54,26 @@ const document_: PlacedProjectMapDocument = {
  * otherwise an edit made through a store action (collapsing a group, revealing
  * hidden nodes) would never reach the drawing under test.
  */
-function Harness() {
+function Harness({
+  waitingParts,
+}: {
+  waitingParts?: ReadonlyMap<string, string>;
+}) {
   const frameRef = React.useRef<SVGSVGElement | null>(null);
   const open = useProjectMapStore((state) => state.document);
   if (open === null) return null;
-  return <ProjectMapCanvas document={open} frameRef={frameRef} />;
+  return (
+    <ProjectMapCanvas
+      document={open}
+      frameRef={frameRef}
+      waitingParts={waitingParts}
+    />
+  );
 }
 
-function renderCanvas() {
+function renderCanvas(waitingParts?: ReadonlyMap<string, string>) {
   useProjectMapStore.getState().hydrate("test-revision", document_);
-  return renderWithProviders(<Harness />);
+  return renderWithProviders(<Harness waitingParts={waitingParts} />);
 }
 
 /**
@@ -247,6 +257,28 @@ describe("ProjectMapCanvas", () => {
         screen.getByTestId("project-map-node-below").getAttribute("opacity"),
       ),
     ).toBeLessThan(1);
+  });
+
+  it("marks the part a change waiting on a person touches, and its layer", () => {
+    // Arrange: one part of the "web" layer is named by a parked change.
+    renderCanvas(new Map([["left", "cycle-1"]]));
+
+    // Assert: the mark is on the part itself, not only in the rail.
+    expect(screen.getByTestId("project-map-node-left")).toHaveAttribute(
+      "data-waiting",
+      "true",
+    );
+    expect(screen.getByTestId("project-map-node-right")).not.toHaveAttribute(
+      "data-waiting",
+    );
+
+    // Act: folded to layers, the layer holding it carries the count.
+    act(() => useProjectMapStore.getState().setOverview(true));
+
+    // Assert
+    expect(
+      screen.getByTestId("project-map-overview-block-web"),
+    ).toHaveAttribute("data-waiting", "1");
   });
 
   it("folds a collapsed group into one plate that keeps the edges crossing it", async () => {

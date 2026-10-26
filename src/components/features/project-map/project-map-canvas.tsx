@@ -75,6 +75,7 @@ import {
   type ProjectMapOverview,
 } from "#/utils/project-map/project-map-overview";
 import { ProjectMapOverviewLayer } from "./project-map-overview-layer";
+import { projectMapWaitingLayers } from "#/utils/project-map/project-map-waiting-parts";
 import { ProjectMapNodePlate } from "./project-map-node-plate";
 import { projectMapNodeDomId } from "./project-map-labels";
 import {
@@ -267,12 +268,20 @@ export interface ProjectMapCanvasProps {
    * whichever layer is on the paper.
    */
   derivedLayer?: ProjectMapDerivedLayer | null;
+  /**
+   * Node id to the parked change that names it. The rail says a change is
+   * waiting; this is what puts it where the work is, on the drawing.
+   */
+  waitingParts?: ReadonlyMap<string, string>;
 }
+
+const NOTHING_WAITING: ReadonlyMap<string, string> = new Map();
 
 export function ProjectMapCanvas({
   document: map,
   frameRef,
   derivedLayer = null,
+  waitingParts = NOTHING_WAITING,
 }: ProjectMapCanvasProps) {
   const { t } = useTranslation("openhands");
   const viewport = useProjectMapStore((state) => state.viewport);
@@ -1088,6 +1097,7 @@ export function ProjectMapCanvas({
           <ProjectMapOverviewLayer
             overview={overviewModel}
             accentOf={accentOf}
+            waitingLayers={projectMapWaitingLayers(map, waitingParts)}
             onOpen={openGroup}
           />
         ) : (
@@ -1281,6 +1291,7 @@ export function ProjectMapCanvas({
             {drawn.map((node) => (
               <ProjectMapNodePlate
                 key={node.id}
+                waiting={waitingParts.has(node.id)}
                 node={
                   drag?.kind === "node" && drag.ids.includes(node.id)
                     ? {
