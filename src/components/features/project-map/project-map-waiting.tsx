@@ -130,7 +130,7 @@ function ParkedCycle({ cycle }: { cycle: ImproveCycle }) {
         data-testid="project-map-waiting-reason"
         value={reason}
         onChange={(event) => setReason(event.target.value)}
-        rows={2}
+        rows={3}
         placeholder={t(I18nKey.IMPROVE$PARKED$REASON_REQUIRED)}
         className="w-full rounded-md border border-border-subtle bg-canvas-base p-2 text-sm text-contrast"
       />
@@ -181,7 +181,7 @@ function ChangeoverPlan({ plan }: { plan: ImproveChangeoverPlan | null }) {
           <div key={key} data-testid={`project-map-waiting-plan-${key}`}>
             <dt className="font-medium text-text-secondary">{t(label)}</dt>
             <dd className="text-text-secondary">
-              <ul className="list-inside list-disc">
+              <ul className="list-disc pl-4">
                 {items.map((item) => (
                   <li key={item}>{item}</li>
                 ))}
