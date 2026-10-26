@@ -70,6 +70,8 @@ import {
 } from "#/types/project-map";
 
 const launchConversation = vi.hoisted(() => vi.fn());
+/** The live work graph, empty unless a case puts work on it. */
+const workGraphNodes = vi.hoisted(() => ({ current: [] as unknown[] }));
 
 /**
  * The shared test i18n instance carries no resources, so `t()` returns the key
@@ -101,6 +103,24 @@ vi.mock("react-i18next", async (importOriginal) => {
 // state and its result handling in the test.
 vi.mock("#/hooks/mutation/resolve-conversation-launch", () => ({
   launchConversation: launchConversation,
+}));
+
+// The live work graph is assembled from every backend's answer; the page's
+// own job is what it does with the result, so the fetch is the stub.
+vi.mock("#/hooks/query/use-work-graph", () => ({
+  useWorkGraph: () => ({
+    graph: {
+      nodes: workGraphNodes.current,
+      edges: [],
+      omissions: [],
+      findings: [],
+      inFlight: 0,
+      generatedAt: null,
+    },
+    contributions: [],
+    isPending: false,
+    isFetching: false,
+  }),
 }));
 
 // The pane's conversation transport. Stubbed as a pass-through so these cases
@@ -700,6 +720,44 @@ describe("the project map page", () => {
     await user.click(screen.getByTestId("project-map-regenerate"));
 
     // Assert
+    await waitFor(() =>
+      expect(screen.getByTestId("project-map-chat-dock")).toHaveAttribute(
+        "data-open",
+        "true",
+      ),
+    );
+  });
+
+  it("shows an agent's transcript when you click it on the work layer", async () => {
+    // Arrange: one agent at work, with the conversation that is doing it.
+    everythingAnnounced();
+    workGraphNodes.current = [
+      {
+        key: "oh:1/local/agent:a1",
+        kind: "agent",
+        label: "codex",
+        status: "in_flight",
+        attrs: { role: "builder", conversation_id: "conversation-1" },
+      },
+    ];
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+
+    // Act: look at what the agents are doing, and click one.
+    act(() => useProjectMapStore.getState().setLayer("work"));
+    await screen.findByTestId("project-map-node-oh:1/local/agent:a1");
+    act(() =>
+      useProjectMapStore.getState().setSelection(["oh:1/local/agent:a1"]),
+    );
+
+    // Assert: the transcript is the whole point of drawing the agent, and
+    // binding it remounts the dock under the socket providers — so the page
+    // opens it rather than leaving the dock to notice a change it cannot see.
     await waitFor(() =>
       expect(screen.getByTestId("project-map-chat-dock")).toHaveAttribute(
         "data-open",
