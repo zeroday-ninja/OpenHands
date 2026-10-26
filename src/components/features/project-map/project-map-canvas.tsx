@@ -443,6 +443,21 @@ export function ProjectMapCanvas({
     [visibleNodes],
   );
 
+  /**
+   * Which layer each part belongs to, by id.
+   *
+   * Every edge asks this to colour itself, and it was asking with a linear
+   * search through every part on the paper — a hundred edges over a hundred
+   * plates is ten thousand comparisons, on every render, including every
+   * pointer move of a pan. The same mistake the edge rectangles already had
+   * an index built for.
+   */
+  const groupOfNode = React.useMemo(() => {
+    const index = new Map<string, string | null>();
+    for (const node of drawn) index.set(node.id, node.group);
+    return index;
+  }, [drawn]);
+
   const focusIds = React.useMemo(() => {
     const derivedSelection = selection.filter((id) =>
       drawn.some((node) => node.id === id),
@@ -1134,6 +1149,82 @@ export function ProjectMapCanvas({
     [],
   );
 
+  /**
+   * The edge lines, rebuilt only when the drawing changes.
+   *
+   * A pan re-renders the canvas on every pointer move; without this, each of
+   * those rebuilt a hundred lines, each resolving two rectangles, its
+   * geometry, its dash and its arrowhead. Nothing here depends on the
+   * viewport, so a pan can reuse the whole list.
+   */
+  const edgeMarks = React.useMemo(
+    () =>
+      showsDerived &&
+      layerEdges.map((edge) => {
+        // An edge with neither end on screen draws a line nobody
+        // can see, and there are two thousand of them.
+        if (
+          visibleNodes.length !== drawn.length &&
+          !visibleIds.has(edge.from) &&
+          !visibleIds.has(edge.to)
+        )
+          return null;
+        const from = rectOf(edge.from);
+        const to = rectOf(edge.to);
+        if (from === null || to === null) return null;
+        const geometry = projectMapEdgeGeometry(from, to);
+        const style = projectMapEdgeStyle(edge.kind);
+        const head = projectMapEdgeHeadPath(
+          style.head,
+          geometry.tip,
+          geometry.direction,
+        );
+        const lit =
+          focusIds.size === 0 ||
+          focusIds.has(edge.from) ||
+          focusIds.has(edge.to);
+        const accent = accentOf(groupOfNode.get(edge.from) ?? null);
+        return (
+          <g
+            key={edge.key}
+            opacity={lit ? 0.85 : 0.1}
+            data-testid={`project-map-edge-${edge.key}`}
+          >
+            <path
+              d={geometry.d}
+              fill="none"
+              stroke={accent}
+              strokeWidth={style.weight}
+              strokeDasharray={style.dash ?? undefined}
+              vectorEffect="non-scaling-stroke"
+            />
+            {head !== null && (
+              <path
+                d={head}
+                fill={
+                  style.head === "open" ? "var(--color-canvas-base)" : accent
+                }
+                stroke={accent}
+                strokeWidth={1}
+                vectorEffect="non-scaling-stroke"
+              />
+            )}
+          </g>
+        );
+      }),
+    [
+      showsDerived,
+      layerEdges,
+      visibleNodes,
+      drawn,
+      visibleIds,
+      rectOf,
+      focusIds,
+      accentOf,
+      groupOfNode,
+    ],
+  );
+
   const transform = `translate(${-viewport.x * viewport.scale} ${-viewport.y * viewport.scale}) scale(${viewport.scale})`;
   const detailed = viewport.scale >= DETAIL_SCALE;
 
@@ -1341,65 +1432,7 @@ export function ProjectMapCanvas({
               })}
 
             {/* Edges under the plates: a line should pass behind what it joins. */}
-            <g>
-              {showsDerived &&
-                layerEdges.map((edge) => {
-                  // An edge with neither end on screen draws a line nobody
-                  // can see, and there are two thousand of them.
-                  if (
-                    visibleNodes.length !== drawn.length &&
-                    !visibleIds.has(edge.from) &&
-                    !visibleIds.has(edge.to)
-                  )
-                    return null;
-                  const from = rectOf(edge.from);
-                  const to = rectOf(edge.to);
-                  if (from === null || to === null) return null;
-                  const geometry = projectMapEdgeGeometry(from, to);
-                  const style = projectMapEdgeStyle(edge.kind);
-                  const head = projectMapEdgeHeadPath(
-                    style.head,
-                    geometry.tip,
-                    geometry.direction,
-                  );
-                  const lit =
-                    focusIds.size === 0 ||
-                    focusIds.has(edge.from) ||
-                    focusIds.has(edge.to);
-                  const accent = accentOf(
-                    drawn.find((node) => node.id === edge.from)?.group ?? null,
-                  );
-                  return (
-                    <g
-                      key={edge.key}
-                      opacity={lit ? 0.85 : 0.1}
-                      data-testid={`project-map-edge-${edge.key}`}
-                    >
-                      <path
-                        d={geometry.d}
-                        fill="none"
-                        stroke={accent}
-                        strokeWidth={style.weight}
-                        strokeDasharray={style.dash ?? undefined}
-                        vectorEffect="non-scaling-stroke"
-                      />
-                      {head !== null && (
-                        <path
-                          d={head}
-                          fill={
-                            style.head === "open"
-                              ? "var(--color-canvas-base)"
-                              : accent
-                          }
-                          stroke={accent}
-                          strokeWidth={1}
-                          vectorEffect="non-scaling-stroke"
-                        />
-                      )}
-                    </g>
-                  );
-                })}
-            </g>
+            <g>{edgeMarks}</g>
 
             {/* Branch lines are derived from the tree, never stored, so the mind
             map has one source of truth. */}
