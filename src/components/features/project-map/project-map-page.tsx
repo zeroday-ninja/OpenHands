@@ -70,6 +70,7 @@ import {
   PROJECT_MAP_FILE_PATH,
   PROJECT_MAP_VERSION,
   type PlacedProjectMapDocument,
+  type ProjectMapLayerId,
 } from "#/types/project-map";
 import {
   fitProjectMapViewBox,
@@ -209,14 +210,41 @@ export function ProjectMapPage() {
   // or the live graph of what the agents are doing — the canvas draws either
   // the same way, and everything drawn over the top is unaffected.
   const layer = useProjectMapStore((state) => state.layer);
+  // The work layer's own layers, named for a reader rather than for the
+  // schema. Built here because this is where translation lives.
+  const workLabels = React.useMemo(
+    () => ({
+      backend: t(I18nKey.PROJECT_MAP$WORK_BACKENDS),
+      program: t(I18nKey.PROJECT_MAP$WORK_PROGRAMS),
+      run: t(I18nKey.PROJECT_MAP$WORK_RUNS),
+      "run-tombstone": t(I18nKey.PROJECT_MAP$WORK_RUNS_GONE),
+      cycle: t(I18nKey.PROJECT_MAP$WORK_CYCLES),
+      agent: t(I18nKey.PROJECT_MAP$WORK_AGENTS),
+      artifact: t(I18nKey.PROJECT_MAP$WORK_ARTIFACTS),
+      repository: t(I18nKey.PROJECT_MAP$WORK_REPOSITORIES),
+      source: t(I18nKey.PROJECT_MAP$WORK_SOURCES),
+      suggestion: t(I18nKey.PROJECT_MAP$WORK_SUGGESTIONS),
+    }),
+    [t],
+  );
+  // Which layer the page last decided an opening view for. Switching to the
+  // work graph is arriving at a different drawing: 1,500 plates unfolded is
+  // the wall the overview exists to replace, and the code map's decision
+  // says nothing about it.
+  const openedLayer = React.useRef<ProjectMapLayerId | null>(null);
   const releasedShapeIds = useProjectMapStore(
     (state) => state.releasedShapeIds,
   );
-  const { graph: workGraph, contributions: workContributions } = useWorkGraph({
+  const {
+    graph: workGraph,
+    contributions: workContributions,
+    isFetching: workFetching,
+  } = useWorkGraph({
     enabled: layer === "work",
   });
   const workLayer = React.useMemo(
-    () => (layer === "work" ? workGraphToDerivedLayer(workGraph) : null),
+    () =>
+      layer === "work" ? workGraphToDerivedLayer(workGraph, workLabels) : null,
     [layer, workGraph],
   );
 
@@ -280,6 +308,39 @@ export function ProjectMapPage() {
   // render — and the frame is refitted only when that decision changes the
   // paper's extent, so the user's own switch and their panning survive a
   // re-read that changed nothing of the kind.
+  // The work graph, folded or not, when the paper changes to it or away.
+  React.useEffect(() => {
+    if (openedLayer.current === layer) return;
+    const paper =
+      layer === "work"
+        ? workLayer === null || document_ === null
+          ? null
+          : {
+              ...document_,
+              nodes: workLayer.nodes,
+              edges: workLayer.edges,
+              groups: workLayer.groups,
+            }
+        : document_;
+    // Not while the graph is still arriving: its first answers carry one
+    // backend and no work, and a decision taken on those folds nothing and
+    // never looks again. Once, when the drawing has settled.
+    if (paper === null || paper.nodes.length === 0) return;
+    if (layer === "work" && workFetching) return;
+    openedLayer.current = layer;
+    const wants = projectMapWantsOverview(paper);
+    setOverview(wants);
+    const frame = frameRef.current?.getBoundingClientRect();
+    const bounds = paperBounds(paper, wants);
+    if (!frame || frame.width === 0 || bounds === null) return;
+    setViewport(
+      fitProjectMapViewBox(bounds, frame, {
+        min: PROJECT_MAP_MIN_SCALE,
+        max: PROJECT_MAP_MAX_SCALE,
+      }),
+    );
+  }, [layer, workLayer, workFetching, document_, setOverview, setViewport]);
+
   React.useEffect(() => {
     if (data === undefined) return;
     if (data.document === null) return;
@@ -471,6 +532,14 @@ export function ProjectMapPage() {
   React.useEffect(() => {
     if (selected > 0) setRailOpen(true);
   }, [selected]);
+
+  // What the overview would fold: the layers of whichever drawing is on the
+  // paper. The work graph has them too now, and needs folding more than the
+  // code map does — it arrives with every run, cycle and agent on it.
+  const paperGroups =
+    layer === "work"
+      ? (workLayer?.groups.length ?? 0)
+      : (document_?.groups.length ?? 0);
 
   const pickerInHeader =
     backend.kind === "local" && (chosenPath !== null || document_ !== null);
@@ -693,7 +762,7 @@ export function ProjectMapPage() {
               <div className="flex flex-wrap items-center gap-2">
                 {/* Only when there is an overview to show: the live work
                     layer has no groups, and one layer folds into nothing. */}
-                {layer === "code" && document_.groups.length >= 2 && (
+                {paperGroups >= 2 && (
                   <ProjectMapViewSwitch
                     overview={overview}
                     onChange={switchView}

@@ -96,6 +96,27 @@ const COLUMN_ORDER = [
   "suggestion",
 ];
 
+/**
+ * A layer per kind of work, so the graph folds the way the code map does.
+ *
+ * The labels are the reader's, not the schema's: "Machines" rather than
+ * `backend`, "Branches, pull requests, commits" rather than `artifact`. They
+ * are passed in because this module has no business holding translations;
+ * these are the fallback a test or a non-UI caller gets.
+ */
+export const WORK_LAYER_FALLBACK_LABELS: Record<string, string> = {
+  backend: "Machines",
+  program: "Programs",
+  run: "Runs",
+  "run-tombstone": "Runs whose sandbox is gone",
+  cycle: "Cycles",
+  agent: "Agents",
+  artifact: "Branches, pull requests, commits",
+  repository: "Repositories",
+  source: "Sources the agents read",
+  suggestion: "Suggestions",
+};
+
 const COLUMN_PITCH = 420;
 const ROW_PITCH = 150;
 
@@ -128,7 +149,7 @@ function place(nodes: MergedWorkGraphNode[]): PlacedProjectMapNode[] {
         kind: NODE_SHAPE[node.kind] ?? "module",
         label: node.label,
         path: null,
-        group: null,
+        group: node.kind,
         summary: describe(node),
         size: NODE_WEIGHT[node.kind] ?? 400,
         x: columnIndex * COLUMN_PITCH,
@@ -156,6 +177,7 @@ function describe(node: MergedWorkGraphNode): string {
 
 export function workGraphToDerivedLayer(
   graph: MergedWorkGraph,
+  labels: Record<string, string> = WORK_LAYER_FALLBACK_LABELS,
 ): ProjectMapDerivedLayer {
   const nodes = place(graph.nodes);
   const present = new Set(nodes.map((node) => node.id));
@@ -169,7 +191,19 @@ export function workGraphToDerivedLayer(
       kind: EDGE_STYLE[edge.kind] ?? "calls",
       label: null,
     }));
-  return { id: "work", nodes, edges, groups: [] };
+  // One layer per kind of work that is actually present, in the order the
+  // columns are laid out, so folding the graph reads left to right the way
+  // the drawing does.
+  const kinds = new Set<string>(graph.nodes.map((node) => node.kind));
+  const groups = COLUMN_ORDER.filter((kind) => kinds.has(kind)).map(
+    (kind, index) => ({
+      id: kind,
+      label: labels[kind] ?? WORK_LAYER_FALLBACK_LABELS[kind] ?? kind,
+      accent: String((index % 6) + 1),
+      collapsed: false,
+    }),
+  );
+  return { id: "work", nodes, edges, groups };
 }
 
 /** The conversation behind an agent node, when it has one. */
