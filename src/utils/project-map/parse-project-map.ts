@@ -54,6 +54,7 @@ import {
   isProjectMapLayoutKind,
   isProjectMapMode,
 } from "./project-map-authoring";
+import { projectMapNodeSize } from "./project-map-layout";
 
 /** Why a document was rejected outright. */
 export type ProjectMapParseFailureReason =
@@ -270,16 +271,35 @@ function readEdge(
   };
 }
 
+/** Clearance between a node and a note placed beside it, and between stacked notes. */
+const NOTE_BESIDE_GAP = 24;
+const NOTE_STACK_PITCH = 72;
+
+/**
+ * A note's place on the paper.
+ *
+ * The analysis is asked for a note's anchor, not its position — where a
+ * remark sits is the reader's decision, like everything else about the
+ * arrangement. A note that arrives without one and names a placed node sits
+ * beside that node, stacked under any earlier note on the same node, instead
+ * of at the origin, where every unplaced note of a map used to pile up on
+ * top of whatever happened to be drawn there.
+ */
 function readNote(
   raw: Record<string, unknown>,
   pointer: string,
+  placeBeside: (anchor: string | null) => { x: number; y: number },
 ): ProjectMapNote {
+  const anchor = optionalString(raw, "anchor", `${pointer}.anchor`);
+  const x = optionalNumber(raw, "x", `${pointer}.x`);
+  const y = optionalNumber(raw, "y", `${pointer}.y`);
+  const placed = x === null || y === null ? placeBeside(anchor) : { x, y };
   return {
     id: requiredText(raw, "id", `${pointer}.id`),
     text: optionalString(raw, "text", `${pointer}.text`) ?? "",
-    anchor: optionalString(raw, "anchor", `${pointer}.anchor`),
-    x: optionalNumber(raw, "x", `${pointer}.x`) ?? 0,
-    y: optionalNumber(raw, "y", `${pointer}.y`) ?? 0,
+    anchor,
+    x: x ?? placed.x,
+    y: y ?? placed.y,
   };
 }
 
@@ -634,8 +654,20 @@ export function parseProjectMap(raw: string): ProjectMapParseResult {
         return connected;
       });
 
+    const besideCount = new Map<string, number>();
+    const placeBeside = (anchor: string | null) => {
+      const node = anchor === null ? undefined : nodesById.get(anchor);
+      if (node === undefined) return { x: 0, y: 0 };
+      if (node.x === null || node.y === null) return { x: 0, y: 0 };
+      const stacked = besideCount.get(node.id) ?? 0;
+      besideCount.set(node.id, stacked + 1);
+      return {
+        x: node.x + projectMapNodeSize(node.size).width + NOTE_BESIDE_GAP,
+        y: node.y + stacked * NOTE_STACK_PITCH,
+      };
+    };
     const notes = readList(parsed, "notes").map((raw_, index) => {
-      const note = readNote(raw_, `notes[${index}]`);
+      const note = readNote(raw_, `notes[${index}]`, placeBeside);
       if (note.anchor !== null && !nodesById.has(note.anchor)) {
         warnings.add("orphan-note");
         return { ...note, anchor: null };

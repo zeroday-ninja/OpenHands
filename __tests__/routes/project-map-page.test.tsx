@@ -524,6 +524,79 @@ describe("the project map page", () => {
     expect(navigate).toHaveBeenCalledWith("/conversations/conversation-1");
   });
 
+  /** A map big enough to be a wall: three layers, fifteen parts each. */
+  function bigMapFile() {
+    const groups = ["web", "api", "data"];
+    const nodes = groups.flatMap((group, g) =>
+      Array.from({ length: 15 }, (_, i) => ({
+        id: `src/${group}/${i}.ts`,
+        kind: "module",
+        label: `${group} ${i}`,
+        path: `src/${group}/${i}.ts`,
+        group,
+        summary: "",
+        size: 100,
+        x: g * 260,
+        y: i * 96,
+      })),
+    );
+    return mapFile({
+      groups: groups.map((id, i) => ({ id, label: id, accent: `${i + 1}` })),
+      nodes,
+      edges: [
+        { from: "src/web/0.ts", to: "src/api/0.ts", kind: "calls" },
+        { from: "src/api/1.ts", to: "src/data/0.ts", kind: "reads" },
+      ],
+    });
+  }
+
+  it("opens a big map as its layers, and a small one in full", async () => {
+    // Arrange: forty-five parts in three layers.
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: bigMapFile(),
+    });
+    const user = userEvent.setup();
+    const { unmount } = renderWithProviders(<MapRoute />, {
+      navigation: { currentPath: "/map" },
+    });
+
+    // Assert: blocks with counts, not forty-five plates.
+    await screen.findByTestId("project-map-overview");
+    expect(
+      screen.getByTestId("project-map-overview-block-web"),
+    ).toHaveAttribute("data-count", "15");
+    expect(screen.queryByTestId("project-map-node-src/web/0.ts")).toBeNull();
+    expect(screen.getByTestId("project-map-view-overview")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+
+    // Act: ask for the whole drawing.
+    await user.click(screen.getByTestId("project-map-view-details"));
+
+    // Assert
+    expect(screen.queryByTestId("project-map-overview")).toBeNull();
+    expect(
+      screen.getByTestId("project-map-node-src/web/0.ts"),
+    ).toBeInTheDocument();
+    unmount();
+
+    // A small map has nothing to fold and opens in full, switch and all.
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+    expect(screen.queryByTestId("project-map-overview")).toBeNull();
+    expect(
+      screen.getByTestId("project-map-node-src/routes/home.tsx"),
+    ).toBeInTheDocument();
+  });
+
   it("draws the map and shows which commit it was generated against", async () => {
     // Arrange
     vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({

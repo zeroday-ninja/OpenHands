@@ -102,6 +102,73 @@ describe("ProjectMapCanvas", () => {
     useProjectMapStore.getState().reset();
   });
 
+  it("draws the layers as blocks in the overview, and opens one close enough to read", () => {
+    // Arrange: two layers with parts and a relation between them, shown as
+    // the overview. The frame is a laptop's worth of paper.
+    stubFrame();
+    useProjectMapStore.getState().hydrate("test-revision", {
+      ...document_,
+      groups: [
+        { id: "web", label: "Web app", accent: "1", collapsed: true },
+        { id: "data", label: "Data", accent: "2", collapsed: false },
+      ],
+      nodes: [
+        node({ id: "left", x: 0, y: 0, group: "web" }),
+        node({ id: "right", x: 400, y: 0, group: "web" }),
+        node({ id: "table", x: 0, y: 2000, group: "data" }),
+      ],
+      edges: [
+        { from: "left", to: "table", kind: "reads", label: null },
+        { from: "right", to: "table", kind: "writes", label: null },
+      ],
+    });
+    useProjectMapStore.getState().setOverview(true);
+    renderWithProviders(<Harness />);
+
+    // Assert: blocks, not plates; the relations folded into one counted line.
+    expect(screen.getByTestId("project-map-overview")).toBeInTheDocument();
+    expect(screen.queryByTestId(projectMapNodeDomId("left"))).toBeNull();
+    expect(
+      screen.getByTestId("project-map-overview-block-web"),
+    ).toHaveTextContent("Web app");
+    expect(
+      screen.getByTestId("project-map-overview-link-web>data"),
+    ).toHaveTextContent("2");
+
+    // Act: open the web layer.
+    fireEvent.click(screen.getByTestId("project-map-overview-block-web"));
+
+    // Assert: the detail is back, the layer is unfolded, and the viewport
+    // sits on it at a legible scale rather than fitting the whole wall.
+    const state = useProjectMapStore.getState();
+    expect(state.overview).toBe(false);
+    expect(state.document?.groups.find((g) => g.id === "web")?.collapsed).toBe(
+      false,
+    );
+    expect(state.viewport.scale).toBeGreaterThanOrEqual(0.8);
+    expect(state.viewport.y).toBeLessThan(0);
+    expect(screen.getByTestId(projectMapNodeDomId("left"))).toBeInTheDocument();
+  });
+
+  it("only pans on the overview's paper, whatever tool is in hand", () => {
+    // Arrange
+    stubFrame();
+    renderCanvas();
+    useProjectMapStore.getState().setOverview(true);
+    useProjectMapStore.getState().setTool("box");
+    const paper = screen.getByTestId("project-map-canvas");
+
+    // Act: a drag that would have drawn a box.
+    fireEvent.pointerDown(paper, { ...POINTER, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(paper, { ...POINTER, clientX: 160, clientY: 130 });
+    fireEvent.pointerUp(paper, { ...POINTER, clientX: 160, clientY: 130 });
+
+    // Assert: the paper moved and nothing was drawn.
+    const state = useProjectMapStore.getState();
+    expect(state.document?.canvas.shapes).toEqual([]);
+    expect(state.viewport.x).toBeLessThan(0);
+  });
+
   it("leaves a hidden node out of the drawing until the user asks to see it", () => {
     // Arrange / Act
     renderCanvas();
