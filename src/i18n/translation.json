@@ -48870,22 +48870,22 @@
     "id": "Pratinjau gambar ukuran penuh"
   },
   "HOME$ISOLATED_WORKSPACE_NOTICE": {
-    "en": "This backend uses isolated workspaces. Host folders and projects cannot be attached.",
-    "ja": "このバックエンドは分離ワークスペースを使用します。ホストのフォルダーやプロジェクトは接続できません。",
-    "zh-CN": "此后端使用隔离工作区，无法附加主机文件夹或项目。",
-    "zh-TW": "此後端使用隔離工作區，無法附加主機資料夾或專案。",
-    "ko-KR": "이 백엔드는 격리된 작업 공간을 사용합니다. 호스트 폴더와 프로젝트를 연결할 수 없습니다.",
-    "no": "Denne backend-en bruker isolerte arbeidsområder. Mapper og prosjekter på verten kan ikke kobles til.",
-    "ar": "تستخدم هذه الخلفية مساحات عمل معزولة. لا يمكن إرفاق مجلدات المضيف ومشاريعه.",
-    "de": "Dieses Backend verwendet isolierte Arbeitsbereiche. Host-Ordner und -Projekte können nicht angehängt werden.",
-    "fr": "Ce backend utilise des espaces de travail isolés. Les dossiers et projets de l’hôte ne peuvent pas être joints.",
-    "it": "Questo backend usa spazi di lavoro isolati. Non è possibile collegare cartelle e progetti dell’host.",
-    "pt": "Este backend usa espaços de trabalho isolados. Não é possível anexar pastas e projetos do host.",
-    "es": "Este backend usa espacios de trabajo aislados. No se pueden adjuntar carpetas ni proyectos del host.",
-    "ca": "Aquest backend utilitza espais de treball aïllats. No s’hi poden adjuntar carpetes ni projectes de l’amfitrió.",
-    "tr": "Bu arka uç yalıtılmış çalışma alanları kullanır. Ana makine klasörleri ve projeleri eklenemez.",
-    "uk": "Цей сервер використовує ізольовані робочі простори. Папки та проєкти хоста підключити неможливо.",
-    "id": "Backend ini menggunakan ruang kerja terisolasi. Folder dan proyek host tidak dapat dilampirkan."
+    "en": "This backend runs each conversation in its own sandbox. A repository from a Git provider cannot be attached here; choose a folder on this machine instead.",
+    "zh-CN": "此后端在独立的沙箱中运行每个会话。此处无法附加来自 Git 提供商的仓库；请改为选择本机上的文件夹。",
+    "zh-TW": "此後端會在各自的沙箱中執行每個對話。此處無法附加來自 Git 供應商的儲存庫；請改為選擇這台機器上的資料夾。",
+    "de": "Dieses Backend führt jede Unterhaltung in einer eigenen Sandbox aus. Ein Repository eines Git-Anbieters kann hier nicht angebunden werden; wähle stattdessen einen Ordner auf diesem Rechner.",
+    "ko-KR": "이 백엔드는 각 대화를 별도의 샌드박스에서 실행합니다. 여기서는 Git 제공자의 저장소를 연결할 수 없으니, 대신 이 컴퓨터의 폴더를 선택하세요.",
+    "no": "Denne backend-en kjører hver samtale i sin egen sandkasse. Et repository fra en Git-leverandør kan ikke kobles til her; velg en mappe på denne maskinen i stedet.",
+    "it": "Questo backend esegue ogni conversazione in una sandbox separata. Qui non è possibile collegare un repository di un provider Git; scegli invece una cartella su questa macchina.",
+    "pt": "Este backend executa cada conversa na sua própria sandbox. Não é possível anexar aqui um repositório de um fornecedor Git; escolha antes uma pasta nesta máquina.",
+    "es": "Este backend ejecuta cada conversación en su propio entorno aislado. Aquí no se puede adjuntar un repositorio de un proveedor Git; elige en su lugar una carpeta de este equipo.",
+    "ar": "تشغّل هذه الواجهة الخلفية كل محادثة في بيئة معزولة خاصة بها. لا يمكن إرفاق مستودع من مزوّد Git هنا؛ اختر مجلدًا على هذا الجهاز بدلًا من ذلك.",
+    "fr": "Ce backend exécute chaque conversation dans son propre bac à sable. Un dépôt d'un fournisseur Git ne peut pas être attaché ici ; choisissez plutôt un dossier de cette machine.",
+    "tr": "Bu arka uç her konuşmayı kendi korumalı alanında çalıştırır. Buraya bir Git sağlayıcısından depo eklenemez; bunun yerine bu makinedeki bir klasörü seçin.",
+    "ja": "このバックエンドは各会話を専用のサンドボックスで実行します。ここでは Git プロバイダーのリポジトリを接続できません。代わりにこのマシン上のフォルダーを選択してください。",
+    "uk": "Цей бекенд запускає кожну розмову в окремій пісочниці. Репозиторій від Git-провайдера тут підключити не можна; натомість виберіть папку на цьому комп'ютері.",
+    "ca": "Aquest backend executa cada conversa en el seu propi entorn aïllat. Aquí no es pot adjuntar un repositori d'un proveïdor Git; tria en canvi una carpeta d'aquest equip.",
+    "id": "Backend ini menjalankan setiap percakapan di sandbox-nya sendiri. Repositori dari penyedia Git tidak dapat dilampirkan di sini; pilih folder di mesin ini sebagai gantinya."
   },
   "SETTINGS$AGENT_PROFILE_SECRETS": {
     "en": "Secrets",
@@ -59668,5 +59668,23 @@
     "uk": "Виберіть репозиторій…",
     "ca": "Tria un repositori…",
     "id": "Pilih repositori…"
+  },
+  "HOME$ISOLATED_WORKSPACE_MOUNTED": {
+    "en": "This folder is mounted into the conversation's sandbox as its working directory.",
+    "zh-CN": "此文件夹会挂载到会话的沙箱中，作为其工作目录。",
+    "zh-TW": "此資料夾會掛載到對話的沙箱中，作為其工作目錄。",
+    "de": "Dieser Ordner wird als Arbeitsverzeichnis in die Sandbox der Unterhaltung eingebunden.",
+    "ko-KR": "이 폴더는 대화의 샌드박스에 작업 디렉터리로 마운트됩니다.",
+    "no": "Denne mappen monteres i samtalens sandkasse som arbeidskatalog.",
+    "it": "Questa cartella viene montata nella sandbox della conversazione come directory di lavoro.",
+    "pt": "Esta pasta é montada na sandbox da conversa como diretório de trabalho.",
+    "es": "Esta carpeta se monta en el entorno aislado de la conversación como su directorio de trabajo.",
+    "ar": "يُركَّب هذا المجلد داخل البيئة المعزولة للمحادثة بوصفه دليل العمل.",
+    "fr": "Ce dossier est monté dans le bac à sable de la conversation comme répertoire de travail.",
+    "tr": "Bu klasör, konuşmanın korumalı alanına çalışma dizini olarak bağlanır.",
+    "ja": "このフォルダーは会話のサンドボックスに作業ディレクトリとしてマウントされます。",
+    "uk": "Цю папку буде змонтовано в пісочницю розмови як робочий каталог.",
+    "ca": "Aquesta carpeta es munta a l'entorn aïllat de la conversa com a directori de treball.",
+    "id": "Folder ini dipasang ke dalam sandbox percakapan sebagai direktori kerjanya."
   }
 }
