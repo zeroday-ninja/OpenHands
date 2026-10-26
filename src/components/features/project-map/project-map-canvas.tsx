@@ -690,9 +690,16 @@ export function ProjectMapCanvas({
       max: OPEN_LAYER_MAX_SCALE,
     });
     const pad = PROJECT_MAP_GROUP_PADDING / fitted.scale;
+    // Centred across, anchored at the top. A layer is usually taller than it
+    // is wide, so the height is what forces the floor and the width is left
+    // with slack; spending that slack on the left margin put the layer you
+    // asked for in a third of the paper with the faded rest filling the other
+    // two. Vertically there is nothing to centre: the drawing runs past the
+    // bottom edge and is panned through.
+    const slack = Math.max(0, frame.width / fitted.scale - bounds.width);
     setViewport({
       scale: fitted.scale,
-      x: bounds.x - pad,
+      x: bounds.x - Math.max(pad, slack / 2),
       y: bounds.y - pad,
     });
   };
@@ -1373,10 +1380,19 @@ export function ProjectMapCanvas({
                 const accent = accentOf(group.id);
                 const labelWidth =
                   group.label.length * 6 + GROUP_LABEL_PADDING * 2;
+                // A layer nobody opened is context, and so is its outline.
+                // The plates inside it already fade; leaving the dashed
+                // boundary and the lettered header at full strength made the
+                // loudest marks on the paper belong to the layers that were
+                // not asked for — the same "I clicked one block and I am
+                // looking at four group headers" complaint, fixed for the
+                // plates and not for the frames around them.
+                const lit = openedGroup === null || group.id === openedGroup;
                 return (
                   <g
                     key={group.id}
                     data-testid={`project-map-group-${group.id}`}
+                    opacity={lit ? 1 : 0.18}
                   >
                     {group.collapsed ? (
                       <rect
