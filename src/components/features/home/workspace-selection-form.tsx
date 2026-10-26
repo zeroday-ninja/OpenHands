@@ -1,4 +1,3 @@
-import { useConversationWorkspace } from "#/hooks/query/use-conversation-workspace";
 import React from "react";
 import { useTranslation } from "react-i18next";
 
@@ -85,14 +84,10 @@ export function WorkspaceSelectionForm({
     isError: hasWorkspaceError,
     error: resolvedWorkspacesError,
   } = useResolvedWorkspaces();
-  const { unsupportedMessage: runtimeWorkspaceMessage } =
-    useConversationWorkspace();
-  const workspacesUnsupportedMessage =
-    runtimeWorkspaceMessage ??
-    getWorkspacesUnsupportedMessage(
-      workspacesError ?? resolvedWorkspacesError,
-      t,
-    );
+  const workspacesUnsupportedMessage = getWorkspacesUnsupportedMessage(
+    workspacesError ?? resolvedWorkspacesError,
+    t,
+  );
   const [selectedWorkspace, setSelectedWorkspace] =
     React.useState<LocalWorkspace | null>(null);
   const [isBrowserOpen, setIsBrowserOpen] = React.useState(false);

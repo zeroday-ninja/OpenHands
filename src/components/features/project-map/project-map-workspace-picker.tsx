@@ -9,11 +9,11 @@
  * uses to attach a folder to a conversation, so a repository added in either
  * place is known in both.
  *
- * Deliberately not gated on `useConversationWorkspace().unsupportedMessage`.
- * That message says host folders cannot be attached on a Docker backend, and
- * the Docker runtime mounts them; the page that reads this choice starts its
- * conversations with the folder as their working directory, which is what
- * puts the repository inside the sandbox.
+ * Not gated on the backend being isolated. The Docker runtime mounts a host
+ * folder at `/workspace` inside the sandbox; the page that reads this choice
+ * starts its conversations with the folder as their working directory, which
+ * is what puts the repository inside the sandbox. Only an agent server too
+ * old to have workspaces at all disables it.
  */
 
 import React from "react";
