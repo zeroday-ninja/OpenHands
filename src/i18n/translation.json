@@ -61270,5 +61270,23 @@
     "uk": "Клацніть блок, щоб відкрити лише цей вид: його таблички малюються, решта тьмяніє до контексту, а підпис каже, де ви. «Усі шари» повертає назад.",
     "ca": "Fes clic en un bloc per obrir només aquest tipus: les seves plaques es dibuixen, la resta s'esvaeix com a context i l'etiqueta diu on ets. «Totes les capes» hi torna.",
     "id": "Klik sebuah blok untuk membuka jenis itu saja: pelatnya digambar, sisanya meredup jadi konteks, dan labelnya menyebut Anda sedang di mana. «Semua lapisan» kembali."
+  },
+  "CONVERSATION$COMPOSER_FINISHED": {
+    "en": "Ask for a change, or pick this up where it stopped",
+    "zh-CN": "提出修改，或从它停下的地方继续",
+    "zh-TW": "提出修改，或從它停下的地方繼續",
+    "de": "Bitte um eine Änderung, oder mach dort weiter, wo es aufgehört hat",
+    "ko-KR": "변경을 요청하거나, 멈춘 지점부터 이어서 진행하세요",
+    "no": "Be om en endring, eller fortsett der den stoppet",
+    "it": "Chiedi una modifica, o riprendi da dove si è fermato",
+    "pt": "Peça uma alteração, ou retome onde parou",
+    "es": "Pide un cambio, o retoma donde se detuvo",
+    "ar": "اطلب تغييرًا، أو تابع من حيث توقّف",
+    "fr": "Demandez une modification, ou reprenez là où cela s'est arrêté",
+    "tr": "Bir değişiklik isteyin ya da durduğu yerden devam edin",
+    "ja": "変更を頼むか、止まったところから続けましょう",
+    "uk": "Попросіть зміну або продовжте з місця, де воно зупинилося",
+    "ca": "Demana un canvi, o reprèn-ho on s'ha aturat",
+    "id": "Minta perubahan, atau lanjutkan dari tempat berhenti"
   }
 }

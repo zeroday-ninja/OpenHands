@@ -56,6 +56,7 @@ import { useNewConversationCommand } from "#/hooks/mutation/use-new-conversation
 import { useOptionalConversationId } from "#/hooks/use-conversation-id";
 import { setConversationState } from "#/utils/conversation-local-storage";
 import { useActiveConversation } from "#/hooks/query/use-active-conversation";
+import { ExecutionStatus } from "#/types/agent-server/core/base/common";
 import { I18nKey } from "#/i18n/declaration";
 import { hasConversationStarted } from "./components/resolve-picker-kind";
 import { ComposerDockedProvider } from "#/context/composer-docked-context";
@@ -576,7 +577,13 @@ export function ChatInterface({
         placeholder={
           isMinimalComposer
             ? t(I18nKey.AUTOMATION_SETUP$DOCKED_COMPOSER_PLACEHOLDER)
-            : composerPlaceholder
+            : // "What do you want to build?" on a finished review reads as
+              // though nothing has happened here. What this box does for a
+              // conversation that has stopped is carry on from it.
+              (composerPlaceholder ??
+              (activeConversation?.execution_status === ExecutionStatus.FINISHED
+                ? t(I18nKey.CONVERSATION$COMPOSER_FINISHED)
+                : undefined))
         }
       />
     </ComposerDockedProvider>
