@@ -94,6 +94,7 @@ import { FeatureFeedback } from "#/components/features/feature-trials/feature-fe
 import { featureTrialsOn } from "#/features/feature-trials";
 import { useFeatureTrialStore } from "#/stores/feature-trial-store";
 import { useParkedImproveCycles } from "#/hooks/query/use-improve-program";
+import { projectMapWaitingParts } from "#/utils/project-map/project-map-waiting-parts";
 import { UnusedFeatureList } from "#/components/features/feature-trials/unused-feature-list";
 import { ProjectMapWaiting } from "./project-map-waiting";
 import {
@@ -442,6 +443,24 @@ export function ProjectMapPage() {
   );
   const parked = useParkedImproveCycles();
   const waiting = parked.data?.cycles.length ?? 0;
+  // What is waiting, on the map: the parts a parked change names by path.
+  // The repository is the folder this map is of, so a change about another
+  // one marks nothing here even when the two share a filename.
+  const waitingParts = React.useMemo(
+    () =>
+      document_ === null
+        ? new Map<string, string>()
+        : projectMapWaitingParts(
+            document_,
+            parked.data?.cycles ?? [],
+            chosenPath !== null
+              ? basename(chosenPath)
+              : workspace?.workingDir
+                ? basename(workspace.workingDir)
+                : null,
+          ),
+    [document_, parked.data, chosenPath, workspace?.workingDir],
+  );
   const [railOpen, setRailOpen] = React.useState(false);
   const selected = useProjectMapStore((state) => state.selection).length;
   // It opens itself for the two things a person asked for without saying so:
@@ -711,6 +730,7 @@ export function ProjectMapPage() {
             <div className="relative min-h-0 flex-1 overflow-hidden rounded-lg border border-border-subtle">
               <ProjectMapCanvas
                 document={document_}
+                waitingParts={waitingParts}
                 frameRef={frameRef}
                 derivedLayer={workLayer}
               />

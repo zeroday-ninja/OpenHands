@@ -67,6 +67,8 @@ export interface ProjectMapNodePlateProps {
   lit: boolean;
   /** False when the drawing is too small for the path line to be legible. */
   showPath: boolean;
+  /** True when a change that stopped to ask a person names this part. */
+  waiting: boolean;
   onFocus: (node: PlacedProjectMapNode) => void;
   onKeyDown: (
     event: React.KeyboardEvent<SVGGElement>,
@@ -85,6 +87,7 @@ export function ProjectMapNodePlate({
   focused,
   lit,
   showPath,
+  waiting,
   onFocus,
   onKeyDown,
   onPointerDown,
@@ -100,6 +103,7 @@ export function ProjectMapNodePlate({
       id={projectMapNodeDomId(node.id)}
       data-testid={`project-map-node-${node.id}`}
       data-selected={selected ? "true" : undefined}
+      data-waiting={waiting ? "true" : undefined}
       role="button"
       tabIndex={0}
       aria-pressed={selected}
@@ -126,6 +130,22 @@ export function ProjectMapNodePlate({
           strokeWidth={selected ? 1.5 : 1}
           strokeDasharray={focused && !selected ? "3 2" : undefined}
         />
+      )}
+      {/* The rail promises to answer what is waiting "on the map", and a
+          count in a corner of the screen is not on the map. A dot on the
+          part itself is; clicking the part opens the rail with it. */}
+      {waiting && (
+        <circle
+          data-testid="project-map-waiting-mark"
+          cx={width - 6}
+          cy={6}
+          r={5}
+          className="fill-warning stroke-canvas-base"
+          strokeWidth={1.5}
+          vectorEffect="non-scaling-stroke"
+        >
+          <title>{t(I18nKey.PROJECT_MAP$WAITING_PART)}</title>
+        </circle>
       )}
       <path
         d={silhouette.outline}

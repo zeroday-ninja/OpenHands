@@ -17,6 +17,8 @@ import { projectMapEdgeGeometry } from "#/utils/project-map/project-map-visuals"
  * declaration only names the forms, which is why this is a string.
  */
 const PARTS_I18N_KEY = "PROJECT_MAP$OVERVIEW_PARTS";
+/** Also a plural phrase, and so also outside the typed key enum. */
+const WAITING_LAYER_I18N_KEY = "PROJECT_MAP$WAITING_LAYER";
 
 const LABEL_SIZE = 18;
 const LABEL_INSET = 18;
@@ -58,12 +60,17 @@ export interface ProjectMapOverviewLayerProps {
   overview: ProjectMapOverview;
   /** A `var(--color-map-accent-N)` reference for a layer, never a colour. */
   accentOf: (groupId: string) => string;
+  /** Layer id to how many of its parts a parked change names. */
+  waitingLayers?: ReadonlyMap<string, number>;
   onOpen: (groupId: string) => void;
 }
+
+const NOTHING_WAITING: ReadonlyMap<string, number> = new Map();
 
 export function ProjectMapOverviewLayer({
   overview,
   accentOf,
+  waitingLayers = NOTHING_WAITING,
   onOpen,
 }: ProjectMapOverviewLayerProps) {
   const { t } = useTranslation("openhands");
@@ -131,6 +138,7 @@ export function ProjectMapOverviewLayer({
             data-testid={`project-map-overview-block-${block.group.id}`}
             data-count={block.count}
             data-where={block.where}
+            data-waiting={waitingLayers.get(block.group.id) ?? undefined}
             role="button"
             tabIndex={0}
             aria-label={`${block.group.label} — ${t(I18nKey.PROJECT_MAP$OVERVIEW_OPEN)}`}
@@ -154,6 +162,23 @@ export function ProjectMapOverviewLayer({
               stroke={accent}
               strokeWidth={1.5}
             />
+            {/* A layer holding work that stopped to ask a person says so
+                where the work is, rather than only in the rail. */}
+            {(waitingLayers.get(block.group.id) ?? 0) > 0 && (
+              <circle
+                cx={block.x + block.width - 16}
+                cy={block.y + 16}
+                r={7}
+                className="fill-warning stroke-canvas-base"
+                strokeWidth={2}
+              >
+                <title>
+                  {t(WAITING_LAYER_I18N_KEY, {
+                    count: waitingLayers.get(block.group.id) ?? 0,
+                  })}
+                </title>
+              </circle>
+            )}
             <text
               x={block.x + LABEL_INSET}
               y={block.y + 48}
