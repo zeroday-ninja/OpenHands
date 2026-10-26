@@ -9,6 +9,8 @@ import {
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "../../test-utils";
+import { featureTrialsOn } from "#/features/feature-trials";
+import { useFeatureTrialStore } from "#/stores/feature-trial-store";
 
 /**
  * Chat is behind a dock now: the canvas is the work, and a panel over it is
@@ -323,6 +325,7 @@ describe("the project map page", () => {
     vi.restoreAllMocks();
     useEventStore.getState().clearEvents();
     useProjectMapStore.getState().reset();
+    useFeatureTrialStore.setState({ records: {} });
     setActiveSelection(null);
     setRegisteredBackends([]);
   });
@@ -643,6 +646,56 @@ describe("the project map page", () => {
     expect(
       screen.getByTestId("project-map-node-src/routes/home.tsx"),
     ).toBeInTheDocument();
+  });
+
+  /** Nothing new to introduce, so the rail has nothing it must show. */
+  function everythingAnnounced() {
+    featureTrialsOn("/map").forEach((trial) =>
+      useFeatureTrialStore.getState().markAnnounced(trial.id),
+    );
+  }
+
+  it("gives the map the width once its features have introduced themselves", async () => {
+    // Arrange
+    everythingAnnounced();
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    const user = userEvent.setup();
+
+    // Act
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+
+    // Assert: the rail is folded, and the toolbar says it can be opened.
+    expect(screen.queryByTestId("project-map-legend")).toBeNull();
+    const toggle = screen.getByTestId("project-map-rail-toggle");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await user.click(toggle);
+    expect(screen.getByTestId("project-map-legend")).toBeInTheDocument();
+  });
+
+  it("opens the rail for the part you click", async () => {
+    // Arrange
+    everythingAnnounced();
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+
+    // Act: a selection is a question about one part, which the rail answers.
+    await user.click(
+      screen.getByTestId("project-map-node-src/routes/home.tsx"),
+    );
+
+    // Assert
+    expect(screen.getByTestId("project-map-inspector")).toBeInTheDocument();
   });
 
   it("draws the map and says which commit it came from, and when", async () => {
