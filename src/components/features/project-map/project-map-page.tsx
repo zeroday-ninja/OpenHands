@@ -308,20 +308,29 @@ export function ProjectMapPage() {
   // render — and the frame is refitted only when that decision changes the
   // paper's extent, so the user's own switch and their panning survive a
   // re-read that changed nothing of the kind.
+  /**
+   * Whichever drawing is on the paper, as a document.
+   *
+   * Everything that measures the paper has to measure *this*: fitting the
+   * view, deciding whether to fold, and the way back up. Fitting the
+   * committed code map while the work graph is drawn put three of its
+   * sixty-nine plates in frame and called it a fit.
+   */
+  const paper = React.useMemo<PlacedProjectMapDocument | null>(() => {
+    if (document_ === null) return null;
+    if (layer !== "work" || workLayer === null) return document_;
+    return {
+      ...document_,
+      nodes: workLayer.nodes,
+      edges: workLayer.edges,
+      groups: workLayer.groups,
+    };
+  }, [document_, layer, workLayer]);
+  const paperGroups = paper?.groups.length ?? 0;
+
   // The work graph, folded or not, when the paper changes to it or away.
   React.useEffect(() => {
     if (openedLayer.current === layer) return;
-    const paper =
-      layer === "work"
-        ? workLayer === null || document_ === null
-          ? null
-          : {
-              ...document_,
-              nodes: workLayer.nodes,
-              edges: workLayer.edges,
-              groups: workLayer.groups,
-            }
-        : document_;
     // Not while the graph is still arriving: its first answers carry one
     // backend and no work, and a decision taken on those folds nothing and
     // never looks again. Once, when the drawing has settled.
@@ -339,7 +348,7 @@ export function ProjectMapPage() {
         max: PROJECT_MAP_MAX_SCALE,
       }),
     );
-  }, [layer, workLayer, workFetching, document_, setOverview, setViewport]);
+  }, [layer, paper, workFetching, setOverview, setViewport]);
 
   React.useEffect(() => {
     if (data === undefined) return;
@@ -449,8 +458,7 @@ export function ProjectMapPage() {
 
   const fitToView = (asOverview: boolean = overview) => {
     const frame = frameRef.current?.getBoundingClientRect();
-    const bounds =
-      document_ === null ? null : paperBounds(document_, asOverview);
+    const bounds = paper === null ? null : paperBounds(paper, asOverview);
     if (!frame || bounds === null) return;
     setViewport(
       fitProjectMapViewBox(bounds, frame, {
@@ -532,14 +540,6 @@ export function ProjectMapPage() {
   React.useEffect(() => {
     if (selected > 0) setRailOpen(true);
   }, [selected]);
-
-  // What the overview would fold: the layers of whichever drawing is on the
-  // paper. The work graph has them too now, and needs folding more than the
-  // code map does — it arrives with every run, cycle and agent on it.
-  const paperGroups =
-    layer === "work"
-      ? (workLayer?.groups.length ?? 0)
-      : (document_?.groups.length ?? 0);
 
   const pickerInHeader =
     backend.kind === "local" && (chosenPath !== null || document_ !== null);
@@ -806,7 +806,7 @@ export function ProjectMapPage() {
               {/* What the blocks are, said on the paper where they are. The
                   announcement says it once; a person who dismissed that
                   and comes back a week later should not have to remember. */}
-              {overview && layer === "code" && (
+              {overview && paperGroups >= 2 && (
                 <p
                   data-testid="project-map-overview-hint"
                   className="pointer-events-none absolute left-4 top-4 max-w-md text-xs text-muted"
@@ -818,8 +818,8 @@ export function ProjectMapPage() {
                   small and in the toolbar, and a person who opened a layer
                   from a block is looking at the drawing. */}
               {!overview &&
-                layer === "code" &&
-                projectMapWantsOverview(document_) && (
+                paper !== null &&
+                projectMapWantsOverview(paper) && (
                   <button
                     type="button"
                     data-testid="project-map-all-layers"

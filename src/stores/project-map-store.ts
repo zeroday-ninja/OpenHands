@@ -586,8 +586,8 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
   /**
    * Which derived layer is on the paper.
    *
-   * Goes through `edit` like any other view change, so switching to watch the
-   * agents work and back is one undo step and is saved with everything else.
+   * Sets a view and nothing else: watching the agents work is not an edit to
+   * the repository's map, so it costs no undo step and writes no file.
    */
   setLayer: (layer) => set({ layer }),
 
