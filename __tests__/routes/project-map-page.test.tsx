@@ -766,6 +766,28 @@ describe("the project map page", () => {
     );
   });
 
+  it("says on the paper what a plate and a line are", async () => {
+    // Arrange: a map small enough to open in full, so the detail view is
+    // what a first visit lands on.
+    everythingAnnounced();
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+
+    // Act
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+
+    // Assert: the key is in the rail, which is folded by default, so the
+    // paper carries the sentence a newcomer needs instead.
+    expect(screen.getByTestId("project-map-detail-hint")).toHaveTextContent(
+      copy("PROJECT_MAP$DETAIL_HINT"),
+    );
+    expect(screen.queryByTestId("project-map-legend")).toBeNull();
+  });
+
   it("opens the rail for the part you click", async () => {
     // Arrange
     everythingAnnounced();
