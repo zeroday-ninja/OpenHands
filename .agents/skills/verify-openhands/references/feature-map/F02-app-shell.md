@@ -47,7 +47,7 @@ Source: `src/components/features/sidebar/`, `src/components/features/command-men
 ## How to get to it (user POV)
 
 - Any page in the app: the left rail (desktop) or the hamburger (phone, `browser viewport phone`).
-- Direct URLs: `/` (always a redirect: to the pinned page, else `/map`), `/conversations` (Home), `/customize`, `/automations`, `/settings`.
+- Direct URLs: `/` (always a redirect, carrying any query string along: to the pinned page, else the map where the backend can serve it and `/conversations` where it cannot — see [F03](F03-home.md) Gotchas), `/conversations` (Home), `/customize`, `/automations`, `/settings`.
 - Command menu: press `Control+k` or `Meta+k` anywhere, or click **Search commands** (`command-menu-trigger`) in the rail or drawer. Type a page or setting name, then press Enter or click the row.
 - Hover a sidebar row to reveal its pin. Hover the collapsed rail's logo to reveal the expand chevron.
 - Settings → Application (`/settings/app`): the **Show Getting Started checklist** switch.
