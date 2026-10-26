@@ -572,6 +572,10 @@ describe("the project map page", () => {
       "aria-checked",
       "true",
     );
+    // And what the blocks are is said on the paper, not only in a card.
+    expect(screen.getByTestId("project-map-overview-hint")).toHaveTextContent(
+      copy("PROJECT_MAP$OVERVIEW_HINT"),
+    );
 
     // Act: ask for the whole drawing.
     await user.click(screen.getByTestId("project-map-view-details"));
@@ -583,6 +587,7 @@ describe("the project map page", () => {
       screen.getByTestId("project-map-node-src/web/0.ts"),
     ).toBeInTheDocument();
     expect(screen.queryByTestId("project-map-tool-box")).toBeNull();
+    expect(screen.queryByTestId("project-map-overview-hint")).toBeNull();
     await user.click(screen.getByTestId("project-map-all-layers"));
     expect(screen.getByTestId("project-map-overview")).toBeInTheDocument();
     expect(screen.queryByTestId("project-map-all-layers")).toBeNull();

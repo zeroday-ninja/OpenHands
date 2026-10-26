@@ -592,6 +592,17 @@ export function ProjectMapPage() {
                 frameRef={frameRef}
                 derivedLayer={workLayer}
               />
+              {/* What the blocks are, said on the paper where they are. The
+                  announcement says it once; a person who dismissed that
+                  and comes back a week later should not have to remember. */}
+              {overview && layer === "code" && (
+                <p
+                  data-testid="project-map-overview-hint"
+                  className="pointer-events-none absolute left-4 top-4 max-w-md text-xs text-muted"
+                >
+                  {t(I18nKey.PROJECT_MAP$OVERVIEW_HINT)}
+                </p>
+              )}
               {/* The way back up, on the paper itself: the View switch is
                   small and in the toolbar, and a person who opened a layer
                   from a block is looking at the drawing. */}
