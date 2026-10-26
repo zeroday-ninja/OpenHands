@@ -251,7 +251,9 @@ describe("ProjectMapCanvas", () => {
     renderCanvas();
 
     // Act
-    await user.click(screen.getByTestId("project-map-group-toggle-web"));
+    const toggle = screen.getByTestId("project-map-group-toggle-web");
+    expect(toggle.querySelector("title")).not.toBeNull(); // says what it does
+    await user.click(toggle);
 
     // Assert: the members are gone, the group remains, and the edge that left
     // the group now arrives at the group itself.

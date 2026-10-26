@@ -1380,6 +1380,16 @@ export function ProjectMapCanvas({
                     }}
                     onPointerDown={(event) => event.stopPropagation()}
                   >
+                    {/* An SVG tooltip: the minus in a layer's corner was
+                        "meaningful?" to a first visit, and the aria-label
+                        is read by nobody hovering. */}
+                    <title>
+                      {t(
+                        group.collapsed
+                          ? I18nKey.PROJECT_MAP$EXPAND_GROUP
+                          : I18nKey.PROJECT_MAP$COLLAPSE_GROUP,
+                      )}
+                    </title>
                     <rect
                       x={bounds.x + bounds.width - 26}
                       y={bounds.y - 8}

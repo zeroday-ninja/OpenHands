@@ -83,6 +83,7 @@ export function ProjectMapChatDock({
         type="button"
         data-testid="project-map-chat-dock-toggle"
         aria-expanded={chatOpen}
+        title={t(I18nKey.PROJECT_MAP$CHAT_PLACEHOLDER)}
         className="pointer-events-auto rounded-md border border-border-subtle bg-base-secondary px-3 py-1.5 text-micro text-muted hover:text-content"
         onClick={() => setChatOpen(!chatOpen)}
       >
