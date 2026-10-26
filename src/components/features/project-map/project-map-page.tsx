@@ -276,6 +276,15 @@ export function ProjectMapPage() {
    */
   const boundConversationId = selectedAgentConversationId ?? mapConversationId;
 
+  // The page opens the dock for an agent, because the dock cannot. Binding a
+  // conversation wraps this page in the socket providers, which remounts the
+  // dock with the conversation already set — and a dock that mounts bound
+  // cannot tell the agent a person just clicked from one the page remembers.
+  // Clicking an agent on the work layer is the whole point of drawing it.
+  React.useEffect(() => {
+    if (selectedAgentConversationId !== null) setChatOpen(true);
+  }, [selectedAgentConversationId, setChatOpen]);
+
   // Synchronisation with an external system — the file on disk. The revision
   // fingerprints the bytes, so `hydrate` ignores a re-read that found no
   // change and never discards unsaved work, while a write by the agent is a
