@@ -136,6 +136,10 @@ describe("ProjectMapCanvas", () => {
     ).toHaveTextContent("2");
 
     // Act: open the web layer.
+    // The block says where its parts live, under the layer's name.
+    expect(
+      screen.getByTestId("project-map-overview-block-web"),
+    ).toHaveAttribute("data-where");
     fireEvent.click(screen.getByTestId("project-map-overview-block-web"));
 
     // Assert: the detail is back, the layer is unfolded, and the viewport

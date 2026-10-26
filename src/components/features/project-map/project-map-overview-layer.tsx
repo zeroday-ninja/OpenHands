@@ -24,12 +24,12 @@ const LABEL_INSET = 18;
 const LABEL_ADVANCE = 9.5;
 const PARTS_SIZE = 12;
 const LINK_LABEL_SIZE = 12;
+const FOLDERS_SIZE = 11;
+/** The monospace advance at `FOLDERS_SIZE`. */
+const FOLDERS_ADVANCE = 6.7;
 
-function fit(text: string, width: number): string {
-  const room = Math.max(
-    1,
-    Math.floor((width - LABEL_INSET * 2) / LABEL_ADVANCE),
-  );
+function fit(text: string, width: number, advance = LABEL_ADVANCE): string {
+  const room = Math.max(1, Math.floor((width - LABEL_INSET * 2) / advance));
   return text.length <= room
     ? text
     : `${text.slice(0, Math.max(1, room - 1))}…`;
@@ -130,6 +130,7 @@ export function ProjectMapOverviewLayer({
             key={block.group.id}
             data-testid={`project-map-overview-block-${block.group.id}`}
             data-count={block.count}
+            data-where={block.where}
             role="button"
             tabIndex={0}
             aria-label={`${block.group.label} — ${t(I18nKey.PROJECT_MAP$OVERVIEW_OPEN)}`}
@@ -170,6 +171,19 @@ export function ProjectMapOverviewLayer({
             >
               {t(PARTS_I18N_KEY, { count: block.count })}
             </text>
+            {/* The repository's own words under the analysis's name: a
+                layer called "Research engine" is recognised by
+                `server/{research/, engine.js}` before it is by its label. */}
+            {block.where !== "" && (
+              <text
+                x={block.x + LABEL_INSET}
+                y={block.y + 100}
+                fontSize={FOLDERS_SIZE}
+                className="pointer-events-none fill-muted font-mono"
+              >
+                {fit(block.where, block.width, FOLDERS_ADVANCE)}
+              </text>
+            )}
           </g>
         );
       })}

@@ -21,7 +21,7 @@ Aim for the 40–120 nodes a person can hold in their head, not every file. A no
 - `path` — the same repository-relative path, or `null` for an external or conceptual node.
 - `group` — the id of a group below.
 
-Group nodes into the four to eight layers a maintainer of this repository would actually name — "web app", "transport", "persistence", "background work". Give each group an `id`, a `label` and an `accent` as a string holding a number from `"1"` to `"6"`; the accent is an index into the reader's theme palette, never a colour.
+Group nodes into the four to eight layers a maintainer of this repository would actually name — "web app", "transport", "persistence", "background work". Name a layer after the folder, package or feature its maintainers already call it by — `web/`, `server/`, the persistence package — and invent a name only when no folder or package says it: a reader who knows the repository by its folders should recognise every layer at a glance. Give each group an `id`, a `label` and an `accent` as a string holding a number from `"1"` to `"6"`; the accent is an index into the reader's theme palette, never a colour.
 
 Edges say what talks to what. Each one is `{ "from": <node id>, "to": <node id>, "kind": <kind> }` with an optional `label`; `from` and `to` are the fields the reader accepts, and both must name a node by its `id`. Use the narrowest kind that is true:
 
