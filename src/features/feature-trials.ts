@@ -76,6 +76,46 @@ export const FEATURE_TRIALS: readonly FeatureTrial[] = [
     ],
   },
   {
+    id: "map-page",
+    kind: "panel",
+    shippedOn: "2026-10-26",
+    titleKey: I18nKey.FEATURE$PAGE$TITLE,
+    summaryKey: I18nKey.FEATURE$PAGE$SUMMARY,
+    route: "/map",
+    steps: [
+      {
+        titleKey: I18nKey.FEATURE$PAGE$STEP1_TITLE,
+        bodyKey: I18nKey.FEATURE$PAGE$STEP1_BODY,
+        testId: "project-map-rail-toggle",
+      },
+      {
+        titleKey: I18nKey.FEATURE$PAGE$STEP2_TITLE,
+        bodyKey: I18nKey.FEATURE$PAGE$STEP2_BODY,
+        testId: "project-map-waiting-mark",
+      },
+    ],
+  },
+  {
+    id: "map-work-layers",
+    kind: "widget",
+    shippedOn: "2026-10-26",
+    titleKey: I18nKey.FEATURE$WORKLAYERS$TITLE,
+    summaryKey: I18nKey.FEATURE$WORKLAYERS$SUMMARY,
+    route: "/map",
+    steps: [
+      {
+        titleKey: I18nKey.FEATURE$WORKLAYERS$STEP1_TITLE,
+        bodyKey: I18nKey.FEATURE$WORKLAYERS$STEP1_BODY,
+        testId: "project-map-layer-work",
+      },
+      {
+        titleKey: I18nKey.FEATURE$WORKLAYERS$STEP2_TITLE,
+        bodyKey: I18nKey.FEATURE$WORKLAYERS$STEP2_BODY,
+        testId: "project-map-all-layers",
+      },
+    ],
+  },
+  {
     id: "home-host-folders",
     kind: "widget",
     shippedOn: "2026-10-26",
