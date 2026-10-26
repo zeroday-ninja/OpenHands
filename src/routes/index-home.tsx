@@ -1,5 +1,8 @@
 import { redirect } from "react-router";
-import { readPinnedHomeRoute } from "#/hooks/use-pinned-home-route";
+import {
+  CONVERSATIONS_PATH,
+  readPinnedHomeRoute,
+} from "#/hooks/use-pinned-home-route";
 import { getActiveBackend } from "#/api/backend-registry/active-store";
 import { getLockedCloudHost } from "#/api/agent-server-config";
 import { projectMapUnsupportedReasonFor } from "#/api/project-map-service/project-map-service.api";
@@ -33,7 +36,7 @@ export const clientLoader = ({ request }: { request: Request }) => {
 export const DEFAULT_HOME_ROUTE = "/map";
 
 /** Where Home lives when the map cannot be the front door. */
-export const HOME_ROUTE = "/conversations";
+export const HOME_ROUTE = CONVERSATIONS_PATH;
 
 /**
  * The front door for the backend in front of the user.

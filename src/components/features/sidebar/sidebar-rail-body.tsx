@@ -17,6 +17,7 @@ import {
   hasAutomationInterface,
 } from "#/manifests/automation-interface";
 import {
+  CONVERSATIONS_PATH,
   CUSTOMIZE_PATH,
   usePinnedHomeRoute,
 } from "#/hooks/use-pinned-home-route";
@@ -206,12 +207,19 @@ export function SidebarRailBody({
       <nav className={sidebarNavListClassName(collapsed)}>
         <CommandMenuTrigger collapsed={collapsed} />
         <SidebarNavLink
-          to="/conversations"
+          to={CONVERSATIONS_PATH}
           end
           label={t(I18nKey.SIDEBAR$NEW_CHAT)}
           testId="sidebar-conversations-link"
           collapsed={collapsed}
           icon={<Plus width={ICON_SIZE} height={ICON_SIZE} />}
+          // Pinnable like the other three. The map is the front door by
+          // default; this is how a person who wants the conversation list
+          // back says so, which until now they could not.
+          pinAction={buildPinAction(
+            CONVERSATIONS_PATH,
+            "sidebar-pin-home-toggle-conversations",
+          )}
         />
         <SidebarNavLink
           to={CUSTOMIZE_PATH}

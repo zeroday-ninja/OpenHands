@@ -16,6 +16,8 @@ export const PINNED_HOME_ROUTE_KEY = "oh:pinned-home-route";
 
 /** Sidebar Customize entry; also the pin target, so the two cannot drift. */
 export const CUSTOMIZE_PATH = "/customize";
+/** Where Home lives, and the front door for anyone who wants it back. */
+export const CONVERSATIONS_PATH = "/conversations";
 
 /**
  * The pin is stored per backend + org: it may reference a surface that only
@@ -40,6 +42,11 @@ export function getPinnedHomeRouteKey(
  */
 export function isPinnableRoute(path: string): boolean {
   if (path === CUSTOMIZE_PATH) return true;
+  // Home itself. The map became the front door on the grounds that a pin
+  // puts the conversation list back for anyone who wants it — which was not
+  // true until this line: nothing could be pinned to Home, so the choice the
+  // comment promised did not exist.
+  if (path === CONVERSATIONS_PATH) return true;
   if (path === automationListPath()) return hasAutomationInterface();
   // The map reads a file from a local workspace, which a canvas locked to a
   // Cloud host never has — and `/` must not redirect to a page whose only
