@@ -12,6 +12,7 @@ import {
   type PlacedProjectMapNode,
 } from "#/types/project-map";
 import { projectMapGroupNodeId } from "#/utils/project-map/project-map-graph";
+import { projectMapGroupBounds } from "#/utils/project-map/project-map-layout";
 import { defaultProjectMapCanvas } from "#/utils/project-map/project-map-authoring";
 
 function node(
@@ -162,6 +163,49 @@ describe("ProjectMapCanvas", () => {
     expect(state.viewport.scale).toBeGreaterThanOrEqual(0.8);
     expect(state.viewport.y).toBeLessThan(0);
     expect(screen.getByTestId(projectMapNodeDomId("left"))).toBeInTheDocument();
+  });
+
+  it("puts the layer you opened in the middle, and the rest behind it", () => {
+    // Arrange: two layers, the opened one narrower than the frame.
+    stubFrame();
+    useProjectMapStore.getState().hydrate("test-revision", {
+      ...document_,
+      groups: [
+        { id: "web", label: "Web app", accent: "1", collapsed: false },
+        { id: "data", label: "Data", accent: "2", collapsed: false },
+      ],
+      nodes: [
+        node({ id: "left", x: 0, y: 0, group: "web" }),
+        node({ id: "right", x: 400, y: 0, group: "web" }),
+        node({ id: "table", x: 0, y: 2000, group: "data" }),
+      ],
+      edges: [],
+    });
+    useProjectMapStore.getState().setOverview(true);
+    renderWithProviders(<Harness />);
+
+    // Act
+    fireEvent.click(screen.getByTestId("project-map-overview-block-web"));
+
+    // Assert: the frame's middle is the layer's middle, rather than the
+    // layer sitting against the left edge with faded neighbours filling the
+    // paper beside it.
+    const { viewport } = useProjectMapStore.getState();
+    const bounds = projectMapGroupBounds(
+      useProjectMapStore.getState().document?.nodes ?? [],
+      "web",
+    );
+    expect(viewport.x + 900 / (2 * viewport.scale)).toBeCloseTo(
+      (bounds?.x ?? 0) + (bounds?.width ?? 0) / 2,
+      0,
+    );
+
+    // Assert: and the layer nobody opened is drawn as context, outline and
+    // header included.
+    expect(screen.getByTestId("project-map-group-data")).not.toHaveAttribute(
+      "opacity",
+      "1",
+    );
   });
 
   it("only pans on the overview's paper, whatever tool is in hand", () => {
