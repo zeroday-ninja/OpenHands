@@ -991,12 +991,24 @@ export function ProjectMapPage() {
                   {t(I18nKey.PROJECT_MAP$DETAIL_HINT)}
                 </p>
               )}
+              {/* "Nothing has run yet" while the answers are still coming
+                  in is a lie the reader has no way to check: assembling the
+                  graph takes seconds, and on this machine it starts with one
+                  backend node and no work. Say which it is. */}
               {layer === "work" && workGraph.nodes.length === 0 && (
                 <p
-                  data-testid="project-map-work-empty"
+                  data-testid={
+                    workFetching
+                      ? "project-map-work-assembling"
+                      : "project-map-work-empty"
+                  }
                   className="pointer-events-none absolute left-4 top-4 text-sm text-muted"
                 >
-                  {t(I18nKey.PROJECT_MAP$WORK_EMPTY)}
+                  {t(
+                    workFetching
+                      ? I18nKey.PROJECT_MAP$WORK_ASSEMBLING
+                      : I18nKey.PROJECT_MAP$WORK_EMPTY,
+                  )}
                 </p>
               )}
               {layer === "work" && workGraph.omissions.length > 0 && (

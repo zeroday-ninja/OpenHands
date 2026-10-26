@@ -61396,5 +61396,23 @@
     "uk": "Це відкриває карту на ваших агентах: блок на кожен вид роботи — машини, програми, запуски, цикли, агенти — зі зв'язками між ними, а клік відкриває один із них.",
     "ca": "Això obre el mapa als teus agents: un bloc per tipus de feina — màquines, programes, execucions, cicles, agents — amb les relacions entre ells, i un clic n'obre un.",
     "id": "Ini membuka peta pada agen Anda: satu blok per jenis pekerjaan — mesin, program, jalannya, siklus, agen — dengan relasi di antaranya, dan klik untuk membuka salah satunya."
+  },
+  "PROJECT_MAP$WORK_ASSEMBLING": {
+    "en": "Asking every machine what its agents are doing…",
+    "zh-CN": "正在询问每台机器它的代理在做什么……",
+    "zh-TW": "正在詢問每台機器它的代理在做什麼……",
+    "de": "Frage jede Maschine, was ihre Agenten tun …",
+    "ko-KR": "각 머신에 에이전트가 무엇을 하고 있는지 묻는 중…",
+    "no": "Spør hver maskin hva agentene dens gjør …",
+    "it": "Sto chiedendo a ogni macchina cosa stanno facendo i suoi agenti…",
+    "pt": "A perguntar a cada máquina o que os seus agentes estão a fazer…",
+    "es": "Preguntando a cada máquina qué están haciendo sus agentes…",
+    "ar": "يجري سؤال كل جهاز عمّا يفعله وكلاؤه…",
+    "fr": "Demande à chaque machine ce que font ses agents…",
+    "tr": "Her makineye aracılarının ne yaptığı soruluyor…",
+    "ja": "各マシンにエージェントが何をしているか問い合わせています…",
+    "uk": "Запитуємо кожну машину, що роблять її агенти…",
+    "ca": "Preguntant a cada màquina què fan els seus agents…",
+    "id": "Menanyakan ke setiap mesin apa yang dikerjakan agennya…"
   }
 }
