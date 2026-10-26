@@ -18,10 +18,15 @@ import { projectMapUnsupportedReasonFor } from "#/api/project-map-service/projec
  * /conversations, and a pin to it puts it back as the front door for anyone
  * who wants that.
  */
-export const clientLoader = () => {
+export const clientLoader = ({ request }: { request: Request }) => {
+  // The query comes along. `/?previewOnboardingStep=2` is a documented way
+  // in, and dropping the search string made it a plain redirect to the
+  // front door with no preview and no error — the same silence this plan
+  // forbids everywhere else.
+  const { search } = new URL(request.url);
   const pinnedRoute = readPinnedHomeRoute();
-  if (pinnedRoute) return redirect(pinnedRoute);
-  return redirect(defaultHomeRoute());
+  if (pinnedRoute) return redirect(`${pinnedRoute}${search}`);
+  return redirect(`${defaultHomeRoute()}${search}`);
 };
 
 /** The front door when nothing is pinned. */
@@ -43,9 +48,11 @@ export const HOME_ROUTE = "/conversations";
 export function defaultHomeRoute(): string {
   if (getLockedCloudHost() !== null) return HOME_ROUTE;
   const { backend } = getActiveBackend();
-  return projectMapUnsupportedReasonFor(backend) === "cloud-backend"
-    ? HOME_ROUTE
-    : DEFAULT_HOME_ROUTE;
+  // Any reason, not just a cloud one: with nothing registered the map can
+  // only say "no backend", which is the same dead end by another name.
+  return projectMapUnsupportedReasonFor(backend) === null
+    ? DEFAULT_HOME_ROUTE
+    : HOME_ROUTE;
 }
 
 export { default } from "./home";

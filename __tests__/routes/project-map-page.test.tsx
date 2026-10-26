@@ -859,6 +859,38 @@ describe("the project map page", () => {
     );
   });
 
+  it("says nothing has run while the machines are the only thing on the graph", async () => {
+    // Arrange: every backend that answers contributes a node for itself, so
+    // the graph is never empty once anyone answers. What a person means by
+    // nothing having run is no runs, cycles or agents.
+    everythingAnnounced();
+    workGraphNodes.current = [
+      {
+        key: "oh:1/local/backend:self",
+        kind: "backend",
+        label: "Local",
+        status: "idle",
+        attrs: {},
+      },
+    ];
+    workGraphFetching.current = false;
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+
+    // Act
+    act(() => useProjectMapStore.getState().setLayer("work"));
+
+    // Assert
+    expect(
+      await screen.findByTestId("project-map-work-empty"),
+    ).toBeInTheDocument();
+  });
+
   it("says it is still asking, rather than that nothing has run", async () => {
     // Arrange: the work graph answers eventually. While it is answering the
     // page has no nodes, which is indistinguishable from an idle machine —
