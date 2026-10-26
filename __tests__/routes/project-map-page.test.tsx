@@ -550,6 +550,44 @@ describe("the project map page", () => {
     });
   }
 
+  it("comes back as its layers after a detour through a repository with no map", async () => {
+    // Arrange: two saved repositories; one has a big map, the other none.
+    const OTHER = {
+      id: "/home/agent/repos/other",
+      name: "other",
+      path: "/home/agent/repos/other",
+    };
+    saveWorkspaces([HAZARD, OTHER]);
+    vi.spyOn(ProjectMapService, "readProjectMap").mockImplementation(
+      async (target) => ({
+        workspace: {
+          conversationId: null,
+          workingDir: target?.workingDir ?? HOST_WORKSPACE.workingDir,
+        },
+        absolutePath: `${target?.workingDir ?? HOST_WORKSPACE.workingDir}/${PROJECT_MAP_FILE_PATH}`,
+        raw: target?.workingDir === HAZARD.path ? bigMapFile() : null,
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-empty");
+    await chooseRepository(user, "hazard");
+    await screen.findByTestId("project-map-overview");
+
+    // Act: away to a repository with no map, and back.
+    await chooseRepository(user, "other");
+    await screen.findByTestId("project-map-empty");
+    await chooseRepository(user, "hazard");
+
+    // Assert: the layers again, not the wall — "I clicked another repo and
+    // now my map is gone".
+    await screen.findByTestId("project-map-overview");
+    expect(screen.getByTestId("project-map-view-overview")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+  });
+
   it("opens a big map as its layers, and a small one in full", async () => {
     // Arrange: forty-five parts in three layers.
     vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
