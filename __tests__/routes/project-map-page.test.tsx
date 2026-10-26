@@ -396,7 +396,7 @@ describe("the project map page", () => {
     );
   });
 
-  it("names the workspace an unbound map was read from", async () => {
+  it("names the folder an unbound map was read from, once", async () => {
     // Arrange
     vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
       workspace: HOST_WORKSPACE,
@@ -413,11 +413,12 @@ describe("the project map page", () => {
     );
 
     // Assert: an empty or unexpected map is only readable as such when the
-    // page says which workspace it came from.
-    const label = await screen.findByTestId("project-map-workspace");
-    expect(label).toHaveTextContent(HOST_WORKSPACE.workingDir);
-    expect(label).toHaveTextContent(localBackend.name);
-    expect(label).not.toHaveAttribute("data-conversation-id");
+    // page says which folder it came from — which the picker does, with the
+    // whole path on hover. Saying it twice read as two different things.
+    const picker = await screen.findByTestId("project-map-workspace-picker");
+    expect(picker).toHaveAttribute("data-path", HOST_WORKSPACE.workingDir);
+    expect(picker).toHaveAttribute("title", HOST_WORKSPACE.workingDir);
+    expect(screen.queryByTestId("project-map-workspace")).toBeNull();
   });
 
   it("tells the analysis to use its own workspace when conversations are isolated", async () => {
@@ -1424,10 +1425,7 @@ describe("the project map page", () => {
       conversationId: null,
       workingDir: HAZARD.path,
     });
-    expect(screen.getByTestId("project-map-workspace")).toHaveTextContent(
-      HAZARD.path,
-    );
-    // The picker now sits in the header, showing the choice, for switching.
+    // The picker sits in the header, showing the choice, for switching.
     expect(screen.getByTestId("project-map-workspace-picker")).toHaveAttribute(
       "data-path",
       HAZARD.path,
@@ -1474,9 +1472,9 @@ describe("the project map page", () => {
     await screen.findByTestId("project-map-empty");
     await chooseRepository(user, "hazard");
     await waitFor(() =>
-      expect(screen.getByTestId("project-map-workspace")).toHaveTextContent(
-        HAZARD.path,
-      ),
+      expect(
+        screen.getByTestId("project-map-workspace-picker"),
+      ).toHaveAttribute("data-path", HAZARD.path),
     );
     // A chosen repository with no map is named, and the other maps are said
     // to be where they were — "No project map yet" after switching away from
@@ -1508,7 +1506,8 @@ describe("the project map page", () => {
         screen.getByTestId("project-map-analysis-running"),
       ).toHaveTextContent("conversation-1"),
     );
-    expect(screen.getByTestId("project-map-workspace")).toHaveTextContent(
+    expect(screen.getByTestId("project-map-workspace-picker")).toHaveAttribute(
+      "data-path",
       HAZARD.path,
     );
   });

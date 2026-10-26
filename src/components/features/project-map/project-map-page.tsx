@@ -446,6 +446,9 @@ export function ProjectMapPage() {
     if (selected > 0) setRailOpen(true);
   }, [selected]);
 
+  const pickerInHeader =
+    backend.kind === "local" && (chosenPath !== null || document_ !== null);
+
   const page = (
     <div
       data-testid="project-map-page"
@@ -453,34 +456,46 @@ export function ProjectMapPage() {
     >
       <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <div className="flex flex-col">
-          <h2 className="text-xl font-medium text-contrast">
+          <h2
+            className="text-xl font-medium text-contrast"
+            title={t(I18nKey.PROJECT_MAP$SUBTITLE)}
+          >
             {t(I18nKey.PROJECT_MAP$NAV_LABEL)}
           </h2>
-          <p className="text-sm text-tertiary-light">
-            {t(I18nKey.PROJECT_MAP$SUBTITLE)}
-          </p>
+          {/* The sentence explains a picture nobody can see yet. Once the
+              map is drawn it is prose above the thing it describes, so it
+              moves to the heading's hover. */}
+          {document_ === null && (
+            <p className="text-sm text-tertiary-light">
+              {t(I18nKey.PROJECT_MAP$SUBTITLE)}
+            </p>
+          )}
           {/* The empty state carries the picker, with its hint, until a folder
               is chosen or a map is found; after that it sits here, compact,
               for switching. Never both at once. */}
-          {backend.kind === "local" &&
-            (chosenPath !== null || document_ !== null) && (
-              <div className="mt-2">
-                {/* With nothing chosen the map still comes from somewhere —
+          {pickerInHeader && (
+            <div className="mt-2">
+              {/* With nothing chosen the map still comes from somewhere —
                     the backend's own folder — and the picker names it, so
                     "Choose a repository…" never sits beside a map the page
                     is already showing. */}
-                <ProjectMapWorkspacePicker
-                  value={
-                    chosenPath ??
-                    (workspace?.conversationId === null
-                      ? workspace.workingDir
-                      : null)
-                  }
-                  onChange={chooseWorkspace}
-                />
-              </div>
-            )}
-          <WorkspaceLabel workspace={workspace} backendName={backend.name} />
+              <ProjectMapWorkspacePicker
+                value={
+                  chosenPath ??
+                  (workspace?.conversationId === null
+                    ? workspace.workingDir
+                    : null)
+                }
+                onChange={chooseWorkspace}
+              />
+            </div>
+          )}
+          {/* Only when it says something the picker does not: the picker
+              names the folder and carries its whole path on hover, and the
+              same path twice read as two different things. */}
+          {(!pickerInHeader || workspace?.conversationId != null) && (
+            <WorkspaceLabel workspace={workspace} backendName={backend.name} />
+          )}
         </div>
         {document_ !== null && (
           <div className="flex flex-wrap items-center gap-1.5">

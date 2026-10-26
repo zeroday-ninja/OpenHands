@@ -101,6 +101,10 @@ export function ProjectMapWorkspacePicker({
     <div
       data-testid="project-map-workspace-picker"
       data-path={value ?? undefined}
+      // The field shows a folder's name; two folders can share one. The
+      // whole path is a hover away, which is where the header used to
+      // print it on a line of its own.
+      title={value ?? undefined}
       className="flex w-full max-w-md flex-col gap-1.5"
     >
       <span className={PROJECT_MAP_SECTION_LABEL_CLASS}>
