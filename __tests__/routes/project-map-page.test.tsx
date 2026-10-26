@@ -1371,6 +1371,15 @@ describe("the project map page", () => {
         HAZARD.path,
       ),
     );
+    // A chosen repository with no map is named, and the other maps are said
+    // to be where they were — "No project map yet" after switching away from
+    // a repository that had one read as that map being gone.
+    expect(screen.getByTestId("project-map-empty")).toHaveTextContent(
+      copy("PROJECT_MAP$EMPTY_TITLE_FOR").replace("{{repository}}", "hazard"),
+    );
+    expect(
+      screen.getByTestId("project-map-empty-other-maps"),
+    ).toBeInTheDocument();
 
     // Act
     await user.click(screen.getByTestId("project-map-generate"));

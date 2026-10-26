@@ -60262,5 +60262,41 @@
     "uk": "Не вдалося записати як урок: {{reason}}",
     "ca": "No s'ha pogut registrar com a lliçó: {{reason}}",
     "id": "Tidak dapat dicatat sebagai pelajaran: {{reason}}"
+  },
+  "PROJECT_MAP$EMPTY_TITLE_FOR": {
+    "en": "No map of {{repository}} yet",
+    "zh-CN": "{{repository}} 还没有地图",
+    "zh-TW": "{{repository}} 還沒有地圖",
+    "de": "Noch keine Karte von {{repository}}",
+    "ko-KR": "{{repository}}의 맵이 아직 없습니다",
+    "no": "Ingen kart over {{repository}} ennå",
+    "it": "Ancora nessuna mappa di {{repository}}",
+    "pt": "Ainda não há mapa de {{repository}}",
+    "es": "Aún no hay mapa de {{repository}}",
+    "ar": "لا توجد خريطة لـ {{repository}} بعد",
+    "fr": "Pas encore de carte de {{repository}}",
+    "tr": "{{repository}} için henüz harita yok",
+    "ja": "{{repository}} のマップはまだありません",
+    "uk": "Карти {{repository}} ще немає",
+    "ca": "Encara no hi ha mapa de {{repository}}",
+    "id": "Belum ada peta {{repository}}"
+  },
+  "PROJECT_MAP$EMPTY_OTHER_MAPS": {
+    "en": "Your other maps are where they were: each lives in its own repository. Pick one in the Repository list above to see it again.",
+    "zh-CN": "你的其他地图仍在原处：每张地图都保存在各自的仓库中。在上方的仓库列表中选择一个即可再次查看。",
+    "zh-TW": "你的其他地圖仍在原處：每張地圖都保存在各自的儲存庫中。在上方的儲存庫清單中選擇一個即可再次查看。",
+    "de": "Deine anderen Karten sind, wo sie waren: Jede liegt in ihrem eigenen Repository. Wähle oben in der Repository-Liste eine aus, um sie wieder zu sehen.",
+    "ko-KR": "다른 맵은 그대로 있습니다. 맵은 각자의 저장소에 보관됩니다. 위의 저장소 목록에서 하나를 고르면 다시 볼 수 있습니다.",
+    "no": "De andre kartene dine er der de var: hvert av dem ligger i sitt eget repository. Velg et i Repository-listen ovenfor for å se det igjen.",
+    "it": "Le tue altre mappe sono dove erano: ognuna vive nel proprio repository. Scegline una nell'elenco Repository qui sopra per rivederla.",
+    "pt": "Os seus outros mapas estão onde estavam: cada um vive no seu próprio repositório. Escolha um na lista Repositório acima para o ver de novo.",
+    "es": "Tus otros mapas siguen donde estaban: cada uno vive en su propio repositorio. Elige uno en la lista Repositorio de arriba para volver a verlo.",
+    "ar": "خرائطك الأخرى في مكانها: كل واحدة محفوظة في مستودعها. اختر واحدة من قائمة المستودعات أعلاه لرؤيتها مجددًا.",
+    "fr": "Vos autres cartes sont là où elles étaient : chacune vit dans son propre dépôt. Choisissez-en une dans la liste Dépôt ci-dessus pour la revoir.",
+    "tr": "Diğer haritalarınız olduğu yerde: her biri kendi deposunda yaşar. Yeniden görmek için yukarıdaki Depo listesinden birini seçin.",
+    "ja": "ほかのマップは元の場所にあります。マップはそれぞれのリポジトリに保存されています。上のリポジトリ一覧から選ぶと再び表示されます。",
+    "uk": "Інші ваші карти там, де й були: кожна живе у своєму репозиторії. Виберіть одну в списку Репозиторій угорі, щоб побачити її знову.",
+    "ca": "Els teus altres mapes són on eren: cadascun viu al seu propi repositori. Tria'n un a la llista Repositori de dalt per tornar-lo a veure.",
+    "id": "Peta Anda yang lain masih di tempatnya: masing-masing tersimpan di repositorinya sendiri. Pilih salah satu di daftar Repositori di atas untuk melihatnya lagi."
   }
 }

@@ -549,6 +549,7 @@ export function ProjectMapPage() {
           pending={createConversation.isPending}
           conversationId={mapConversationId}
           workspace={workspace}
+          repository={chosenPath === null ? null : basename(chosenPath)}
           chooser={
             backend.kind === "local" && chosenPath === null ? (
               <ProjectMapWorkspacePicker
@@ -860,10 +861,18 @@ function InvalidNotice({
   );
 }
 
+/** The last path segment, which is what a person calls a repository. */
+function basename(path: string): string {
+  const trimmed = path.replace(/[/\\]+$/, "");
+  const index = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return index === -1 ? trimmed : trimmed.slice(index + 1) || trimmed;
+}
+
 function EmptyState({
   pending,
   conversationId,
   workspace,
+  repository,
   chooser,
   onGenerate,
   onRefresh,
@@ -873,6 +882,12 @@ function EmptyState({
   /** The conversation the page is bound to, which is writing the map. */
   conversationId: string | null;
   workspace: ProjectMapWorkspace | null;
+  /**
+   * The chosen repository's name, when one is chosen. Named in the title,
+   * because "No project map yet" after switching from a repository that had
+   * one reads as that map being gone — it is where it was, in its folder.
+   */
+  repository: string | null;
   /**
    * The repository picker, while no folder is chosen. It comes before the
    * generate button because generating a map of the wrong directory is the
@@ -890,11 +905,21 @@ function EmptyState({
       className="flex max-w-xl flex-col items-start gap-4 rounded-lg border border-border-subtle bg-base-secondary p-6"
     >
       <h3 className="text-base font-medium text-foreground">
-        {t(I18nKey.PROJECT_MAP$EMPTY_TITLE)}
+        {repository === null
+          ? t(I18nKey.PROJECT_MAP$EMPTY_TITLE)
+          : t(I18nKey.PROJECT_MAP$EMPTY_TITLE_FOR, { repository })}
       </h3>
       <p className="text-sm leading-relaxed text-text-secondary">
         {t(I18nKey.PROJECT_MAP$EMPTY_BODY)}
       </p>
+      {repository !== null && (
+        <p
+          data-testid="project-map-empty-other-maps"
+          className="text-sm leading-relaxed text-text-secondary"
+        >
+          {t(I18nKey.PROJECT_MAP$EMPTY_OTHER_MAPS)}
+        </p>
+      )}
       {chooser}
       {conversationId !== null && workspace !== null && (
         <p
