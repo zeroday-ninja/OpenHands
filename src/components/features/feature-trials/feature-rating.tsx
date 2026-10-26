@@ -101,7 +101,7 @@ export function FeatureRating({ trial, className }: FeatureRatingProps) {
           maxLength={MAX_FEATURE_COMMENT}
           rows={2}
           onChange={(event) => setComment(event.target.value)}
-          className="w-full rounded-md border border-border-subtle bg-canvas-base p-2 text-xs text-canvas-base"
+          className="w-full rounded-md border border-border-subtle bg-canvas-base p-2 text-xs text-contrast"
         />
         <button
           type="button"
