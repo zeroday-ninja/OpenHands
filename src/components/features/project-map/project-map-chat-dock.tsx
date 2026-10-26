@@ -8,8 +8,11 @@
  * provider behind it, which is the largest thing on this route that most
  * visits never need.
  *
- * The dock opens itself when a conversation is bound and working. Watching the
- * drawing change with no idea why is worse than a panel appearing.
+ * The dock opens itself when a conversation starts from this page. Watching
+ * the drawing change with no idea why is worse than a panel appearing. A
+ * conversation the page merely remembers from an earlier visit does not open
+ * it: that covered the map with a transcript on every return, which is the
+ * opposite of a canvas that takes the width.
  */
 
 import React from "react";
@@ -46,11 +49,15 @@ export function ProjectMapChatDock({
   const setChatOpen = useProjectMapStore((state) => state.setChatOpen);
 
   // A conversation appearing means work started, and work the user cannot see
-  // is work they have to guess at.
-  const bound = conversationId !== null;
+  // is work they have to guess at. Appearing: the binding changing under a
+  // mounted page, not a page mounting already bound.
+  const previous = React.useRef<string | null | undefined>(undefined);
   React.useEffect(() => {
-    if (bound) setChatOpen(true);
-  }, [bound, setChatOpen]);
+    const before = previous.current;
+    previous.current = conversationId;
+    if (before === undefined) return;
+    if (conversationId !== null && conversationId !== before) setChatOpen(true);
+  }, [conversationId, setChatOpen]);
 
   return (
     <div

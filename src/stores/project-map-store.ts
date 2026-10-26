@@ -125,6 +125,13 @@ interface ProjectMapState {
   viewport: ProjectMapViewport;
   /** Hidden nodes are drawn, faint, while this is on, so they can be restored. */
   showHidden: boolean;
+  /**
+   * Whether the paper shows the map's layers as blocks instead of its parts.
+   *
+   * A view, like `showHidden`, not a document field: a wall of a hundred
+   * plates opens as its eight layers, and clicking one opens the detail.
+   */
+  overview: boolean;
 
   hydrate: (source: string, document: PlacedProjectMapDocument) => void;
   reset: () => void;
@@ -142,6 +149,7 @@ interface ProjectMapState {
   setNodePinned: (id: string, pinned: boolean) => void;
   setGroupCollapsed: (groupId: string, collapsed: boolean) => void;
   toggleShowHidden: () => void;
+  setOverview: (overview: boolean) => void;
 
   addNote: (note: ProjectMapNote) => void;
   updateNote: (id: string, text: string) => void;
@@ -341,6 +349,7 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
   future: [],
   viewport: INITIAL_VIEWPORT,
   showHidden: false,
+  overview: false,
 
   hydrate: (source, incoming) =>
     set((state) => {
@@ -413,6 +422,7 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
       future: [],
       viewport: INITIAL_VIEWPORT,
       showHidden: false,
+      overview: false,
     }),
 
   markSaved: () => set({ dirty: false }),
@@ -512,6 +522,7 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
     ),
 
   toggleShowHidden: () => set((state) => ({ showHidden: !state.showHidden })),
+  setOverview: (overview) => set({ overview }),
 
   /** A new note opens its own editor: an empty note nobody can type in is litter. */
   addNote: (note) =>

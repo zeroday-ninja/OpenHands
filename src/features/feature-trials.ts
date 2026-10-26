@@ -35,6 +35,61 @@ export const FEATURE_TRIALS: readonly FeatureTrial[] = [
       },
     ],
   },
+  {
+    id: "map-repository-picker",
+    kind: "widget",
+    shippedOn: "2026-10-26",
+    titleKey: I18nKey.FEATURE$PICKER$TITLE,
+    summaryKey: I18nKey.FEATURE$PICKER$SUMMARY,
+    route: "/map",
+    steps: [
+      {
+        titleKey: I18nKey.FEATURE$PICKER$STEP1_TITLE,
+        bodyKey: I18nKey.FEATURE$PICKER$STEP1_BODY,
+        testId: "project-map-workspace-picker",
+      },
+      {
+        titleKey: I18nKey.FEATURE$PICKER$STEP2_TITLE,
+        bodyKey: I18nKey.FEATURE$PICKER$STEP2_BODY,
+        testId: "project-map-chat-dock-toggle",
+      },
+    ],
+  },
+  {
+    id: "map-overview",
+    kind: "widget",
+    shippedOn: "2026-10-26",
+    titleKey: I18nKey.FEATURE$OVERVIEW$TITLE,
+    summaryKey: I18nKey.FEATURE$OVERVIEW$SUMMARY,
+    route: "/map",
+    steps: [
+      {
+        titleKey: I18nKey.FEATURE$OVERVIEW$STEP1_TITLE,
+        bodyKey: I18nKey.FEATURE$OVERVIEW$STEP1_BODY,
+        testId: "project-map-overview",
+      },
+      {
+        titleKey: I18nKey.FEATURE$OVERVIEW$STEP2_TITLE,
+        bodyKey: I18nKey.FEATURE$OVERVIEW$STEP2_BODY,
+        testId: "project-map-view-switch",
+      },
+    ],
+  },
+  {
+    id: "home-host-folders",
+    kind: "widget",
+    shippedOn: "2026-10-26",
+    titleKey: I18nKey.FEATURE$HOME_FOLDERS$TITLE,
+    summaryKey: I18nKey.FEATURE$HOME_FOLDERS$SUMMARY,
+    route: "/conversations",
+    steps: [
+      {
+        titleKey: I18nKey.FEATURE$HOME_FOLDERS$STEP1_TITLE,
+        bodyKey: I18nKey.FEATURE$HOME_FOLDERS$STEP1_BODY,
+        testId: "open-workspace-button",
+      },
+    ],
+  },
 ];
 
 export function findFeatureTrial(id: string): FeatureTrial | null {

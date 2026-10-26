@@ -67,11 +67,16 @@ import {
 import {
   PROJECT_MAP_FILE_PATH,
   PROJECT_MAP_VERSION,
+  type PlacedProjectMapDocument,
 } from "#/types/project-map";
 import {
   fitProjectMapViewBox,
   projectMapBounds,
 } from "#/utils/project-map/project-map-layout";
+import {
+  projectMapOverview,
+  projectMapWantsOverview,
+} from "#/utils/project-map/project-map-overview";
 import { displayErrorToast } from "#/utils/custom-toast-handlers";
 import { buildProjectMapAnalysisPrompt } from "./project-map-analysis-prompt";
 import { ProjectMapCanvas } from "./project-map-canvas";
@@ -89,6 +94,7 @@ import {
 } from "#/utils/work-graph/work-graph-to-document";
 import { ProjectMapToolPalette } from "./project-map-tool-palette";
 import { ProjectMapModeSwitch } from "./project-map-mode-switch";
+import { ProjectMapViewSwitch } from "./project-map-view-switch";
 import { ProjectMapChatDock } from "./project-map-chat-dock";
 import { ProjectMapLegend } from "./project-map-legend";
 import { ProjectMapWorkspacePicker } from "./project-map-workspace-picker";
@@ -176,6 +182,8 @@ export function ProjectMapPage() {
     (state) => state.toggleShowHidden,
   );
   const setViewport = useProjectMapStore((state) => state.setViewport);
+  const overview = useProjectMapStore((state) => state.overview);
+  const setOverview = useProjectMapStore((state) => state.setOverview);
 
   // Which derived layer is on the paper. The committed analysis of the code,
   // or the live graph of what the agents are doing — the canvas draws either
@@ -229,27 +237,61 @@ export function ProjectMapPage() {
     hydrate(data.revision, data.document);
   }, [data, hydrate]);
 
+  /**
+   * What the paper's extent is: the layers' blocks in the overview, every part
+   * otherwise. Framing and Fit to view both fit this.
+   */
+  const paperBounds = React.useCallback(
+    (doc: PlacedProjectMapDocument, asOverview: boolean) =>
+      asOverview ? projectMapOverview(doc).bounds : projectMapBounds(doc.nodes),
+    [],
+  );
+
   // Frame the whole map the first time a document arrives. A map that opens
   // part-way off the canvas reads as broken before the user has touched it,
-  // and the first thing anyone does is reach for Fit to view. Keyed by
-  // revision so a *later* refetch never yanks the view away from someone who
-  // has panned somewhere deliberately.
+  // and the first thing anyone does is reach for Fit to view. Keyed by path
+  // so a *later* refetch never yanks the view away from someone who has
+  // panned somewhere deliberately.
+  //
+  // The same moment decides the height it opens at. A map with more parts
+  // than a person can read at once opens as its layers; a small one opens in
+  // full. Decided per revision of the file — the parsed document the read
+  // returned, not the editor buffer, which still holds the previous map for a
+  // render — and the frame is refitted only when that decision changes the
+  // paper's extent, so the user's own switch and their panning survive a
+  // re-read that changed nothing of the kind.
   const framedRevision = React.useRef<string | null>(null);
+  const openedRevision = React.useRef<string | null>(null);
   React.useEffect(() => {
-    if (document_ === null) return;
-    const revision = data?.absolutePath ?? "";
-    if (framedRevision.current === revision) return;
+    if (data === undefined) return;
+    if (data.document === null) return;
+    const parsed = data.document;
+    let asOverview = overview;
+    let refit = false;
+    if (openedRevision.current !== data.revision) {
+      openedRevision.current = data.revision;
+      const wants = projectMapWantsOverview(parsed);
+      if (wants !== overview) {
+        setOverview(wants);
+        asOverview = wants;
+        refit = true;
+      }
+    }
+    if (!refit && framedRevision.current === data.absolutePath) return;
     const frame = frameRef.current?.getBoundingClientRect();
-    const bounds = projectMapBounds(document_.nodes);
+    const bounds = paperBounds(parsed, asOverview);
     if (!frame || frame.width === 0 || bounds === null) return;
-    framedRevision.current = revision;
+    framedRevision.current = data.absolutePath;
     setViewport(
       fitProjectMapViewBox(bounds, frame, {
         min: PROJECT_MAP_MIN_SCALE,
         max: PROJECT_MAP_MAX_SCALE,
       }),
     );
-  }, [document_, data?.absolutePath, setViewport]);
+    // `document_` is a dependency for its timing, not its value: the frame
+    // may have no size until the drawing is mounted, which follows the
+    // buffer's hydration, and this has to run again then.
+  }, [data, document_, setViewport, setOverview, overview, paperBounds]);
 
   // The map is named by its absolute path so what the agent is told and what
   // the page reads are the same file, even when the agent's own working
@@ -313,10 +355,10 @@ export function ProjectMapPage() {
     }
   };
 
-  const fitToView = () => {
+  const fitToView = (asOverview: boolean = overview) => {
     const frame = frameRef.current?.getBoundingClientRect();
     const bounds =
-      document_ === null ? null : projectMapBounds(document_.nodes);
+      document_ === null ? null : paperBounds(document_, asOverview);
     if (!frame || bounds === null) return;
     setViewport(
       fitProjectMapViewBox(bounds, frame, {
@@ -324,6 +366,12 @@ export function ProjectMapPage() {
         max: PROJECT_MAP_MAX_SCALE,
       }),
     );
+  };
+
+  /** Overview or Details, and the frame refitted: the paper's extent changed. */
+  const switchView = (asOverview: boolean) => {
+    setOverview(asOverview);
+    fitToView(asOverview);
   };
 
   const save = async () => {
@@ -374,7 +422,7 @@ export function ProjectMapPage() {
             <button
               type="button"
               className={PROJECT_MAP_BUTTON_CLASS}
-              onClick={fitToView}
+              onClick={() => fitToView()}
             >
               <Crosshair size={ICON_SIZE} aria-hidden />
               {t(I18nKey.PROJECT_MAP$FIT)}
@@ -520,10 +568,20 @@ export function ProjectMapPage() {
           <div className="flex min-h-80 flex-1 flex-col gap-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <ProjectMapToolPalette />
-              <ProjectMapModeSwitch
-                mode={document_.canvas.view.mode}
-                layer={layer}
-              />
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Only when there is an overview to show: the live work
+                    layer has no groups, and one layer folds into nothing. */}
+                {layer === "code" && document_.groups.length >= 2 && (
+                  <ProjectMapViewSwitch
+                    overview={overview}
+                    onChange={switchView}
+                  />
+                )}
+                <ProjectMapModeSwitch
+                  mode={document_.canvas.view.mode}
+                  layer={layer}
+                />
+              </div>
             </div>
             {/* The dock is positioned against this box rather than the page so
                 it stays over the drawing when the rail is beside it. */}
