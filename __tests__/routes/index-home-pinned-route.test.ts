@@ -60,6 +60,25 @@ describe("the index route with a pinned home page", () => {
 
   // With no pin, the map: the canvas is where the work is, and a front door
   // that opened on the conversation list said the opposite every time.
+  it("sends / to the conversations list on a backend the map cannot serve", () => {
+    // Arrange: a cloud backend. The map reads a file from a local workspace,
+    // so it can only say "unsupported here" — which is what the front door
+    // opened on. `isPinnableRoute` already refuses to pin the map for a
+    // cloud canvas, in those words; the default was not held to that rule.
+    const cloud: Backend = {
+      id: "backend-cloud",
+      name: "Cloud",
+      host: "https://app.all-hands.dev",
+      apiKey: "",
+      kind: "cloud",
+    };
+    setRegisteredBackends([cloud]);
+    setActiveSelection({ backendId: cloud.id });
+
+    // Act and assert
+    expect(clientLoader()).toEqual(redirect("/conversations"));
+  });
+
   it("sends / to the map when no pin is set", () => {
     expect(clientLoader()).toEqual(redirect("/map"));
   });
