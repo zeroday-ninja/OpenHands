@@ -944,6 +944,37 @@ describe("the project map page", () => {
     );
   });
 
+  it("follows a link to the work layer without making it a habit", async () => {
+    // Arrange: a link asks for the agents. That is a navigation, not a
+    // statement about every future visit.
+    everythingAnnounced();
+    workGraphNodes.current = [
+      {
+        key: "oh:1/local/agent:a1",
+        kind: "agent",
+        label: "codex",
+        status: "in_flight",
+        attrs: { role: "builder", conversation_id: "conversation-1" },
+      },
+    ];
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+
+    // Act
+    renderWithProviders(<MapRoute />, {
+      navigation: { currentPath: "/map?layer=work" },
+    });
+    await screen.findByTestId("project-map-node-oh:1/local/agent:a1");
+
+    // Assert: the paper shows the agents, and nothing was written about
+    // what a later visit should open on.
+    expect(useProjectMapStore.getState().layer).toBe("work");
+    expect(window.localStorage.getItem("project-map-layer")).toBeNull();
+  });
+
   it("keeps the view you chose for a map that can fold", async () => {
     // Arrange: a map big enough to open as its layers.
     everythingAnnounced();

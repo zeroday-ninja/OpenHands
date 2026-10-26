@@ -222,7 +222,7 @@ export function ProjectMapPage() {
   // or the live graph of what the agents are doing — the canvas draws either
   // the same way, and everything drawn over the top is unaffected.
   const layer = useProjectMapStore((state) => state.layer);
-  const setLayer = useProjectMapStore((state) => state.setLayer);
+  const showLayer = useProjectMapStore((state) => state.showLayer);
   // `?layer=work` opens on the agents, so a screen about what they are doing
   // can point at the drawing of it. Applied once: after that the switch in
   // the toolbar is the only thing that decides. Read from the navigation
@@ -388,8 +388,8 @@ export function ProjectMapPage() {
     if (appliedAskedLayer.current || document_ === null) return;
     if (askedForLayer !== "work" && askedForLayer !== "code") return;
     appliedAskedLayer.current = true;
-    setLayer(askedForLayer);
-  }, [askedForLayer, document_, setLayer]);
+    showLayer(askedForLayer);
+  }, [askedForLayer, document_, showLayer]);
 
   /**
    * Overview or details: your standing answer, or the size rule.
@@ -399,14 +399,17 @@ export function ProjectMapPage() {
    * had to say so on every visit, and the page forgot between each one.
    */
   const [viewPreference, setViewPreference] = useLocalStorage<
-    "overview" | "details" | null
-  >(PROJECT_MAP_VIEW_KEY, null);
+    "overview" | "details" | "auto"
+  >(PROJECT_MAP_VIEW_KEY, "auto");
   const wantsOverviewFor = React.useCallback(
     (drawing: PlacedProjectMapDocument) => {
       // A drawing with fewer than two layers has nothing to fold, whatever
       // anyone prefers: the switch is not even offered there.
       if (drawing.groups.length < 2) return false;
-      return viewPreference === null
+      // "auto" is the stored way of saying nothing: `useLocalStorage` writes
+      // its default on the first render, so a key holding literal `null`
+      // would have read as an answer to anything checking for presence.
+      return viewPreference === "auto"
         ? projectMapWantsOverview(drawing)
         : viewPreference === "overview";
     },

@@ -205,6 +205,8 @@ interface ProjectMapState {
 
   setMode: (mode: ProjectMapMode) => void;
   setLayer: (layer: ProjectMapLayerId) => void;
+  /** Puts a layer on the paper without making it a habit. */
+  showLayer: (layer: ProjectMapLayerId) => void;
   setOpenedGroup: (groupId: string | null) => void;
   setTool: (tool: ProjectMapTool) => void;
   setChatOpen: (open: boolean) => void;
@@ -638,6 +640,17 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
     writeLayerPreference(layer);
     set({ layer, openedGroup: null });
   },
+
+  /**
+   * The same view, without the habit.
+   *
+   * Following a link is a navigation, not a statement about every future
+   * visit. `?layer=work` used to go through `setLayer` and quietly make the
+   * work graph the front of the map for good — one press of "See it on the
+   * map" changing what every later `/map` opened on, with nothing on the
+   * page saying so.
+   */
+  showLayer: (layer) => set({ layer, openedGroup: null }),
   setOpenedGroup: (openedGroup) => set({ openedGroup }),
 
   setTool: (tool) => set({ tool }),
