@@ -88,6 +88,30 @@ describe("what a parked change touches on the map", () => {
     );
   });
 
+  it("counts only the parts a layer actually shows", () => {
+    // Arrange: the named part is hidden, so the layer draws it nowhere and
+    // its own part count leaves it out.
+    const hidden: PlacedProjectMapDocument = {
+      ...DOCUMENT,
+      nodes: DOCUMENT.nodes.map((part) =>
+        part.id === "server/characterize.js" ? { ...part, hidden: true } : part,
+      ),
+    };
+    const cycles = [
+      cycle("cycle-1", "HAZARD", {
+        breaks: ["server/characterize.js was deleted"],
+      }),
+    ];
+
+    // Act
+    const parts = projectMapWaitingParts(hidden, cycles, "HAZARD");
+
+    // Assert: still marked, so revealing it shows the mark; not counted,
+    // because a block saying three where two marks are drawn is a lie.
+    expect(parts.has("server/characterize.js")).toBe(true);
+    expect(projectMapWaitingLayers(hidden, parts).size).toBe(0);
+  });
+
   it("marks nothing when no folder is chosen or nothing is parked", () => {
     const mine = cycle("cycle-1", "HAZARD", {
       breaks: ["server/characterize.js was deleted"],
