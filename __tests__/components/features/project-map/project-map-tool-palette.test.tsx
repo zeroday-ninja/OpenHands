@@ -44,6 +44,29 @@ describe("ProjectMapToolPalette", () => {
     useProjectMapStore.getState().hydrate("test-revision", document_);
   });
 
+  it("offers the drawing tools only when the drawing is shown", () => {
+    // Arrange: a map opens in the analysis mode, where the drawn layer is
+    // not on the paper; a tool was left in hand from before.
+    useProjectMapStore.getState().setTool("box");
+    useProjectMapStore.getState().setMode("derived");
+    const { rerender } = renderWithProviders(
+      <ProjectMapToolPalette mode="derived" />,
+    );
+
+    // Assert: no tools, no layouts, the tool put down; undo still there.
+    expect(screen.queryByTestId("project-map-tool-box")).toBeNull();
+    expect(screen.queryByTestId("project-map-layout-tree")).toBeNull();
+    expect(screen.getByTestId("project-map-undo")).toBeInTheDocument();
+    expect(useProjectMapStore.getState().tool).toBe("select");
+
+    // Act: show the drawing.
+    rerender(<ProjectMapToolPalette mode="both" />);
+
+    // Assert
+    expect(screen.getByTestId("project-map-tool-box")).toBeInTheDocument();
+    expect(screen.getByTestId("project-map-layout-tree")).toBeInTheDocument();
+  });
+
   it("arranges the drawing and leaves the analysis where it is", () => {
     // Arrange: a parent and a child drawn on top of each other, plus an
     // analysed node that no arrangement has any business moving.
@@ -55,7 +78,7 @@ describe("ProjectMapToolPalette", () => {
       store.addShape({ kind: "branch", x: 500, y: 500, parent });
       store.clearSelection();
     });
-    renderWithProviders(<ProjectMapToolPalette />);
+    renderWithProviders(<ProjectMapToolPalette mode="both" />);
     const nodeBefore = useProjectMapStore.getState().document?.nodes[0];
 
     // Act
@@ -72,7 +95,7 @@ describe("ProjectMapToolPalette", () => {
 
   it("offers undo only once there is something to undo", () => {
     // Arrange
-    renderWithProviders(<ProjectMapToolPalette />);
+    renderWithProviders(<ProjectMapToolPalette mode="both" />);
     expect(screen.getByTestId("project-map-undo")).toBeDisabled();
 
     // Act: draw something, then take it back.
@@ -98,7 +121,7 @@ describe("ProjectMapToolPalette", () => {
     // refactor that dropped one `.slice(...)` would be invisible — and the
     // failure it would cause, a drawing session whose memory grows with
     // every stroke, is the kind nobody notices until it is bad.
-    renderWithProviders(<ProjectMapToolPalette />);
+    renderWithProviders(<ProjectMapToolPalette mode="both" />);
     const steps = PROJECT_MAP_HISTORY_LIMIT + 10;
 
     // Act: more edits than the history holds, then undo until it refuses.

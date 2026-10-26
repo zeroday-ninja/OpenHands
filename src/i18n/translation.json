@@ -60154,5 +60154,23 @@
     "uk": "Виберіть збережений робочий простір або знайдіть папку. Розмова, яку ви почнете, працює в пісочниці з цією папкою як робочим каталогом, тож усе, що змінює агент, лежить на вашому диску.",
     "ca": "Tria un espai de treball desat o navega fins a una carpeta. La conversa que iniciïs s'executa en un entorn aïllat amb aquesta carpeta com a directori de treball, així que el que canviï l'agent és al teu disc.",
     "id": "Pilih ruang kerja tersimpan atau jelajahi folder. Percakapan yang Anda mulai berjalan di sandbox dengan folder itu sebagai direktori kerjanya, sehingga apa yang diubah agen ada di disk Anda."
+  },
+  "PROJECT_MAP$ALL_LAYERS": {
+    "en": "All layers",
+    "zh-CN": "所有分层",
+    "zh-TW": "所有分層",
+    "de": "Alle Schichten",
+    "ko-KR": "모든 레이어",
+    "no": "Alle lag",
+    "it": "Tutti i livelli",
+    "pt": "Todas as camadas",
+    "es": "Todas las capas",
+    "ar": "كل الطبقات",
+    "fr": "Toutes les couches",
+    "tr": "Tüm katmanlar",
+    "ja": "すべてのレイヤー",
+    "uk": "Усі шари",
+    "ca": "Totes les capes",
+    "id": "Semua lapisan"
   }
 }

@@ -576,11 +576,16 @@ describe("the project map page", () => {
     // Act: ask for the whole drawing.
     await user.click(screen.getByTestId("project-map-view-details"));
 
-    // Assert
+    // Assert: the drawing, with the way back up on it; the drawing tools
+    // stay out of the way in the analysis mode the map opens in.
     expect(screen.queryByTestId("project-map-overview")).toBeNull();
     expect(
       screen.getByTestId("project-map-node-src/web/0.ts"),
     ).toBeInTheDocument();
+    expect(screen.queryByTestId("project-map-tool-box")).toBeNull();
+    await user.click(screen.getByTestId("project-map-all-layers"));
+    expect(screen.getByTestId("project-map-overview")).toBeInTheDocument();
+    expect(screen.queryByTestId("project-map-all-layers")).toBeNull();
     unmount();
 
     // A small map has nothing to fold and opens in full, switch and all.

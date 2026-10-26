@@ -35,6 +35,7 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import {
+  ArrowLeft,
   Crosshair,
   Eye,
   Maximize2,
@@ -567,7 +568,7 @@ export function ProjectMapPage() {
         <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
           <div className="flex min-h-80 flex-1 flex-col gap-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <ProjectMapToolPalette />
+              <ProjectMapToolPalette mode={document_.canvas.view.mode} />
               <div className="flex flex-wrap items-center gap-2">
                 {/* Only when there is an overview to show: the live work
                     layer has no groups, and one layer folds into nothing. */}
@@ -591,6 +592,22 @@ export function ProjectMapPage() {
                 frameRef={frameRef}
                 derivedLayer={workLayer}
               />
+              {/* The way back up, on the paper itself: the View switch is
+                  small and in the toolbar, and a person who opened a layer
+                  from a block is looking at the drawing. */}
+              {!overview &&
+                layer === "code" &&
+                projectMapWantsOverview(document_) && (
+                  <button
+                    type="button"
+                    data-testid="project-map-all-layers"
+                    className={`${PROJECT_MAP_BUTTON_CLASS} absolute left-4 top-4 bg-base-secondary`}
+                    onClick={() => switchView(true)}
+                  >
+                    <ArrowLeft size={ICON_SIZE} aria-hidden />
+                    {t(I18nKey.PROJECT_MAP$ALL_LAYERS)}
+                  </button>
+                )}
               {layer === "work" && workGraph.nodes.length === 0 && (
                 <p
                   data-testid="project-map-work-empty"
