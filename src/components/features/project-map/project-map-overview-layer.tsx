@@ -17,8 +17,10 @@ import { projectMapEdgeGeometry } from "#/utils/project-map/project-map-visuals"
  * declaration only names the forms, which is why this is a string.
  */
 const PARTS_I18N_KEY = "PROJECT_MAP$OVERVIEW_PARTS";
-/** Also a plural phrase, and so also outside the typed key enum. */
+/** Also plural phrases, and so also outside the typed key enum. */
 const WAITING_LAYER_I18N_KEY = "PROJECT_MAP$WAITING_LAYER";
+const RELATIONS_I18N_KEY = "PROJECT_MAP$OVERVIEW_RELATIONS";
+const UNGROUPED_I18N_KEY = "PROJECT_MAP$OVERVIEW_UNGROUPED";
 
 const LABEL_SIZE = 18;
 const LABEL_INSET = 18;
@@ -91,7 +93,7 @@ export function ProjectMapOverviewLayer({
         if (from === undefined || to === undefined) return null;
         const geometry = projectMapEdgeGeometry(from, to);
         const accent = accentOf(link.from);
-        const title = t(I18nKey.PROJECT_MAP$OVERVIEW_RELATIONS, {
+        const title = t(RELATIONS_I18N_KEY, {
           count: link.count,
           from: labelOf(link.from),
           to: labelOf(link.to),
@@ -221,7 +223,7 @@ export function ProjectMapOverviewLayer({
           fontSize={PARTS_SIZE}
           className="fill-muted"
         >
-          {t(I18nKey.PROJECT_MAP$OVERVIEW_UNGROUPED, {
+          {t(UNGROUPED_I18N_KEY, {
             count: overview.ungrouped,
           })}
         </text>

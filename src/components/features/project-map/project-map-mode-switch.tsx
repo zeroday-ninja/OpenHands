@@ -1,9 +1,11 @@
 /**
  * Which layers the canvas draws.
  *
- * Stored in the document rather than in a preference, so a repository whose
- * map is mostly a hand-drawn diagram opens that way on every machine the user
- * works from, and for anyone else who checks it out.
+ * The mode — analysis, drawing, or both — is stored in the document, so a
+ * repository whose map is mostly a hand-drawn diagram opens that way on every
+ * machine the user works from, and for anyone else who checks it out. Which
+ * derived layer is on the paper is not: looking at the agents is about the
+ * person, not the repository, and it lives in the store with the other views.
  */
 
 import { useTranslation } from "react-i18next";
