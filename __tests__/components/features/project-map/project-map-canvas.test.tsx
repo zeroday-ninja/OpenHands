@@ -259,6 +259,18 @@ describe("ProjectMapCanvas", () => {
     ).toBeLessThan(1);
   });
 
+  it("draws every plate while the drawing is small enough to afford it", () => {
+    // Arrange: the budget is 400 plates; this document has four, one hidden.
+    renderCanvas();
+
+    // Assert: nothing is filtered, including a plate the fit leaves off
+    // screen — a half-drawn small map would be a regression, and jsdom has
+    // no layout to decide what is on screen anyway.
+    expect(screen.getByTestId("project-map-node-left")).toBeInTheDocument();
+    expect(screen.getByTestId("project-map-node-right")).toBeInTheDocument();
+    expect(screen.getByTestId("project-map-node-below")).toBeInTheDocument();
+  });
+
   it("opens the layer you clicked, and fades the rest", () => {
     // Arrange: two layers on the paper, folded to blocks.
     renderCanvas();

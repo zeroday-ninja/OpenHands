@@ -92,6 +92,16 @@ const COLLAPSED_HEIGHT = 56;
 /** Width of the gap left in a group boundary for its label. */
 const GROUP_LABEL_PADDING = 12;
 /** Below this zoom the grid and the path lines stop helping and start buzzing. */
+/**
+ * How many plates are drawn before only what is in view is drawn.
+ *
+ * The plan's own measure is one frame per pointer move at 200 shapes; this
+ * leaves room above that for a code map, and catches the work graph.
+ */
+const PLATE_BUDGET = 400;
+/** How far outside the view a plate is still drawn, in pixels. */
+const OFFSCREEN_MARGIN = 600;
+
 const DETAIL_SCALE = 0.62;
 /** Opening a layer from the overview lands at least this close. */
 /**
@@ -370,6 +380,69 @@ export function ProjectMapCanvas({
    * Selecting a drawn box has no edges to be adjacent to, so dimming on it
    * would fade the entire analysis for no reason a reader could work out.
    */
+  /**
+   * The paper's size in pixels, for deciding what is in view.
+   *
+   * Read through a ResizeObserver rather than during render: a layout read
+   * in the render path on a drawing this size is exactly the cost this
+   * whole mechanism exists to avoid.
+   */
+  const [frameSize, setFrameSize] = React.useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  React.useEffect(() => {
+    const element = frameRef.current;
+    if (!element || typeof ResizeObserver === "undefined") return undefined;
+    const read = () => {
+      const rect = element.getBoundingClientRect();
+      setFrameSize({ width: rect.width, height: rect.height });
+    };
+    read();
+    const observer = new ResizeObserver(read);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [frameRef]);
+
+  /**
+   * What is actually drawn: everything, until there is too much of it.
+   *
+   * The live work graph brings about 1,800 plates, nine times what this
+   * canvas was measured at, and at that size a drag across the paper took
+   * five seconds and a click on the toolbar more than one. Above the
+   * threshold only the plates within a screen of the view are rendered; the
+   * model keeps every node, so selection, framing, the fold and the edges'
+   * geometry are unchanged. Below it nothing is filtered, because a hundred
+   * plates cost nothing and a half-drawn small map would be a regression.
+   */
+  const visibleNodes = React.useMemo(() => {
+    if (
+      drawn.length <= PLATE_BUDGET ||
+      frameSize === null ||
+      frameSize.width === 0
+    )
+      return drawn;
+    const margin = OFFSCREEN_MARGIN / viewport.scale;
+    const left = viewport.x - margin;
+    const top = viewport.y - margin;
+    const right = viewport.x + frameSize.width / viewport.scale + margin;
+    const bottom = viewport.y + frameSize.height / viewport.scale + margin;
+    return drawn.filter((node) => {
+      const { width, height } = projectMapNodeSize(node.size);
+      return (
+        node.x < right &&
+        node.x + width > left &&
+        node.y < bottom &&
+        node.y + height > top
+      );
+    });
+  }, [drawn, frameSize, viewport]);
+
+  const visibleIds = React.useMemo(
+    () => new Set(visibleNodes.map((node) => node.id)),
+    [visibleNodes],
+  );
+
   const focusIds = React.useMemo(() => {
     const derivedSelection = selection.filter((id) =>
       drawn.some((node) => node.id === id),
@@ -1243,6 +1316,14 @@ export function ProjectMapCanvas({
             <g>
               {showsDerived &&
                 layerEdges.map((edge) => {
+                  // An edge with neither end on screen draws a line nobody
+                  // can see, and there are two thousand of them.
+                  if (
+                    visibleNodes.length !== drawn.length &&
+                    !visibleIds.has(edge.from) &&
+                    !visibleIds.has(edge.to)
+                  )
+                    return null;
                   const from = rectOf(edge.from);
                   const to = rectOf(edge.to);
                   if (from === null || to === null) return null;
@@ -1337,7 +1418,7 @@ export function ProjectMapCanvas({
               );
             })}
 
-            {drawn.map((node) => (
+            {visibleNodes.map((node) => (
               <ProjectMapNodePlate
                 key={node.id}
                 waiting={waitingParts.has(node.id)}
