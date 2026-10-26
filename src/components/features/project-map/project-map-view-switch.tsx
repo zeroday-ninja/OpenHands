@@ -18,15 +18,22 @@ export function ProjectMapViewSwitch({
   onChange: (overview: boolean) => void;
 }) {
   const { t } = useTranslation("openhands");
-  const options: { value: boolean; key: I18nKey; testId: string }[] = [
+  const options: {
+    value: boolean;
+    key: I18nKey;
+    hint: I18nKey;
+    testId: string;
+  }[] = [
     {
       value: true,
       key: I18nKey.PROJECT_MAP$VIEW_OVERVIEW,
+      hint: I18nKey.PROJECT_MAP$VIEW_OVERVIEW_HINT,
       testId: "project-map-view-overview",
     },
     {
       value: false,
       key: I18nKey.PROJECT_MAP$VIEW_DETAILS,
+      hint: I18nKey.PROJECT_MAP$VIEW_DETAILS_HINT,
       testId: "project-map-view-details",
     },
   ];
@@ -43,6 +50,7 @@ export function ProjectMapViewSwitch({
           type="button"
           role="radio"
           aria-checked={overview === option.value}
+          title={t(option.hint)}
           data-testid={option.testId}
           className={`rounded px-2 py-1 text-micro ${
             overview === option.value

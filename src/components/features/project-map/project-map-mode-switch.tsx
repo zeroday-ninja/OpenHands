@@ -21,6 +21,20 @@ const LAYER_LABELS: Record<ProjectMapLayerId, I18nKey> = {
   work: I18nKey.PROJECT_MAP$LAYER_WORK,
 };
 
+// Plain words for each switch, on hover: "Analysis" and "Work" are labels a
+// first visit has no reading for, and the row was the one part of the page
+// left speaking its own jargon.
+const LAYER_HINTS: Record<ProjectMapLayerId, I18nKey> = {
+  code: I18nKey.PROJECT_MAP$LAYER_CODE_HINT,
+  work: I18nKey.PROJECT_MAP$LAYER_WORK_HINT,
+};
+
+const MODE_HINTS: Record<ProjectMapMode, I18nKey> = {
+  derived: I18nKey.PROJECT_MAP$MODE_DERIVED_HINT,
+  freeform: I18nKey.PROJECT_MAP$MODE_FREEFORM_HINT,
+  both: I18nKey.PROJECT_MAP$MODE_BOTH_HINT,
+};
+
 const MODE_LABELS: Record<ProjectMapMode, I18nKey> = {
   derived: I18nKey.PROJECT_MAP$MODE_DERIVED,
   freeform: I18nKey.PROJECT_MAP$MODE_FREEFORM,
@@ -52,6 +66,7 @@ export function ProjectMapModeSwitch({
             type="button"
             role="radio"
             aria-checked={mode === candidate}
+            title={t(MODE_HINTS[candidate])}
             data-testid={`project-map-mode-${candidate}`}
             className={`rounded px-2 py-1 text-micro ${
               mode === candidate
@@ -80,6 +95,7 @@ export function ProjectMapModeSwitch({
             type="button"
             role="radio"
             aria-checked={layer === candidate}
+            title={t(LAYER_HINTS[candidate])}
             data-testid={`project-map-layer-${candidate}`}
             className={`rounded px-2 py-1 text-micro ${
               layer === candidate
