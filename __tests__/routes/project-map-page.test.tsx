@@ -479,6 +479,51 @@ describe("the project map page", () => {
     expect(screen.queryByTestId("project-map-canvas")).toBeNull();
   });
 
+  it("offers a way out of a map that cannot be drawn, including the conversation that wrote it", async () => {
+    // Arrange: the page generated a map, and what the agent wrote does not
+    // parse. The chat dock only exists over a drawn canvas, so without this
+    // the conversation that could fix the file in one turn was unreachable.
+    const read = vi
+      .spyOn(ProjectMapService, "readProjectMap")
+      .mockImplementation(async (target) => emptyRead(target));
+    const navigate = vi.fn();
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, {
+      navigation: { currentPath: "/map", conversationId: null, navigate },
+    });
+    await user.click(await screen.findByTestId("project-map-generate"));
+    await screen.findByTestId("project-map-analysis-running");
+    read.mockResolvedValue({
+      workspace: SANDBOX_WORKSPACE,
+      absolutePath: SANDBOX_PATH,
+      raw: JSON.stringify({
+        version: PROJECT_MAP_VERSION,
+        nodes: [],
+        edges: [{ source: "a", target: "b", kind: "calls" }],
+      }),
+    });
+
+    // Act: the file arrives, and the user re-reads it.
+    await user.click(screen.getByTestId("project-map-empty-refresh"));
+
+    // Assert: the complaint names the field, and the conversation is one click
+    // away — as are re-reading and regenerating.
+    await screen.findByTestId("project-map-invalid");
+    expect(screen.getByTestId("project-map-invalid")).toHaveTextContent(
+      "edges[0].from",
+    );
+    expect(
+      screen.getByTestId("project-map-invalid-refresh"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("project-map-invalid-regenerate"),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByTestId("project-map-invalid-open-conversation"),
+    );
+    expect(navigate).toHaveBeenCalledWith("/conversations/conversation-1");
+  });
+
   it("draws the map and shows which commit it was generated against", async () => {
     // Arrange
     vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
