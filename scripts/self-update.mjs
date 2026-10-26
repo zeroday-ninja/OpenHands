@@ -514,9 +514,53 @@ function readPackageVersion(projectRoot) {
 }
 
 /**
+ * The names a `.env` file defines, so a relaunch can let the file speak again.
+ *
+ * Node's `--env-file` never overrides a variable that is already set, and a
+ * relaunch inherits this process's environment — which carries every value
+ * the file set at the *previous* start. So an edit to `.env` (a new sandbox
+ * image pin, say) survived "Restart" only in the file: the relaunched stack
+ * ran on the old value until someone stopped it by hand. Dropping the file's
+ * own names from the inherited environment lets the new launcher read them
+ * fresh; a value set outside the file (the shell, a service unit) still wins,
+ * because it is not in the file.
+ *
+ * @param {string} envFile
+ * @returns {Set<string>}
+ */
+export function envFileNames(envFile) {
+  const names = new Set();
+  if (!existsSync(envFile)) return names;
+  for (const raw of readFileSync(envFile, "utf8").split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line === "" || line.startsWith("#")) continue;
+    const match = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(line);
+    if (match) names.add(match[1]);
+  }
+  return names;
+}
+
+/**
+ * This process's environment with the `.env` file's own names removed, which
+ * is what the replacement launcher must start from. See {@link envFileNames}.
+ *
+ * @param {string} cwd where the launcher runs, and where its `.env` is
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {NodeJS.ProcessEnv}
+ */
+export function relaunchEnv(cwd, env = process.env) {
+  const names = envFileNames(join(cwd, ".env"));
+  if (names.size === 0) return env;
+  const fresh = { ...env };
+  for (const name of names) delete fresh[name];
+  return fresh;
+}
+
+/**
  * Start the replacement launcher. It inherits this process's stdio so its
  * output lands where ours did (the terminal or the log the stack was started
- * into), and runs detached so it survives our exit.
+ * into), and runs detached so it survives our exit. Its environment is this
+ * one's, minus what `.env` defines, so the file is read again.
  */
 /**
  * @param {{ command: string, args: string[], cwd: string }} relaunch
@@ -528,7 +572,7 @@ export function spawnRelaunch(
 ) {
   const child = spawnImpl(relaunch.command, relaunch.args, {
     cwd: relaunch.cwd,
-    env,
+    env: relaunchEnv(relaunch.cwd, env),
     stdio: "inherit",
     detached: process.platform !== "win32",
   });
