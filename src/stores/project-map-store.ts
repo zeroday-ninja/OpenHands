@@ -143,6 +143,16 @@ interface ProjectMapState {
    * carries one is still honoured when it opens, and never rewritten.
    */
   layer: ProjectMapLayerId;
+  /**
+   * The layer a person opened from the overview, if any.
+   *
+   * Opening a block used to put the viewport over that layer and leave every
+   * other layer drawn around it, so the reader arrived at the same wall they
+   * had just folded. The rest of the drawing stays on the paper — a relation
+   * leaving the layer is half the point — but faded, as a selection's
+   * neighbourhood already fades what it is not about.
+   */
+  openedGroup: string | null;
 
   hydrate: (source: string, document: PlacedProjectMapDocument) => void;
   reset: () => void;
@@ -169,6 +179,7 @@ interface ProjectMapState {
 
   setMode: (mode: ProjectMapMode) => void;
   setLayer: (layer: ProjectMapLayerId) => void;
+  setOpenedGroup: (groupId: string | null) => void;
   setTool: (tool: ProjectMapTool) => void;
   setChatOpen: (open: boolean) => void;
   setEditingShape: (id: string | null) => void;
@@ -362,6 +373,7 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
   showHidden: false,
   overview: false,
   layer: "code",
+  openedGroup: null,
 
   hydrate: (source, incoming) =>
     set((state) => {
@@ -439,6 +451,7 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
       showHidden: false,
       overview: false,
       layer: "code",
+      openedGroup: null,
     }),
 
   markSaved: () => set({ dirty: false }),
@@ -538,7 +551,8 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
     ),
 
   toggleShowHidden: () => set((state) => ({ showHidden: !state.showHidden })),
-  setOverview: (overview) => set({ overview }),
+  setOverview: (overview) =>
+    set(overview ? { overview, openedGroup: null } : { overview }),
 
   /** A new note opens its own editor: an empty note nobody can type in is litter. */
   addNote: (note) =>
@@ -589,7 +603,8 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
    * Sets a view and nothing else: watching the agents work is not an edit to
    * the repository's map, so it costs no undo step and writes no file.
    */
-  setLayer: (layer) => set({ layer }),
+  setLayer: (layer) => set({ layer, openedGroup: null }),
+  setOpenedGroup: (openedGroup) => set({ openedGroup }),
 
   setTool: (tool) => set({ tool }),
   setChatOpen: (chatOpen) => set({ chatOpen }),

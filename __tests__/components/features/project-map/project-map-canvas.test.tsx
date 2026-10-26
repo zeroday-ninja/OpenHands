@@ -259,6 +259,34 @@ describe("ProjectMapCanvas", () => {
     ).toBeLessThan(1);
   });
 
+  it("opens the layer you clicked, and fades the rest", () => {
+    // Arrange: two layers on the paper, folded to blocks.
+    renderCanvas();
+    act(() => useProjectMapStore.getState().setOverview(true));
+
+    // Act
+    fireEvent.click(screen.getByTestId("project-map-overview-block-web"));
+
+    // Assert: the layer's own parts are the drawing, the rest is context —
+    // a click on one block used to land among every neighbour's plates with
+    // no way to tell which layer had been opened.
+    expect(useProjectMapStore.getState().openedGroup).toBe("web");
+    expect(screen.getByTestId("project-map-node-left")).toHaveAttribute(
+      "opacity",
+      "1",
+    );
+    expect(screen.getByTestId("project-map-node-below")).not.toHaveAttribute(
+      "opacity",
+      "1",
+    );
+
+    // Act: back to the blocks.
+    act(() => useProjectMapStore.getState().setOverview(true));
+
+    // Assert
+    expect(useProjectMapStore.getState().openedGroup).toBeNull();
+  });
+
   it("marks the part a change waiting on a person touches, and its layer", () => {
     // Arrange: one part of the "web" layer is named by a parked change.
     renderCanvas(new Map([["left", "cycle-1"]]));
