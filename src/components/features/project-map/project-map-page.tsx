@@ -628,7 +628,13 @@ export function ProjectMapPage() {
               onClick={() => fitToView()}
             >
               <Crosshair size={ICON_SIZE} aria-hidden />
-              {t(I18nKey.PROJECT_MAP$FIT)}
+              {/* Fit, Rebuild and Save keep their word from 1280px up; the
+                  two below them lose theirs earlier, because six labelled
+                  controls wrapped onto a second row and took the height out
+                  of the drawing. Every one says itself on hover. */}
+              <span className="hidden xl:inline">
+                {t(I18nKey.PROJECT_MAP$FIT)}
+              </span>
             </button>
             <button
               type="button"
@@ -639,7 +645,12 @@ export function ProjectMapPage() {
               onClick={toggleShowHidden}
             >
               <Eye size={ICON_SIZE} aria-hidden />
-              {t(I18nKey.PROJECT_MAP$SHOW_HIDDEN)}
+              {/* The word goes below 1536px, where these controls wrapped onto
+                  a second row and took the height out of the drawing. Each
+                  already says itself on hover, and the icon stays. */}
+              <span className="hidden 2xl:inline">
+                {t(I18nKey.PROJECT_MAP$SHOW_HIDDEN)}
+              </span>
             </button>
             <button
               type="button"
@@ -649,7 +660,12 @@ export function ProjectMapPage() {
               onClick={() => void refetch()}
             >
               <RefreshCw size={ICON_SIZE} aria-hidden />
-              {t(I18nKey.PROJECT_MAP$REFRESH)}
+              {/* The word goes below 1536px, where these controls wrapped onto
+                  a second row and took the height out of the drawing. Each
+                  already says itself on hover, and the icon stays. */}
+              <span className="hidden 2xl:inline">
+                {t(I18nKey.PROJECT_MAP$REFRESH)}
+              </span>
             </button>
             <button
               type="button"
@@ -660,7 +676,32 @@ export function ProjectMapPage() {
               onClick={() => void generate()}
             >
               <Sparkles size={ICON_SIZE} aria-hidden />
-              {t(I18nKey.PROJECT_MAP$REGENERATE)}
+              {/* The word goes below 1536px, where these controls wrapped onto
+                  a second row and took the height out of the drawing. Each
+                  already says itself on hover, and the icon stays. */}
+              <span className="hidden xl:inline">
+                {t(I18nKey.PROJECT_MAP$REGENERATE)}
+              </span>
+            </button>
+            <button
+              type="button"
+              data-testid="project-map-rail-toggle"
+              aria-expanded={railOpen}
+              data-waiting={waiting}
+              title={t(I18nKey.PROJECT_MAP$RAIL_HINT)}
+              className={`${PROJECT_MAP_BUTTON_CLASS} ${
+                waiting > 0 ? "border-warning/50 text-warning" : ""
+              }`}
+              onClick={() => setRailOpen(!railOpen)}
+            >
+              <PanelRight size={ICON_SIZE} aria-hidden />
+              {waiting > 0
+                ? t(RAIL_WAITING_I18N_KEY, { count: waiting })
+                : t(
+                    railOpen
+                      ? I18nKey.PROJECT_MAP$RAIL_HIDE
+                      : I18nKey.PROJECT_MAP$RAIL_SHOW,
+                  )}
             </button>
             <button
               type="button"
@@ -671,11 +712,13 @@ export function ProjectMapPage() {
               onClick={() => void save()}
             >
               <Save size={ICON_SIZE} aria-hidden />
-              {saveProjectMap.isPending
-                ? t(I18nKey.PROJECT_MAP$SAVING)
-                : dirty
-                  ? t(I18nKey.PROJECT_MAP$SAVE)
-                  : t(I18nKey.PROJECT_MAP$SAVED)}
+              <span className="hidden xl:inline">
+                {saveProjectMap.isPending
+                  ? t(I18nKey.PROJECT_MAP$SAVING)
+                  : dirty
+                    ? t(I18nKey.PROJECT_MAP$SAVE)
+                    : t(I18nKey.PROJECT_MAP$SAVED)}
+              </span>
             </button>
           </div>
         )}
@@ -789,26 +832,6 @@ export function ProjectMapPage() {
                   mode={document_.canvas.view.mode}
                   layer={layer}
                 />
-                <button
-                  type="button"
-                  data-testid="project-map-rail-toggle"
-                  aria-expanded={railOpen}
-                  data-waiting={waiting}
-                  title={t(I18nKey.PROJECT_MAP$RAIL_HINT)}
-                  className={`${PROJECT_MAP_BUTTON_CLASS} ${
-                    waiting > 0 ? "border-warning/50 text-warning" : ""
-                  }`}
-                  onClick={() => setRailOpen(!railOpen)}
-                >
-                  <PanelRight size={ICON_SIZE} aria-hidden />
-                  {waiting > 0
-                    ? t(RAIL_WAITING_I18N_KEY, { count: waiting })
-                    : t(
-                        railOpen
-                          ? I18nKey.PROJECT_MAP$RAIL_HIDE
-                          : I18nKey.PROJECT_MAP$RAIL_SHOW,
-                      )}
-                </button>
               </div>
             </div>
             {/* The dock is positioned against this box rather than the page so
