@@ -56,6 +56,35 @@ describe("workGraphToDerivedLayer", () => {
     expect(x.get("c")!).toBeLessThan(x.get("a")!);
   });
 
+  it("gives the graph a layer per kind of work, so it folds", () => {
+    // Arrange: a graph with three kinds of work on it, one of them twice.
+    const merged = graph({
+      nodes: [
+        node({ key: "p", kind: "program" }),
+        node({ key: "a1", kind: "agent" }),
+        node({ key: "a2", kind: "agent" }),
+      ],
+    });
+
+    // Act
+    const layer = workGraphToDerivedLayer(merged, {
+      program: "Programmes",
+      agent: "Agents at work",
+    });
+
+    // Assert: a layer per kind present, named by the caller, in the order
+    // the columns are drawn; every node belongs to its own kind's layer.
+    expect(layer.groups.map((group) => [group.id, group.label])).toEqual([
+      ["program", "Programmes"],
+      ["agent", "Agents at work"],
+    ]);
+    expect(layer.nodes.map((drawn) => drawn.group)).toEqual([
+      "program",
+      "agent",
+      "agent",
+    ]);
+  });
+
   it("puts the most recent work at the top of its column", () => {
     // Arrange
     const merged = graph({

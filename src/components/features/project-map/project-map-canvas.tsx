@@ -517,17 +517,37 @@ export function ProjectMapCanvas({
   };
 
   /**
-   * The layers as blocks, when that is what the paper shows.
+   * Whichever drawing is on the paper, as a document the fold understands.
    *
-   * Only over the committed analysis: the live work layer has no groups, and a
-   * freeform drawing has nothing to fold. Null means draw the detail.
+   * The work layer carries its own layers now — machines, programs, runs,
+   * agents — so it folds the same way the committed analysis does, which it
+   * needs more: it arrives with every run and every source on it.
+   */
+  const paper = React.useMemo<PlacedProjectMapDocument>(
+    () =>
+      derivedLayer === null
+        ? map
+        : {
+            ...map,
+            nodes: derivedLayer.nodes,
+            edges: derivedLayer.edges,
+            groups: derivedLayer.groups,
+          },
+    [map, derivedLayer],
+  );
+
+  /**
+   * The layers as blocks, when that is what the paper shows. A freeform
+   * drawing has nothing to fold, and neither has a drawing with no layers.
+   * Whether folding is offered at all is the page's call; null here means
+   * draw the detail.
    */
   const overviewModel = React.useMemo<ProjectMapOverview | null>(
     () =>
-      overview && showsDerived && derivedLayer === null
-        ? projectMapOverview(map)
+      overview && showsDerived && paper.groups.length > 0
+        ? projectMapOverview(paper)
         : null,
-    [overview, showsDerived, derivedLayer, map],
+    [overview, showsDerived, paper],
   );
 
   /**
@@ -540,10 +560,14 @@ export function ProjectMapCanvas({
    */
   const openGroup = (groupId: string) => {
     setOverview(false);
-    const group = map.groups.find((candidate) => candidate.id === groupId);
-    if (group?.collapsed) setGroupCollapsed(groupId, false);
+    const group = paper.groups.find((candidate) => candidate.id === groupId);
+    // Only the committed analysis has groups a person can fold; the work
+    // layer's are assembled on every fetch, and unfolding one there would
+    // write a view into the repository's file.
+    if (group?.collapsed && derivedLayer === null)
+      setGroupCollapsed(groupId, false);
     const bounds = projectMapGroupBounds(
-      map.nodes.filter((node) => !node.hidden),
+      paper.nodes.filter((node) => !node.hidden),
       groupId,
     );
     const frame = frameRef.current?.getBoundingClientRect();
