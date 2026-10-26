@@ -185,6 +185,10 @@ export function ProjectMapPage() {
   const setViewport = useProjectMapStore((state) => state.setViewport);
   const overview = useProjectMapStore((state) => state.overview);
   const setOverview = useProjectMapStore((state) => state.setOverview);
+  // Which file the page last decided an opening height for, and last framed.
+  // See the effect below; cleared when the user points the page elsewhere.
+  const framedRevision = React.useRef<string | null>(null);
+  const openedRevision = React.useRef<string | null>(null);
 
   // Which derived layer is on the paper. The committed analysis of the code,
   // or the live graph of what the agents are doing — the canvas draws either
@@ -261,8 +265,6 @@ export function ProjectMapPage() {
   // render — and the frame is refitted only when that decision changes the
   // paper's extent, so the user's own switch and their panning survive a
   // re-read that changed nothing of the kind.
-  const framedRevision = React.useRef<string | null>(null);
-  const openedRevision = React.useRef<string | null>(null);
   React.useEffect(() => {
     if (data === undefined) return;
     if (data.document === null) return;
@@ -321,6 +323,13 @@ export function ProjectMapPage() {
   const chooseWorkspace = (path: string | null) => {
     if (path === chosenPath) return;
     reset();
+    // A different folder is a different document: decide its opening height
+    // and frame it afresh, even if this page saw that very file earlier. The
+    // buffer was just reset, so a remembered decision would leave a big map
+    // opening as the wall the overview exists to replace — which is what
+    // happened on the way back from a repository that had no map.
+    openedRevision.current = null;
+    framedRevision.current = null;
     chooseWorkspaceFor(backend.id, path);
   };
 
