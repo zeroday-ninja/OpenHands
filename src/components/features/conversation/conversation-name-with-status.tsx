@@ -11,6 +11,9 @@ import { useUserProviders } from "#/hooks/use-user-providers";
 import { getStatusColor, cn } from "#/utils/utils";
 import { AgentState } from "#/types/agent-state";
 import { ExecutionStatus } from "#/types/agent-server/core/base/common";
+import { useArchivedConversationsStore } from "#/stores/archived-conversations-store";
+import { useActiveBackend } from "#/contexts/active-backend-context";
+import { isEffectivelyArchivedConversation } from "#/utils/conversation-archive-status";
 import DebugStackframeDot from "#/icons/debug-stackframe-dot.svg?react";
 import { ServerStatusContextMenu } from "../controls/server-status-context-menu";
 import { conversationStatusLabelKey } from "../conversation-panel/conversation-status-dot";
@@ -25,10 +28,14 @@ import {
 } from "#/utils/status";
 import { I18nKey } from "#/i18n/declaration";
 
+/** A stable empty list, so the selector never makes a new one. */
+const EMPTY_ARCHIVED_IDS: string[] = [];
+
 export function ConversationNameWithStatus() {
   const { t } = useTranslation("openhands");
   const { conversationId } = useConversationId();
   const { data: conversation } = useActiveConversation();
+  const { backend } = useActiveBackend();
   const { curAgentState } = useAgentState();
   const { isTask, taskStatus } = useTaskPolling();
   const { mutate: pauseConversation } = useUnifiedPauseConversation();
@@ -42,6 +49,20 @@ export function ConversationNameWithStatus() {
   const isStartingStatus =
     curAgentState === AgentState.LOADING || curAgentState === AgentState.INIT;
   const isStopStatus = isExecutionErrored(executionStatus);
+
+  /**
+   * Whether this conversation is archived — explicitly, or because its
+   * sandbox is gone and cannot come back. The list rows have said so on
+   * their own dots all along; the header's word did not, and reported the
+   * last thing the agent did instead, as though it might still be doing it.
+   */
+  const archivedIds = useArchivedConversationsStore(
+    (state) => state.archivesByBackendId[backend.id] ?? EMPTY_ARCHIVED_IDS,
+  );
+  const isArchived = isEffectivelyArchivedConversation(
+    conversation?.sandbox_status,
+    conversationId !== null && archivedIds.includes(conversationId),
+  );
 
   /**
    * What the live agent says, when it says anything the record cannot know
@@ -175,12 +196,17 @@ export function ConversationNameWithStatus() {
             disagree the agent in front of you is the truth. */}
         <span
           data-testid="conversation-status-chip"
-          data-status={liveStatus ?? executionStatus ?? "unknown"}
+          data-status={
+            isArchived
+              ? "archived"
+              : (liveStatus ?? executionStatus ?? "unknown")
+          }
           className="ml-2 shrink-0 rounded-md bg-contrast/10 px-2 py-0.5 text-micro text-muted"
         >
           {t(
             conversationStatusLabelKey(
               liveStatus ?? executionStatus,
+              isArchived,
             ) as I18nKey,
           )}
         </span>
