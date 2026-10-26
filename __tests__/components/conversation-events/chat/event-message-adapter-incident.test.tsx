@@ -65,6 +65,27 @@ describe("EventMessage - ACPAdapterIncidentEvent", () => {
     expect(screen.queryByTestId("adapter-incident-status")).toBeNull();
   });
 
+  it("describes a dead adapter by what it came to", () => {
+    renderWithProviders(
+      <EventMessage
+        event={{
+          ...event,
+          id: "inc-dead",
+          what: "process",
+          unrecognised_kind: null,
+          detail: "the antigravity adapter exited with code 137",
+        }}
+        messages={[]}
+        isLastMessage={false}
+        isInLast10Actions={false}
+      />,
+    );
+
+    const notice = screen.getByTestId("adapter-incident-event");
+    expect(notice).toHaveAttribute("data-what", "process");
+    expect(notice).toHaveTextContent("ACP_INCIDENT$BODY_PROCESS");
+  });
+
   it("says whether the incident was filed as a lesson, or why not", () => {
     const key = adapterIncidentKey({
       conversationId: "c1",

@@ -60,11 +60,18 @@ export function AdapterIncidentEventMessage({
         {t(I18nKey.ACP_INCIDENT$TITLE)}
       </span>
       <span className="text-contrast">
-        {t(I18nKey.ACP_INCIDENT$BODY, {
-          adapter: event.adapter,
-          what: event.what,
-          kind: event.unrecognised_kind ?? t(I18nKey.ACP_INCIDENT$NO_KIND),
-        })}
+        {event.what === "process"
+          ? // The adapter's process went away under the turn: what it came
+            // to and its last words are the detail, not a kind.
+            t(I18nKey.ACP_INCIDENT$BODY_PROCESS, {
+              adapter: event.adapter,
+              detail: event.detail,
+            })
+          : t(I18nKey.ACP_INCIDENT$BODY, {
+              adapter: event.adapter,
+              what: event.what,
+              kind: event.unrecognised_kind ?? t(I18nKey.ACP_INCIDENT$NO_KIND),
+            })}
       </span>
       {status !== null && (
         <span

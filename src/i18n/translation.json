@@ -60298,5 +60298,23 @@
     "uk": "Інші ваші карти там, де й були: кожна живе у своєму репозиторії. Виберіть одну в списку Репозиторій угорі, щоб побачити її знову.",
     "ca": "Els teus altres mapes són on eren: cadascun viu al seu propi repositori. Tria'n un a la llista Repositori de dalt per tornar-lo a veure.",
     "id": "Peta Anda yang lain masih di tempatnya: masing-masing tersimpan di repositorinya sendiri. Pilih salah satu di daftar Repositori di atas untuk melihatnya lagi."
+  },
+  "ACP_INCIDENT$BODY_PROCESS": {
+    "en": "The {{adapter}} adapter's process went away mid-turn: {{detail}}",
+    "zh-CN": "{{adapter}} 适配器的进程在回合中途消失：{{detail}}",
+    "zh-TW": "{{adapter}} 轉接器的程序在回合中途消失：{{detail}}",
+    "de": "Der Prozess des Adapters {{adapter}} ist mitten im Zug verschwunden: {{detail}}",
+    "ko-KR": "{{adapter}} 어댑터의 프로세스가 턴 도중 사라졌습니다: {{detail}}",
+    "no": "Prosessen til adapteren {{adapter}} forsvant midt i turen: {{detail}}",
+    "it": "Il processo dell'adattatore {{adapter}} è sparito a metà turno: {{detail}}",
+    "pt": "O processo do adaptador {{adapter}} desapareceu a meio do turno: {{detail}}",
+    "es": "El proceso del adaptador {{adapter}} desapareció a mitad del turno: {{detail}}",
+    "ar": "اختفت عملية المحوّل {{adapter}} في منتصف الدور: {{detail}}",
+    "fr": "Le processus de l'adaptateur {{adapter}} a disparu en plein tour : {{detail}}",
+    "tr": "{{adapter}} bağdaştırıcısının süreci turun ortasında kayboldu: {{detail}}",
+    "ja": "{{adapter}} アダプターのプロセスがターンの途中で消えました: {{detail}}",
+    "uk": "Процес адаптера {{adapter}} зник посеред ходу: {{detail}}",
+    "ca": "El procés de l'adaptador {{adapter}} ha desaparegut a mig torn: {{detail}}",
+    "id": "Proses adaptor {{adapter}} menghilang di tengah giliran: {{detail}}"
   }
 }
