@@ -902,9 +902,14 @@ export function ProjectMapPage() {
                 <span className={PROJECT_MAP_SECTION_LABEL_CLASS}>
                   {t(I18nKey.PROJECT_MAP$INSPECTOR_TITLE)}
                 </span>
-                <ProjectMapInspector document={document_} />
+                {/* The panel describes whatever is on the paper; only the
+                    committed analysis can be edited from it. */}
+                <ProjectMapInspector
+                  document={paper ?? document_}
+                  editable={layer === "code"}
+                />
               </div>
-              <ProjectMapLegend document={document_} />
+              <ProjectMapLegend document={paper ?? document_} />
             </aside>
           )}
         </div>
