@@ -277,14 +277,6 @@ export function ProjectMapPage() {
       data-testid="project-map-page"
       className="flex h-full min-h-0 flex-col gap-3 p-4 lg:px-8"
     >
-      <FeatureAnnouncement trials={featureTrialsOn("/map")} />
-      {/* The same list, so a surface that introduces its features also asks
-          how they went — the announcement carries a rating on its last step
-          and then never returns, which left the one chance to say anything
-          at the moment before the feature had been used. */}
-      <FeatureFeedback trials={featureTrialsOn("/map")} />
-      <ProjectMapWaiting />
-      <UnusedFeatureList />
       <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <div className="flex flex-col">
           <h2 className="text-xl font-medium text-contrast">
@@ -507,6 +499,19 @@ export function ProjectMapPage() {
             </div>
           </div>
           <aside className="flex w-full shrink-0 flex-col gap-5 overflow-y-auto rounded-lg border border-border-subtle bg-base-secondary p-4 lg:w-88 custom-scrollbar">
+            {/* Beside the canvas, never above it. These used to stack on top
+                of the page, and with three parked changes waiting the canvas
+                — the thing this page is for — was below the fold entirely.
+                The plan's own words are "the canvas takes the width": work
+                waiting on a person, a feature introducing itself, and a
+                feature nobody used all belong in the rail, where they are
+                visible without displacing the drawing. Each renders nothing
+                when it has nothing to say, so the rail is the inspector and
+                the legend on an ordinary day. */}
+            <FeatureAnnouncement trials={featureTrialsOn("/map")} />
+            <FeatureFeedback trials={featureTrialsOn("/map")} />
+            <ProjectMapWaiting />
+            <UnusedFeatureList />
             <div className="flex flex-col gap-2">
               <span className={PROJECT_MAP_SECTION_LABEL_CLASS}>
                 {t(I18nKey.PROJECT_MAP$INSPECTOR_TITLE)}

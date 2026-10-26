@@ -1,3 +1,4 @@
+import { redirect } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetActiveStoreForTests,
@@ -57,28 +58,30 @@ describe("the index route with a pinned home page", () => {
     expect((result as Response).headers.get("Location")).toBe("/customize");
   });
 
-  it("renders the default home when no pin is set", () => {
-    expect(clientLoader()).toBeNull();
+  // With no pin, the map: the canvas is where the work is, and a front door
+  // that opened on the conversation list said the opposite every time.
+  it("sends / to the map when no pin is set", () => {
+    expect(clientLoader()).toEqual(redirect("/map"));
   });
 
-  it("falls back to the default home when the stored pin does not resolve, leaving the value intact", () => {
+  it("falls back to the map when the stored pin does not resolve, leaving the value intact", () => {
     for (const rawValue of ['"/"', '"/nonexistent"', "not-json"]) {
       // Arrange
       window.localStorage.setItem(PIN_KEY, rawValue);
 
       // Act & Assert
-      expect(clientLoader()).toBeNull();
+      expect(clientLoader()).toEqual(redirect("/map"));
       expect(window.localStorage.getItem(PIN_KEY)).toBe(rawValue);
     }
   });
 
-  it("falls back to the default home when the pinned page's interface is absent", () => {
+  it("falls back to the map when the pinned page's interface is absent", () => {
     // Arrange: /automations was pinnable when set, but this deployment has
     // no admitted automation interface manifest.
     window.localStorage.setItem(PIN_KEY, JSON.stringify("/automations"));
 
     // Act & Assert
-    expect(clientLoader()).toBeNull();
+    expect(clientLoader()).toEqual(redirect("/map"));
   });
 
   it("ignores a pin stored for a different backend", () => {
@@ -89,6 +92,6 @@ describe("the index route with a pinned home page", () => {
     );
 
     // Act & Assert
-    expect(clientLoader()).toBeNull();
+    expect(clientLoader()).toEqual(redirect("/map"));
   });
 });

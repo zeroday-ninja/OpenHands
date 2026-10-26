@@ -127,7 +127,7 @@ function ParkedCycle({ cycle }: { cycle: ImproveCycle }) {
         onChange={(event) => setReason(event.target.value)}
         rows={2}
         placeholder={t(I18nKey.IMPROVE$PARKED$REASON_REQUIRED)}
-        className="w-full rounded-md border border-border-subtle bg-canvas-base p-2 text-sm text-canvas-base"
+        className="w-full rounded-md border border-border-subtle bg-canvas-base p-2 text-sm text-contrast"
       />
       <div className="flex flex-wrap items-center gap-1.5">
         {IMPROVE_RESOLVE_ROUTES.map((route) => (
