@@ -22,7 +22,10 @@ function document(
 }
 
 describe("which layer is on the paper", () => {
-  beforeEach(() => useProjectMapStore.getState().reset());
+  beforeEach(() => {
+    window.localStorage.clear();
+    useProjectMapStore.getState().reset();
+  });
 
   it("is this session's business, not a change to the repository's map", () => {
     // Arrange
@@ -40,6 +43,20 @@ describe("which layer is on the paper", () => {
     expect(after.dirty).toBe(false);
     expect(after.document?.canvas).toEqual(defaultProjectMapCanvas());
     expect(after.past).toEqual([]);
+  });
+
+  it("remembers which layer you switch to, for a document that names none", () => {
+    // Arrange: a map with no layer of its own, which is most of them.
+    useProjectMapStore.getState().hydrate("revision-1", document());
+
+    // Act: go and watch the agents, then open the map again.
+    useProjectMapStore.getState().setLayer("work");
+    useProjectMapStore.getState().reset();
+    useProjectMapStore.getState().hydrate("revision-2", document());
+
+    // Assert: the habit is kept. Someone who works in the live graph had to
+    // ask for it again on every open.
+    expect(useProjectMapStore.getState().layer).toBe("work");
   });
 
   it("opens on the layer a document names, and leaves it there", () => {

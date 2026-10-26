@@ -28,6 +28,7 @@ import type {
   ProjectMapNote,
   ProjectMapShape,
 } from "#/types/project-map";
+import { PROJECT_MAP_LAYER_IDS } from "#/types/project-map";
 import {
   PROJECT_MAP_GRID,
   projectMapGroupAtPoint,
@@ -70,6 +71,31 @@ export interface ProjectMapViewport {
   x: number;
   y: number;
   scale: number;
+}
+
+/** Where the "which layer" habit is kept, across visits. */
+const LAYER_PREFERENCE_KEY = "project-map-layer";
+
+function readLayerPreference(): ProjectMapLayerId | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = window.localStorage.getItem(LAYER_PREFERENCE_KEY);
+    return stored !== null && PROJECT_MAP_LAYER_IDS.includes(stored as never)
+      ? (stored as ProjectMapLayerId)
+      : null;
+  } catch {
+    // Storage a browser refuses to read is no preference, not an error.
+    return null;
+  }
+}
+
+function writeLayerPreference(layer: ProjectMapLayerId): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LAYER_PREFERENCE_KEY, layer);
+  } catch {
+    // Nothing to recover: the view is already set, only the habit is lost.
+  }
 }
 
 export const PROJECT_MAP_MIN_SCALE = 0.25;
@@ -402,7 +428,9 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
         document,
         // A document that already names a layer opens on it; switching away
         // is this session's business and is never written back.
-        layer: document.canvas.view.layer ?? "code",
+        // The document first: a committed choice is about the repository and
+        // outranks a habit. Then the habit. Then the code.
+        layer: document.canvas.view.layer ?? readLayerPreference() ?? "code",
         //: Shapes whose anchor the newest revision dropped, for the surface
         //: to name. Replaced rather than accumulated: it describes this
         //: revision, and a list that grew would keep reporting a release the
@@ -601,9 +629,15 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
    * Which derived layer is on the paper.
    *
    * Sets a view and nothing else: watching the agents work is not an edit to
-   * the repository's map, so it costs no undo step and writes no file.
+   * the repository's map, so it costs no undo step and writes no file. It is
+   * remembered, though — someone who works in the live graph had to ask for
+   * it again on every open, because the document decides and most documents
+   * say nothing.
    */
-  setLayer: (layer) => set({ layer, openedGroup: null }),
+  setLayer: (layer) => {
+    writeLayerPreference(layer);
+    set({ layer, openedGroup: null });
+  },
   setOpenedGroup: (openedGroup) => set({ openedGroup }),
 
   setTool: (tool) => set({ tool }),
