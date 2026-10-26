@@ -30,6 +30,12 @@ import { fileCorrectionInMemory } from "#/utils/soul/file-correction-in-memory";
 export function adapterIncidentLessonText(
   event: ACPAdapterIncidentEvent,
 ): string {
+  if (event.what === "process") {
+    // The adapter's process went away under a turn. The detail is the SDK's
+    // account of what it came to and its last stderr lines — the evidence
+    // the next cycle on this runtime needs, kept with the lesson.
+    return `The ${event.adapter} adapter's process went away mid-turn: ${event.detail}. Find out why, in the adapter.`;
+  }
   const kind =
     event.unrecognised_kind === null ? "" : ` '${event.unrecognised_kind}'`;
   return `The ${event.adapter} adapter met a ${event.what} it does not understand:${kind}. Translate it, or ignore it deliberately, in the adapter.`;

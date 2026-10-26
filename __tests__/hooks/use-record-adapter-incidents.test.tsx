@@ -100,6 +100,35 @@ describe("useRecordAdapterIncidents", () => {
     );
   });
 
+  it("files a dead adapter with the SDK's account of what it came to", async () => {
+    const capture = vi
+      .spyOn(AutomationService, "captureLesson")
+      .mockResolvedValue(captured("L2"));
+    renderWithProviders(<Probe />, {
+      navigation: { currentPath: "/conversations/c1", conversationId: "c1" },
+    });
+
+    useEventStore.getState().addEvent(
+      incident({
+        id: "inc-dead",
+        what: "process",
+        unrecognised_kind: null,
+        detail:
+          "the antigravity adapter exited with code 137; last stderr: AGY_ADAPTER_CRASH: ValueError: boom",
+      }),
+    );
+
+    await waitFor(() => expect(capture).toHaveBeenCalledTimes(1));
+    expect(capture).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: "runtime",
+        subject: "antigravity",
+        trigger: "adapter_incident",
+        text: expect.stringContaining("exited with code 137"),
+      }),
+    );
+  });
+
   it("keeps a filing that failed as a failure, and does not retry it on every render", async () => {
     // Arrange: the automation service is unreachable.
     const capture = vi
