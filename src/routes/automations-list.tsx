@@ -44,6 +44,9 @@ import { BackendNotConfigured } from "#/components/features/automations/backend-
 import { DeleteConfirmationModal } from "#/components/features/automations/delete-confirmation-modal";
 import { useOpenAutomationEditor } from "#/hooks/use-open-automation-editor";
 import { useStartAutomationSetup } from "#/hooks/use-start-automation-setup";
+import { FeatureAnnouncement } from "#/components/features/feature-trials/feature-announcement";
+import { FeatureFeedback } from "#/components/features/feature-trials/feature-feedback";
+import { featureTrialsOn } from "#/features/feature-trials";
 import { AddAutomationMenu } from "#/components/features/automations/add-automation-menu";
 import { ImportAutomationModal } from "#/components/features/automations/import-automation-modal";
 import { RecommendedAutomationsLauncher } from "#/components/features/automations/recommended-automations-launcher";
@@ -758,6 +761,13 @@ function AutomationsListPage() {
           />
         </div>
       </div>
+
+      {/* A feature this app shipped on its own introduces itself here, and
+          keeps its rating afterwards. Both render nothing when they have
+          nothing to say. Until this route hosted them, a trial pointing at
+          one of its controls announced itself to nobody. */}
+      <FeatureAnnouncement trials={featureTrialsOn("/automations")} />
+      <FeatureFeedback trials={featureTrialsOn("/automations")} />
 
       {/* Overview tiles — dashboard mode only */}
       {dashboard && (

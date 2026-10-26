@@ -1,6 +1,7 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { I18nKey } from "#/i18n/declaration";
@@ -441,7 +442,19 @@ function makeImportSpec(
 }
 
 function renderList() {
-  return render(<AutomationsList />);
+  // The route hosts the feature announcement and its rating, which read and
+  // write through React Query like everything else on the page.
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+  return render(
+    <QueryClientProvider client={client}>
+      <AutomationsList />
+    </QueryClientProvider>,
+  );
 }
 
 function openImportModal() {
@@ -586,7 +599,7 @@ describe("automations list states", () => {
 describe("automations list interactions", () => {
   it("admits the configured interface and opens Git Sync", () => {
     expect(clientLoader()).toBeNull();
-    render(<AutomationsList />);
+    renderList();
     fireEvent.click(screen.getByTestId("automations-git-sync"));
     expect(mocks.navigate).toHaveBeenCalledWith("/automations/git-sync");
   });
@@ -905,7 +918,7 @@ describe("automations list interactions", () => {
     mocks.canManage = false;
 
     // Act
-    render(<AutomationsList />);
+    renderList();
 
     // Assert
     expect(
