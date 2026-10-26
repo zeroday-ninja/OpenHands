@@ -129,6 +129,9 @@ const RAIL_WAITING_I18N_KEY = "PROJECT_MAP$RAIL_WAITING";
 /** Where the side panel's own preference lives, across visits. */
 const PROJECT_MAP_SIDE_PANEL_KEY = "project-map-side-panel";
 
+/** And where the Overview-or-Details answer lives. */
+const PROJECT_MAP_VIEW_KEY = "project-map-view";
+
 /**
  * How many released shapes are named before the rest become a count.
  *
@@ -388,6 +391,28 @@ export function ProjectMapPage() {
     setLayer(askedForLayer);
   }, [askedForLayer, document_, setLayer]);
 
+  /**
+   * Overview or details: your standing answer, or the size rule.
+   *
+   * A big map opens as its layers because a wall of plates is unreadable.
+   * That is a good default and a bad law: someone who prefers the detail
+   * had to say so on every visit, and the page forgot between each one.
+   */
+  const [viewPreference, setViewPreference] = useLocalStorage<
+    "overview" | "details" | null
+  >(PROJECT_MAP_VIEW_KEY, null);
+  const wantsOverviewFor = React.useCallback(
+    (drawing: PlacedProjectMapDocument) => {
+      // A drawing with fewer than two layers has nothing to fold, whatever
+      // anyone prefers: the switch is not even offered there.
+      if (drawing.groups.length < 2) return false;
+      return viewPreference === null
+        ? projectMapWantsOverview(drawing)
+        : viewPreference === "overview";
+    },
+    [viewPreference],
+  );
+
   // The work graph, folded or not, when the paper changes to it or away.
   React.useEffect(() => {
     if (openedLayer.current === layer) return;
@@ -397,7 +422,7 @@ export function ProjectMapPage() {
     if (paper === null || paper.nodes.length === 0) return;
     if (layer === "work" && workFetching) return;
     openedLayer.current = layer;
-    const wants = projectMapWantsOverview(paper);
+    const wants = wantsOverviewFor(paper);
     setOverview(wants);
     const frame = frameRef.current?.getBoundingClientRect();
     const bounds = paperBounds(paper, wants);
@@ -468,7 +493,7 @@ export function ProjectMapPage() {
     let refit = false;
     if (openedRevision.current !== data.revision) {
       openedRevision.current = data.revision;
-      const wants = projectMapWantsOverview(parsed);
+      const wants = wantsOverviewFor(parsed);
       if (wants !== overview) {
         setOverview(wants);
         asOverview = wants;
@@ -581,6 +606,10 @@ export function ProjectMapPage() {
   /** Overview or Details, and the frame refitted: the paper's extent changed. */
   const switchView = (asOverview: boolean) => {
     setOverview(asOverview);
+    // Remembered, because it is a choice. The size rule below decides for a
+    // drawing you have said nothing about; once you have said something, it
+    // stops deciding for you on every visit.
+    setViewPreference(asOverview ? "overview" : "details");
     fitToView(asOverview);
   };
 
