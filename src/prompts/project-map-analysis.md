@@ -23,7 +23,7 @@ Aim for the 40–120 nodes a person can hold in their head, not every file. A no
 
 Group nodes into the four to eight layers a maintainer of this repository would actually name — "web app", "transport", "persistence", "background work". Give each group an `id`, a `label` and an `accent` as a string holding a number from `"1"` to `"6"`; the accent is an index into the reader's theme palette, never a colour.
 
-Edges say what talks to what. Use the narrowest kind that is true:
+Edges say what talks to what. Each one is `{ "from": <node id>, "to": <node id>, "kind": <kind> }` with an optional `label`; `from` and `to` are the fields the reader accepts, and both must name a node by its `id`. Use the narrowest kind that is true:
 
 - `imports` — a structural dependency that is not itself a runtime event.
 - `renders` — a component or page that puts another on screen.
@@ -36,7 +36,7 @@ Leave out edges that are true but say nothing: a utility imported by forty files
 
 Give every node an `x` and `y`. Lay the groups out left to right in the order a request travels through them, nodes within a group top to bottom heaviest first, with roughly 260 units between columns and 96 between rows. A first drawing that reads correctly is worth the extra effort — it is the one the user will start rearranging.
 
-Optionally add `notes`: short remarks with an `anchor` naming the node they are about. Use them for the things a newcomer gets wrong, not for restating a summary.
+Optionally add `notes`: each is `{ "id": <short slug>, "text": <the remark>, "anchor": <node id or null> }`, a short remark about the node it is anchored to. Use them for the things a newcomer gets wrong, not for restating a summary.
 
 ## The rule that matters most
 
