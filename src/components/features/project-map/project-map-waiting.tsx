@@ -41,6 +41,9 @@ const ROUTE_LABELS: Record<ImproveRoute, I18nKey> = {
   escalate: I18nKey.IMPROVE$PARKED$ROUTE_RETURN,
 };
 
+/** A plural phrase, so outside the typed key enum. */
+const PARKED_HEADING_I18N_KEY = "IMPROVE$PARKED$HEADING_COUNT";
+
 const PLAN_SECTIONS: {
   key: keyof ImproveChangeoverPlan;
   label: I18nKey;
@@ -65,8 +68,10 @@ export function ProjectMapWaiting() {
     >
       <header className="flex items-baseline gap-2">
         <Clock size={ICON_SIZE} aria-hidden className="text-warning" />
+        {/* With the count: the toolbar says "3 waiting on you" and the
+            panel showed one card with no sign the others were below it. */}
         <h3 className="text-sm font-medium text-contrast">
-          {t(I18nKey.IMPROVE$PARKED$HEADING)}
+          {t(PARKED_HEADING_I18N_KEY, { count: cycles.length })}
         </h3>
         <p className="text-xs text-text-secondary">
           {t(I18nKey.IMPROVE$PARKED$SUBTITLE)}
