@@ -134,7 +134,7 @@ const RELEASED_SHOWN = 5;
 
 export function ProjectMapPage() {
   const { t, i18n } = useTranslation("openhands");
-  const { navigate } = useNavigation();
+  const { navigate, currentPath } = useNavigation();
   const { backend } = useActiveBackend();
   const frameRef = React.useRef<SVGSVGElement | null>(null);
   // The folder this page is a picture of, and the conversation working in it,
@@ -210,6 +210,24 @@ export function ProjectMapPage() {
   // or the live graph of what the agents are doing — the canvas draws either
   // the same way, and everything drawn over the top is unaffected.
   const layer = useProjectMapStore((state) => state.layer);
+  const setLayer = useProjectMapStore((state) => state.setLayer);
+  // `?layer=work` opens on the agents, so a screen about what they are doing
+  // can point at the drawing of it. Applied once: after that the switch in
+  // the toolbar is the only thing that decides. Read from the navigation
+  // context rather than the router's own hook, because this page is rendered
+  // outside a router in tests and inside a host app when embedded.
+  const askedForLayer = React.useMemo(() => {
+    // The context's path is the pathname in the app and carries the query in
+    // tests, so both are read: whichever has it, has it.
+    const query =
+      currentPath.split("?")[1] ??
+      (typeof window === "undefined"
+        ? undefined
+        : window.location.search.replace(/^\?/, ""));
+    if (query === undefined || query === "") return null;
+    return new URLSearchParams(query).get("layer");
+  }, [currentPath]);
+  const appliedAskedLayer = React.useRef(false);
   // The work layer's own layers, named for a reader rather than for the
   // schema. Built here because this is where translation lives.
   const workLabels = React.useMemo(
@@ -336,6 +354,15 @@ export function ProjectMapPage() {
     };
   }, [document_, layer, workLayer]);
   const paperGroups = paper?.groups.length ?? 0;
+
+  // Applied once the map is in: opening a document sets the layer it names,
+  // so asking before that would be answered and then overruled.
+  React.useEffect(() => {
+    if (appliedAskedLayer.current || document_ === null) return;
+    if (askedForLayer !== "work" && askedForLayer !== "code") return;
+    appliedAskedLayer.current = true;
+    setLayer(askedForLayer);
+  }, [askedForLayer, document_, setLayer]);
 
   // The work graph, folded or not, when the paper changes to it or away.
   React.useEffect(() => {

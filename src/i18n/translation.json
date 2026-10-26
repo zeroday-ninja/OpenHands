@@ -61288,5 +61288,23 @@
     "uk": "Попросіть зміну або продовжте з місця, де воно зупинилося",
     "ca": "Demana un canvi, o reprèn-ho on s'ha aturat",
     "id": "Minta perubahan, atau lanjutkan dari tempat berhenti"
+  },
+  "AUTOMATIONS$SEE_ON_THE_MAP": {
+    "en": "See it on the map",
+    "zh-CN": "在地图上查看",
+    "zh-TW": "在地圖上檢視",
+    "de": "Auf der Karte ansehen",
+    "ko-KR": "맵에서 보기",
+    "no": "Se det på kartet",
+    "it": "Guardalo sulla mappa",
+    "pt": "Ver no mapa",
+    "es": "Verlo en el mapa",
+    "ar": "شاهده على الخريطة",
+    "fr": "Voir sur la carte",
+    "tr": "Haritada gör",
+    "ja": "マップで見る",
+    "uk": "Подивитися на карті",
+    "ca": "Mira-ho al mapa",
+    "id": "Lihat di peta"
   }
 }

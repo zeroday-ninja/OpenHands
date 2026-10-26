@@ -788,6 +788,37 @@ describe("the project map page", () => {
     expect(screen.queryByTestId("project-map-legend")).toBeNull();
   });
 
+  it("opens on the agents when the link asks for them", async () => {
+    // Arrange: a screen about what the agents are doing links here, and the
+    // drawing of that work is the point of the link.
+    everythingAnnounced();
+    workGraphNodes.current = [
+      {
+        key: "oh:1/local/agent:a1",
+        kind: "agent",
+        label: "codex",
+        status: "in_flight",
+        attrs: { role: "builder", conversation_id: "conversation-1" },
+      },
+    ];
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+
+    // Act
+    renderWithProviders(<MapRoute />, {
+      navigation: { currentPath: "/map?layer=work" },
+    });
+
+    // Assert: the work layer is on the paper, without a press.
+    expect(
+      await screen.findByTestId("project-map-node-oh:1/local/agent:a1"),
+    ).toBeInTheDocument();
+    expect(useProjectMapStore.getState().layer).toBe("work");
+  });
+
   it("opens the rail for the part you click", async () => {
     // Arrange
     everythingAnnounced();
