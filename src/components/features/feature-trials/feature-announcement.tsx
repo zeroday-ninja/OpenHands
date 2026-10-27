@@ -39,6 +39,7 @@ export function FeatureAnnouncement({ trials }: FeatureAnnouncementProps) {
   const markAnnounced = useFeatureTrialStore((state) => state.markAnnounced);
   const [dismissed, setDismissed] = React.useState<string[]>([]);
   const [step, setStep] = React.useState(0);
+  const panelRef = React.useRef<HTMLElement | null>(null);
 
   const trial =
     trials.find(
@@ -72,7 +73,21 @@ export function FeatureAnnouncement({ trials }: FeatureAnnouncementProps) {
     const box = element.getBoundingClientRect();
     const onScreen = box.top < window.innerHeight && box.bottom > 0;
     if (!onScreen && typeof element.scrollIntoView === "function") {
-      element.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      element.scrollIntoView({ block: "nearest" });
+      // And undone if it cost the reader this panel. On the home screen the
+      // target sits 91 px below the fold and the panel starts at the very
+      // top of the same column, so the smallest scroll that reveals one cuts
+      // the other's title off. The explanation wins: a target nobody can see
+      // is a scroll away, an explanation nobody can read is gone.
+      const panel = panelRef.current;
+      const seat = panel?.getBoundingClientRect();
+      if (
+        panel &&
+        seat &&
+        (seat.top < 0 || seat.bottom > window.innerHeight) &&
+        typeof panel.scrollIntoView === "function"
+      )
+        panel.scrollIntoView({ block: "nearest" });
     }
     return () => element.classList.remove(...HIGHLIGHT_CLASS.split(" "));
   }, [target]);
@@ -83,6 +98,7 @@ export function FeatureAnnouncement({ trials }: FeatureAnnouncementProps) {
 
   return (
     <section
+      ref={panelRef}
       data-testid="feature-announcement"
       data-feature-id={trial.id}
       data-step={step}

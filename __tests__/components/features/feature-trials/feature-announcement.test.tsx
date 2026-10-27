@@ -16,6 +16,8 @@ describe("FeatureAnnouncement", () => {
   // A case that appends a step's target and then fails leaves it in the body,
   // where the next case's `querySelector` finds it instead of its own.
   afterEach(() => {
+    vi.restoreAllMocks();
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
     clearFeatureTrials();
     window.document
       .querySelectorAll(`[data-testid="${TRIAL.steps[0].testId}"]`)
@@ -72,6 +74,50 @@ describe("FeatureAnnouncement", () => {
     // panel, and taller than it, took the map's rail 1421 px down a 627 px
     // column and left the explanation off screen.
     expect(scrollIntoView).not.toHaveBeenCalled();
+    target.remove();
+  });
+
+  it("undoes a scroll that cost the reader this panel", async () => {
+    // Arrange: a panel that ends up clipped by the scroll its own step asks
+    // for, which is the home screen's geometry — the target sits just below
+    // the fold and the panel starts at the top of the same column.
+    const scrolled: string[] = [];
+    // jsdom has no `scrollIntoView` to spy on, so the recorder is the
+    // implementation. Removed again in `afterEach`.
+    Object.defineProperty(Element.prototype, "scrollIntoView", {
+      configurable: true,
+      value: function record(this: Element) {
+        scrolled.push(this.getAttribute("data-testid") ?? this.tagName);
+      },
+    });
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+      function clipped(this: Element) {
+        const panel =
+          this.getAttribute("data-testid") === "feature-announcement";
+        return {
+          top: panel ? -40 : 0,
+          bottom: panel ? 200 : 0,
+          left: 0,
+          right: 0,
+          width: 0,
+          height: 0,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
+        } as DOMRect;
+      },
+    );
+    const target = window.document.createElement("div");
+    target.setAttribute("data-testid", TRIAL.steps[0].testId as string);
+    window.document.body.appendChild(target);
+
+    // Act
+    renderWithProviders(<FeatureAnnouncement trials={[TRIAL]} />);
+    await screen.findByTestId("feature-announcement");
+
+    // Assert: the panel is scrolled back after the target, so the last word
+    // on where the view sits belongs to the explanation.
+    await waitFor(() => expect(scrolled.at(-1)).toBe("feature-announcement"));
     target.remove();
   });
 
