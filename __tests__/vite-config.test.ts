@@ -30,6 +30,20 @@ describe("vite optimizeDeps", () => {
   });
 });
 
+describe("vite optimizeDeps: extension catalogs", () => {
+  it("prebundles the extension catalogs instead of serving them file by file", async () => {
+    const config = await viteConfig({ mode: "development", command: "serve" });
+
+    expect(config.optimizeDeps?.include ?? []).toEqual(
+      expect.arrayContaining([
+        "@openhands/extensions/automations",
+        "@openhands/extensions/integrations",
+        "@openhands/extensions/skills",
+      ]),
+    );
+  });
+});
+
 describe("vitest environment projects", () => {
   const getProjects = async () => {
     const config = await viteConfig({ mode: "test", command: "serve" });
@@ -201,6 +215,13 @@ describe("vite library build", () => {
     // `package.json` routes `require` here; stripped CSS imports must not
     // leave it unparseable.
     expect(() => new Script(file("index.cjs"))).not.toThrow();
+
+    // The `./i18n` subpath only re-exports. As a plain module rollup folds it
+    // into a facade with no exports; as an entry it keeps the host-app API.
+    const i18nEntry = file("i18n/library.cjs");
+    expect(() => new Script(i18nEntry)).not.toThrow();
+    expect(i18nEntry).toContain("translationResources");
+    expect(i18nEntry).toContain("createAgentServerI18n");
   }, 180000);
 });
 

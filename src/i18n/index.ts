@@ -4,11 +4,13 @@ import LanguageDetector from "i18next-browser-languagedetector";
 import { initReactI18next } from "react-i18next";
 import { buildAgentCanvasPath } from "#/utils/base-path";
 
-// Re-export so library consumers (`@openhands/agent-canvas/i18n`) keep working
-// without pulling the 1 MB `translation.json` into the app build. Rollup drops
-// this re-export when the consumer does not reference `translationResources`,
-// which is the case for the app entry that uses i18next-http-backend.
-export { translationResources, type TranslationResources } from "./resources";
+// This module is the i18n runtime that the app and every component import. It
+// must never reach `./resources`: that module statically imports the 3 MB
+// `translation.json`, and while rollup tree-shakes an unused re-export out of
+// the production build, the Vite dev server does not. A re-export here put a
+// 15 MB module on every dev page load. Library consumers get
+// `translationResources` from `./library` (the `@openhands/agent-canvas/i18n`
+// subpath) instead.
 
 export const OPENHANDS_I18N_NAMESPACE = "openhands";
 
