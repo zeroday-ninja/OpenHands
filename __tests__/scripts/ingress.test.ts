@@ -342,6 +342,16 @@ describe("ingress proxy functionality", () => {
     expect(data.path).toBe("/other/path");
   });
 
+  it("answers the MARS bridge probe itself when no bridge is mounted", async () => {
+    // The page probes /mars/health before it renders. Without a bridge the
+    // probe must get a short 404, not the default backend's SPA shell.
+    const response = await fetch(`${originForPort(ingressPort)}/mars/health`);
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-type")).toContain("text/plain");
+    await expect(response.text()).resolves.not.toContain("backend");
+  });
+
   it("preserves query parameters", async () => {
     const response = await fetch(
       `${originForPort(ingressPort)}/api/test?foo=bar&baz=123`,

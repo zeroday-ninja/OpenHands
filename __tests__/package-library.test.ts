@@ -54,9 +54,9 @@ describe("package library metadata", () => {
         require: "./dist/components/terminal/index.cjs",
       },
       "./i18n": {
-        types: "./dist/i18n/index.d.ts",
-        import: "./dist/i18n/index.js",
-        require: "./dist/i18n/index.cjs",
+        types: "./dist/i18n/library.d.ts",
+        import: "./dist/i18n/library.js",
+        require: "./dist/i18n/library.cjs",
       },
       "./styles.css": "./dist/styles.css",
     });

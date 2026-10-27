@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 describe("library i18n namespace scoping", () => {
   it("exports raw translation resources for host-app registration", async () => {
     const { OPENHANDS_I18N_NAMESPACE, translationResources } = await import(
-      "../../src/i18n"
+      "../../src/i18n/library"
     );
 
     expect(OPENHANDS_I18N_NAMESPACE).toBe("openhands");
@@ -11,6 +11,24 @@ describe("library i18n namespace scoping", () => {
     expect(translationResources.en).not.toHaveProperty(
       OPENHANDS_I18N_NAMESPACE,
     );
+  });
+
+  it("keeps the translation catalog out of the runtime entry", async () => {
+    // The runtime entry is in every page's eager graph, and the Vite dev
+    // server does not tree-shake: re-exporting `./resources` from it would put
+    // the whole catalog (a 15 MB module in dev) on every page load.
+    vi.resetModules();
+    vi.doMock("../../src/i18n/translation.json", () => {
+      throw new Error("src/i18n/index.ts must not load translation.json");
+    });
+    try {
+      await expect(import("../../src/i18n")).resolves.toHaveProperty(
+        "waitForI18n",
+      );
+    } finally {
+      vi.doUnmock("../../src/i18n/translation.json");
+      vi.resetModules();
+    }
   });
 
   it("configures standalone i18n to load the openhands namespace by default", async () => {

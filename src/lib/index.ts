@@ -30,7 +30,7 @@ export {
   setI18n,
   translationResources,
   waitForI18n,
-} from "../i18n";
+} from "../i18n/library";
 export {
   AGENT_SERVER_UI_DEFAULT_CSS_VARIABLES,
   AGENT_SERVER_UI_DEFAULT_THEME,

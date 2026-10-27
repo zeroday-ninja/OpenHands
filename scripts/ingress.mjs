@@ -27,7 +27,7 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 
 import { DEFAULT_BIND_HOST, resolveBindHost } from "./bind-host.mjs";
-import { mountMarsWebBridge } from "./mars-web-bridge.mjs";
+import { MARS_WEB_PREFIX, mountMarsWebBridge } from "./mars-web-bridge.mjs";
 import {
   CONTROL_KEY_HEADER,
   CONTROL_PATH_PREFIX,
@@ -387,6 +387,15 @@ export function startIngress(config) {
   const server = createServer((req, res) => {
     const url = req.url ?? "/";
     if (marsWeb?.handleHttp(req, res)) return;
+    // Nothing behind this ingress serves `/mars/*` when the bridge is not
+    // mounted. The page probes `/mars/health` before it renders; letting that
+    // fall through to the SPA backend answers it with the whole app shell
+    // (a megabyte of inlined CSS in dev) instead of a short no.
+    if (!marsWeb && matchesPathPrefix(url, MARS_WEB_PREFIX)) {
+      res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end("Not Found");
+      return;
+    }
     if (control.handle(req, res)) return;
     const backend = route(url);
 
