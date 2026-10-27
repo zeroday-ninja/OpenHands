@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import {
   ChevronLeft,
   ChevronRight,
+  LayoutDashboard,
   Network,
   Plus,
   Server,
@@ -24,6 +25,7 @@ import { SidebarCollapsedIconSlot } from "./sidebar-collapsed-icon-slot";
 import { SidebarNavLink } from "./sidebar-nav-link";
 import { I18nKey } from "#/i18n/declaration";
 import { PROJECT_MAP_ROUTE_PATH } from "#/types/project-map";
+import { WORKBENCH_ROUTE_PATH } from "#/types/workbench";
 import { cn } from "#/utils/utils";
 import { StyledTooltip } from "#/components/shared/buttons/styled-tooltip";
 import { BackendSelector } from "#/components/features/backends/backend-selector";
@@ -263,6 +265,21 @@ export function SidebarRailBody({
             pinAction={buildPinAction(
               PROJECT_MAP_ROUTE_PATH,
               "sidebar-pin-home-toggle-map",
+            )}
+          />
+        )}
+        {/* The workbench reads the same kind of workspace file as the map,
+            so it is unavailable on a canvas locked to a Cloud host too. */}
+        {!isLockedToCloud && (
+          <SidebarNavLink
+            to={WORKBENCH_ROUTE_PATH}
+            label={t(I18nKey.WORKBENCH$NAV_LABEL)}
+            testId="sidebar-workbench-link"
+            collapsed={collapsed}
+            icon={<LayoutDashboard width={ICON_SIZE} height={ICON_SIZE} />}
+            pinAction={buildPinAction(
+              WORKBENCH_ROUTE_PATH,
+              "sidebar-pin-home-toggle-workbench",
             )}
           />
         )}

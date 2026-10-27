@@ -1,4 +1,7 @@
 import { delay, http, HttpResponse } from "msw";
+import { WORKBENCH_FILE_PATH } from "#/types/workbench";
+import { serializeWorkbench } from "#/utils/workbench/parse-workbench";
+import { workbenchExampleDocument } from "#/utils/workbench/workbench-seed";
 
 export const FILE_VARIANTS_1 = ["file1.txt", "file2.txt", "file3.txt"];
 export const FILE_VARIANTS_2 = [
@@ -38,7 +41,46 @@ const MOCK_SUBDIRECTORIES_BY_PATH: Record<
 const shouldReturnProjectMock =
   typeof import.meta.env.MODE === "string" && import.meta.env.MODE !== "test";
 
+/**
+ * The workbench document in mock mode. Reads answer with the example until a
+ * write replaces it, so the page behaves like a real workspace: edits
+ * autosave, a reload shows them, and a missing file (any other path) is a 404
+ * the page turns into its empty state.
+ */
+const mockWorkspaceDocuments = new Map<string, string>();
+
+function workspaceDocumentFor(path: string): string | null {
+  if (mockWorkspaceDocuments.has(path))
+    return mockWorkspaceDocuments.get(path) ?? null;
+  if (path.endsWith(WORKBENCH_FILE_PATH)) {
+    return serializeWorkbench(workbenchExampleDocument());
+  }
+  return null;
+}
+
 export const FILE_SERVICE_HANDLERS = [
+  http.get("*/api/file/download", async ({ request }) => {
+    const url = new URL(request.url);
+    const path = url.searchParams.get("path") ?? "";
+    const raw = workspaceDocumentFor(path);
+    if (raw === null) {
+      return HttpResponse.json({ detail: "File not found" }, { status: 404 });
+    }
+    return new HttpResponse(raw, {
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+
+  http.post("*/api/file/upload", async ({ request }) => {
+    const form = await request.formData();
+    const file = form.get("file");
+    const path = new URL(request.url).searchParams.get("path") ?? "";
+    if (path !== "" && file instanceof Blob) {
+      mockWorkspaceDocuments.set(path, await file.text());
+    }
+    return HttpResponse.json({ success: true, path });
+  }),
+
   http.all("*/api/bash/execute_bash_command", async () =>
     HttpResponse.json({
       command: "",

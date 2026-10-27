@@ -126,6 +126,16 @@ export const PROJECT_MAP_QUERY_KEYS = {
     ["project-map", backendId, conversationId] as const,
 } as const;
 
+/**
+ * The workbench document in a workspace. Keyed like the project map, by
+ * backend and by the conversation whose working directory holds the file.
+ */
+export const WORKBENCH_QUERY_KEYS = {
+  all: ["workbench"] as const,
+  byWorkspace: (backendId: string, conversationId: string | null) =>
+    ["workbench", backendId, conversationId] as const,
+} as const;
+
 export const TOOL_CATALOG_QUERY_KEYS = {
   all: ["tool-catalog"] as const,
 } as const;
