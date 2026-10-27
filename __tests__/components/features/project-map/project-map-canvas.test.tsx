@@ -95,6 +95,11 @@ function stubFrame() {
   } as DOMRect);
 }
 
+/** A rendered element's opacity, with 1 standing for "none set". */
+function dimmed(testId: string): number {
+  return Number(screen.getByTestId(testId).getAttribute("opacity") ?? "1");
+}
+
 const POINTER = { pointerId: 1, button: 0 };
 
 /** A press and a release at the same place: a click, however it is delivered. */
@@ -250,12 +255,15 @@ describe("ProjectMapCanvas", () => {
       0,
     );
 
-    // Assert: and the layer nobody opened is drawn as context, outline and
-    // header included.
-    expect(screen.getByTestId("project-map-group-data")).not.toHaveAttribute(
-      "opacity",
-      "1",
-    );
+    // Assert: and the layer nobody opened is drawn as context — outline,
+    // header, and the fold control that sits on the outline, which is drawn
+    // in a pass of its own and was left bright over a faded layer.
+    //
+    // Read as a number with 1 for "no opacity set at all", because
+    // `not.toHaveAttribute("opacity", "1")` also passes for an element that
+    // has no opacity, which is exactly the state being guarded against.
+    expect(dimmed("project-map-group-data")).toBeLessThan(1);
+    expect(dimmed("project-map-group-toggle-data")).toBeLessThan(1);
   });
 
   it("only pans on the overview's paper, whatever tool is in hand", () => {
