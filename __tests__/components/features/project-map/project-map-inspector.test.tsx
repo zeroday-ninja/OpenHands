@@ -42,6 +42,32 @@ describe("the selection panel", () => {
     useProjectMapStore.getState().setSelection(["agent:17"]);
   });
 
+  it("names a borrowed plate by its layer, not by the shape it borrowed", () => {
+    // Arrange: the live work graph draws an agent with a service's
+    // silhouette, which the legend explains. The word cannot be borrowed the
+    // way the shape can.
+    const borrowed: PlacedProjectMapDocument = {
+      ...DOCUMENT,
+      groups: [{ id: "web", label: "Agents", accent: "1", collapsed: false }],
+    };
+    useProjectMapStore.getState().hydrate("revision-borrowed", borrowed);
+    useProjectMapStore.getState().setSelection(["agent:17"]);
+
+    // Act
+    renderWithProviders(
+      <ProjectMapInspector
+        document={borrowed}
+        editable={false}
+        shapesAreBorrowed
+      />,
+    );
+
+    // Assert: this panel was calling an agent a service.
+    const panel = screen.getByTestId("project-map-inspector");
+    expect(panel).toHaveTextContent("Agents");
+    expect(panel).not.toHaveTextContent(/service/i);
+  });
+
   it("reads a drawing it cannot change, and offers no edits to it", () => {
     // Arrange: the live work graph is assembled on every fetch, so renaming
     // or pinning one of its plates would write about a node the committed

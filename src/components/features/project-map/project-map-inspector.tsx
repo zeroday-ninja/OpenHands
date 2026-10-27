@@ -11,7 +11,10 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import { Eye, EyeOff, MapPin, Pencil, StickyNote } from "lucide-react";
 import { I18nKey } from "#/i18n/declaration";
-import type { PlacedProjectMapDocument } from "#/types/project-map";
+import type {
+  PlacedProjectMapDocument,
+  PlacedProjectMapNode,
+} from "#/types/project-map";
 import {
   projectMapNeighbors,
   resolveProjectMapSelection,
@@ -41,13 +44,34 @@ export interface ProjectMapInspectorProps {
    * of. It still reads: what the thing is, and what it connects to.
    */
   editable?: boolean;
+  /**
+   * True when the plates borrowed their silhouettes from another vocabulary.
+   *
+   * The live work graph is drawn with the shapes the canvas already has: an
+   * agent takes a service's outline, a cycle a module's. That loan is
+   * deliberate and the legend explains it, but a *word* cannot be borrowed
+   * the way a shape can — this panel was calling an agent a service. The
+   * category then comes from the layer the node sits in, which the work
+   * graph names for a reader.
+   */
+  shapesAreBorrowed?: boolean;
 }
 
 export function ProjectMapInspector({
   document: map,
   editable = true,
+  shapesAreBorrowed = false,
 }: ProjectMapInspectorProps) {
   const { t } = useTranslation("openhands");
+  /** What sort of thing a plate is, in the vocabulary it actually belongs to. */
+  const categoryOf = React.useCallback(
+    (node: PlacedProjectMapNode) => {
+      const layer = map.groups.find((group) => group.id === node.group)?.label;
+      if (shapesAreBorrowed && layer !== undefined) return layer;
+      return t(PROJECT_MAP_NODE_KIND_LABELS[node.kind]);
+    },
+    [map.groups, shapesAreBorrowed, t],
+  );
   const selection = useProjectMapStore((state) => state.selection);
   const setSelection = useProjectMapStore((state) => state.setSelection);
   const renameNode = useProjectMapStore((state) => state.renameNode);
@@ -157,7 +181,7 @@ export function ProjectMapInspector({
             >
               <span className="font-medium text-foreground">{node.label}</span>
               <span className="truncate font-mono text-micro text-muted">
-                {node.path ?? t(PROJECT_MAP_NODE_KIND_LABELS[node.kind])}
+                {node.path ?? categoryOf(node)}
               </span>
             </button>
           </li>
@@ -175,7 +199,7 @@ export function ProjectMapInspector({
     <div data-testid="project-map-inspector" className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
         <span className={PROJECT_MAP_SECTION_LABEL_CLASS}>
-          {t(PROJECT_MAP_NODE_KIND_LABELS[node.kind])}
+          {categoryOf(node)}
         </span>
         {renaming === node.id ? (
           <input

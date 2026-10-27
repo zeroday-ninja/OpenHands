@@ -727,6 +727,7 @@ export function ProjectMapPage() {
         <ProjectMapInspector
           document={paper ?? document_}
           editable={layer === "code"}
+          shapesAreBorrowed={layer !== "code"}
         />
       </div>
     );
