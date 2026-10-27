@@ -975,6 +975,33 @@ describe("the project map page", () => {
     expect(window.localStorage.getItem("project-map-layer")).toBeNull();
   });
 
+  it("puts what you clicked above the rest of the rail", async () => {
+    // Arrange: a feature still to introduce itself, so the rail has
+    // something tall above the inspector — on the live map, three parked
+    // changes and an announcement ran to three thousand pixels.
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+    const announcement = await screen.findByTestId("feature-announcement");
+
+    // Act: click a part, which is what opens the rail in the first place.
+    act(() =>
+      useProjectMapStore.getState().setSelection(["src/routes/home.tsx"]),
+    );
+
+    // Assert: the panel describing it comes first. It used to be last, which
+    // on a real rail put it past the bottom of the window.
+    const inspector = await screen.findByTestId("project-map-inspector");
+    expect(
+      inspector.compareDocumentPosition(announcement) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it("keeps the work export out from under the chat toggle", async () => {
     // Arrange: the work layer, which is the only one with an export.
     everythingAnnounced();
