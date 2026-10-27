@@ -1119,14 +1119,6 @@ export function ProjectMapPage() {
                     : ""}
                 </p>
               )}
-              {layer === "work" && (
-                <div className="absolute bottom-4 right-4">
-                  <ProjectMapWorkExport
-                    graph={workGraph}
-                    contributions={workContributions}
-                  />
-                </div>
-              )}
               <ProjectMapChatDock
                 document={document_}
                 mapPath={agentMapPath}
@@ -1134,6 +1126,14 @@ export function ProjectMapPage() {
                 launchWorkingDir={launchWorkingDir}
                 onConversationStarted={setMapConversationId}
                 onDetach={() => setMapConversationId(null)}
+                aside={
+                  layer === "work" ? (
+                    <ProjectMapWorkExport
+                      graph={workGraph}
+                      contributions={workContributions}
+                    />
+                  ) : undefined
+                }
               />
             </div>
           </div>

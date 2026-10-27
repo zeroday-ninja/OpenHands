@@ -35,6 +35,14 @@ export interface ProjectMapChatDockProps {
   launchWorkingDir: string | null;
   onConversationStarted: (id: string) => void;
   onDetach: () => void;
+  /**
+   * Anything else that belongs in this corner, stacked above the toggle.
+   *
+   * The dock owns the bottom-right of the paper. A second control placed
+   * there independently is drawn on top of this one — which is what the work
+   * layer's export did, with "Open chat" sitting across the word "Export".
+   */
+  aside?: React.ReactNode;
 }
 
 export function ProjectMapChatDock({
@@ -44,6 +52,7 @@ export function ProjectMapChatDock({
   launchWorkingDir,
   onConversationStarted,
   onDetach,
+  aside,
 }: ProjectMapChatDockProps) {
   const { t } = useTranslation("openhands");
   const chatOpen = useProjectMapStore((state) => state.chatOpen);
@@ -90,6 +99,9 @@ export function ProjectMapChatDock({
             />
           </React.Suspense>
         </div>
+      )}
+      {aside !== undefined && (
+        <div className="pointer-events-auto">{aside}</div>
       )}
       <button
         type="button"

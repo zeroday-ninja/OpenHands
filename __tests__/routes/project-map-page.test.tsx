@@ -975,6 +975,42 @@ describe("the project map page", () => {
     expect(window.localStorage.getItem("project-map-layer")).toBeNull();
   });
 
+  it("keeps the work export out from under the chat toggle", async () => {
+    // Arrange: the work layer, which is the only one with an export.
+    everythingAnnounced();
+    workGraphNodes.current = [
+      {
+        key: "oh:1/local/agent:a1",
+        kind: "agent",
+        label: "codex",
+        status: "in_flight",
+        attrs: { role: "builder", conversation_id: "conversation-1" },
+      },
+    ];
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+
+    // Act
+    renderWithProviders(<MapRoute />, {
+      navigation: { currentPath: "/map?layer=work" },
+    });
+    await screen.findByTestId("project-map-work-export");
+
+    // Assert: both controls are in the dock's own stack, which is what keeps
+    // them off each other — placed in that corner independently, "Open chat"
+    // was drawn across the word "Export".
+    const dock = screen.getByTestId("project-map-chat-dock");
+    expect(
+      within(dock).getByTestId("project-map-work-export"),
+    ).toBeInTheDocument();
+    expect(
+      within(dock).getByTestId("project-map-chat-dock-toggle"),
+    ).toBeInTheDocument();
+  });
+
   it("keeps the view you chose for a map that can fold", async () => {
     // Arrange: a map big enough to open as its layers.
     everythingAnnounced();
