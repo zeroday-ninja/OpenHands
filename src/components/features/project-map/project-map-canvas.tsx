@@ -1582,11 +1582,17 @@ export function ProjectMapCanvas({
                 );
                 if (bounds === null) return null;
                 const accent = accentOf(group.id);
+                // With its layer, like the boundary it sits on. These are
+                // drawn in their own pass, after the plates, so the fade
+                // applied to the boundaries missed them and left two bright
+                // squares floating over an otherwise faded layer.
+                const lit = openedGroup === null || group.id === openedGroup;
                 return (
                   <g
                     key={group.id}
                     role="button"
                     tabIndex={0}
+                    opacity={lit ? 1 : 0.18}
                     data-testid={`project-map-group-toggle-${group.id}`}
                     aria-label={t(
                       group.collapsed
