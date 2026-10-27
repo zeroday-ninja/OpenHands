@@ -61,8 +61,18 @@ export function FeatureAnnouncement({ trials }: FeatureAnnouncementProps) {
     // Scrolling is the nicety and the outline is the point, so a host without
     // `scrollIntoView` loses the scroll rather than the whole walkthrough: an
     // exception here would throw out of an effect and take the panel with it.
-    if (typeof element.scrollIntoView === "function") {
-      element.scrollIntoView({ block: "center", behavior: "smooth" });
+    //
+    // And only when the target cannot be seen at all. A step's target is
+    // usually in the same scrolling column as this panel and often taller
+    // than it, so any scroll at all moves the panel out of view: centring
+    // took the map's rail 1421 px down a 627 px column, and even the
+    // smallest scroll left the reader with the explanation off screen.
+    // Something already on screen does not need bringing onto it; the
+    // outline is what says which one it is.
+    const box = element.getBoundingClientRect();
+    const onScreen = box.top < window.innerHeight && box.bottom > 0;
+    if (!onScreen && typeof element.scrollIntoView === "function") {
+      element.scrollIntoView({ block: "nearest", behavior: "smooth" });
     }
     return () => element.classList.remove(...HIGHLIGHT_CLASS.split(" "));
   }, [target]);
