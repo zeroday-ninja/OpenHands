@@ -706,6 +706,31 @@ export function ProjectMapPage() {
   const pickerInHeader =
     backend.kind === "local" && (chosenPath !== null || document_ !== null);
 
+  /**
+   * What the paper has to say about the selection.
+   *
+   * Placed above everything else in the rail while something is selected.
+   * The rail is one scrolling column, and with three changes parked the
+   * cards above this ran to three thousand pixels: clicking a plate opened
+   * a panel describing it 3,261 px below a 900 px window, which is
+   * indistinguishable from clicking a plate and nothing happening. Clicking
+   * a thing has to show you the thing.
+   */
+  const inspector =
+    document_ === null ? null : (
+      <div className="flex flex-col gap-2">
+        <span className={PROJECT_MAP_SECTION_LABEL_CLASS}>
+          {t(I18nKey.PROJECT_MAP$INSPECTOR_TITLE)}
+        </span>
+        {/* The panel describes whatever is on the paper; only the committed
+          analysis can be edited from it. */}
+        <ProjectMapInspector
+          document={paper ?? document_}
+          editable={layer === "code"}
+        />
+      </div>
+    );
+
   const page = (
     <div
       data-testid="project-map-page"
@@ -1148,21 +1173,12 @@ export function ProjectMapPage() {
                 visible without displacing the drawing. Each renders nothing
                 when it has nothing to say, so the rail is the inspector and
                 the legend on an ordinary day. */}
+              {selected > 0 && inspector}
               <FeatureAnnouncement trials={featureTrialsOn("/map")} />
               <FeatureFeedback trials={featureTrialsOn("/map")} />
               <ProjectMapWaiting />
               <UnusedFeatureList />
-              <div className="flex flex-col gap-2">
-                <span className={PROJECT_MAP_SECTION_LABEL_CLASS}>
-                  {t(I18nKey.PROJECT_MAP$INSPECTOR_TITLE)}
-                </span>
-                {/* The panel describes whatever is on the paper; only the
-                    committed analysis can be edited from it. */}
-                <ProjectMapInspector
-                  document={paper ?? document_}
-                  editable={layer === "code"}
-                />
-              </div>
+              {selected === 0 && inspector}
               <ProjectMapLegend
                 document={paper ?? document_}
                 waiting={waitingParts.size > 0}
