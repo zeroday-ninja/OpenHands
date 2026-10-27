@@ -165,6 +165,32 @@ describe("ProjectMapCanvas", () => {
     expect(screen.getByTestId(projectMapNodeDomId("left"))).toBeInTheDocument();
   });
 
+  it("names a layer in full when its name outruns one line", () => {
+    // Arrange: the live work graph draws names this long.
+    stubFrame();
+    useProjectMapStore.getState().hydrate("test-revision", {
+      ...document_,
+      groups: [
+        {
+          id: "web",
+          label: "Runs whose sandbox is gone",
+          accent: "1",
+          collapsed: false,
+        },
+      ],
+      nodes: [node({ id: "left", x: 0, y: 0, group: "web" })],
+      edges: [],
+    });
+    useProjectMapStore.getState().setOverview(true);
+    renderWithProviders(<Harness />);
+
+    // Assert: the last word is on the block, where the name used to end at
+    // `Runs whose sandbox is …`.
+    const block = screen.getByTestId("project-map-overview-block-web");
+    expect(block).toHaveTextContent("gone");
+    expect(block.textContent).not.toContain("…");
+  });
+
   it("names every folder a layer lives in, even when one line is too short", () => {
     // Arrange: a layer whose parts live in more folders than a block's width
     // can hold on one line.
