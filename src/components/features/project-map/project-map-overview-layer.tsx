@@ -42,6 +42,9 @@ function fit(text: string, width: number, advance = LABEL_ADVANCE): string {
 /** Baseline step between the folder line and its continuation. */
 const FOLDERS_LINE = 12.5;
 
+/** Baseline step between a layer's name and its continuation. */
+const LABEL_LINE = 21;
+
 /**
  * The same cut, over two lines, broken at a space.
  *
@@ -50,6 +53,10 @@ const FOLDERS_LINE = 12.5;
  * one file and the first eleven letters of another. A block has the height for
  * a second line, and a break at a space keeps a path whole. The ellipsis
  * survives for what still does not fit after that.
+ *
+ * Names run out of room too, and worse, because a name is what the block is
+ * for: the live work graph draws `Runs whose sandbox is …` and
+ * `Branches, pull request…`.
  */
 function wrap(text: string, width: number, advance: number): string[] {
   const room = Math.max(1, Math.floor((width - LABEL_INSET * 2) / advance));
@@ -160,6 +167,7 @@ export function ProjectMapOverviewLayer({
 
       {overview.blocks.map((block) => {
         const accent = accentOf(block.group.id);
+        const named = wrap(block.group.label, block.width, LABEL_ADVANCE);
         return (
           <g
             key={block.group.id}
@@ -209,16 +217,24 @@ export function ProjectMapOverviewLayer({
             )}
             <text
               x={block.x + LABEL_INSET}
-              y={block.y + 48}
+              y={block.y + (named.length > 1 ? 42 : 48)}
               fontSize={LABEL_SIZE}
               fontWeight={600}
               className="pointer-events-none fill-foreground"
             >
-              {fit(block.group.label, block.width)}
+              {named.map((line, index) => (
+                <tspan
+                  key={line}
+                  x={block.x + LABEL_INSET}
+                  dy={index === 0 ? 0 : LABEL_LINE}
+                >
+                  {line}
+                </tspan>
+              ))}
             </text>
             <text
               x={block.x + LABEL_INSET}
-              y={block.y + 78}
+              y={block.y + (named.length > 1 ? 88 : 78)}
               fontSize={PARTS_SIZE}
               className="pointer-events-none fill-muted"
             >
@@ -230,21 +246,24 @@ export function ProjectMapOverviewLayer({
             {block.where !== "" && (
               <text
                 x={block.x + LABEL_INSET}
-                y={block.y + 100}
+                y={block.y + (named.length > 1 ? 106 : 100)}
                 fontSize={FOLDERS_SIZE}
                 className="pointer-events-none fill-muted font-mono"
               >
-                {wrap(block.where, block.width, FOLDERS_ADVANCE).map(
-                  (line, index) => (
-                    <tspan
-                      key={line}
-                      x={block.x + LABEL_INSET}
-                      dy={index === 0 ? 0 : FOLDERS_LINE}
-                    >
-                      {line}
-                    </tspan>
-                  ),
-                )}
+                {/* One line under a name that took two: the block's floor is
+                    at 120 and a second folder line would be written past it. */}
+                {(named.length > 1
+                  ? [fit(block.where, block.width, FOLDERS_ADVANCE)]
+                  : wrap(block.where, block.width, FOLDERS_ADVANCE)
+                ).map((line, index) => (
+                  <tspan
+                    key={line}
+                    x={block.x + LABEL_INSET}
+                    dy={index === 0 ? 0 : FOLDERS_LINE}
+                  >
+                    {line}
+                  </tspan>
+                ))}
               </text>
             )}
           </g>
