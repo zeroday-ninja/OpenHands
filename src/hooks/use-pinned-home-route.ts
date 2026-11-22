@@ -11,6 +11,7 @@ import {
 } from "#/manifests/automation-interface";
 import { getLockedCloudHost } from "#/api/agent-server-config";
 import { PROJECT_MAP_ROUTE_PATH } from "#/types/project-map";
+import { WORKBENCH_ROUTE_PATH } from "#/types/workbench";
 
 export const PINNED_HOME_ROUTE_KEY = "oh:pinned-home-route";
 
@@ -48,10 +49,10 @@ export function isPinnableRoute(path: string): boolean {
   // comment promised did not exist.
   if (path === CONVERSATIONS_PATH) return true;
   if (path === automationListPath()) return hasAutomationInterface();
-  // The map reads a file from a local workspace, which a canvas locked to a
-  // Cloud host never has — and `/` must not redirect to a page whose only
-  // possible content is "unsupported here". Same guard the sidebar link uses.
-  if (path === PROJECT_MAP_ROUTE_PATH) return getLockedCloudHost() === null;
+  // Both pages read a local workspace file. Match the sidebar's Cloud guard
+  // when restoring a pin as well as when the user sets it.
+  if (path === PROJECT_MAP_ROUTE_PATH || path === WORKBENCH_ROUTE_PATH)
+    return getLockedCloudHost() === null;
   return false;
 }
 
