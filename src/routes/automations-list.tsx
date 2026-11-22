@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, type ReactNode } from "react";
-import { Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { Map, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { I18nKey } from "#/i18n/declaration";
@@ -44,6 +44,9 @@ import { BackendNotConfigured } from "#/components/features/automations/backend-
 import { DeleteConfirmationModal } from "#/components/features/automations/delete-confirmation-modal";
 import { useOpenAutomationEditor } from "#/hooks/use-open-automation-editor";
 import { useStartAutomationSetup } from "#/hooks/use-start-automation-setup";
+import { FeatureAnnouncement } from "#/components/features/feature-trials/feature-announcement";
+import { FeatureFeedback } from "#/components/features/feature-trials/feature-feedback";
+import { featureTrialsOn } from "#/features/feature-trials";
 import { AddAutomationMenu } from "#/components/features/automations/add-automation-menu";
 import { ImportAutomationModal } from "#/components/features/automations/import-automation-modal";
 import { RecommendedAutomationsLauncher } from "#/components/features/automations/recommended-automations-launcher";
@@ -739,12 +742,32 @@ function AutomationsListPage() {
               {t(I18nKey.AUTOMATIONS$GIT_SYNC$NAV_BUTTON)}
             </BrandButton>
           )}
+          {/* The same work these cards describe is drawn on the map, folded
+              into a block per kind. A list of runs says what happened; the
+              drawing says what is happening. */}
+          <BrandButton
+            type="button"
+            variant="secondary"
+            testId="automations-see-on-the-map"
+            className="whitespace-nowrap"
+            onClick={() => navigate?.("/map?layer=work")}
+            startContent={<Map className="size-4" aria-hidden />}
+          >
+            {t(I18nKey.AUTOMATIONS$SEE_ON_THE_MAP)}
+          </BrandButton>
           <AddAutomationMenu
             onAdd={startSetup}
             onImport={() => setIsImportOpen(true)}
           />
         </div>
       </div>
+
+      {/* A feature this app shipped on its own introduces itself here, and
+          keeps its rating afterwards. Both render nothing when they have
+          nothing to say. Until this route hosted them, a trial pointing at
+          one of its controls announced itself to nobody. */}
+      <FeatureAnnouncement trials={featureTrialsOn("/automations")} />
+      <FeatureFeedback trials={featureTrialsOn("/automations")} />
 
       {/* Overview tiles — dashboard mode only */}
       {dashboard && (

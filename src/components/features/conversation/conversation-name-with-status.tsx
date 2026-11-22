@@ -10,10 +10,16 @@ import { useCloseOnEscape } from "#/hooks/use-close-on-escape";
 import { useUserProviders } from "#/hooks/use-user-providers";
 import { getStatusColor, cn } from "#/utils/utils";
 import { AgentState } from "#/types/agent-state";
+import { ExecutionStatus } from "#/types/agent-server/core/base/common";
+import { useArchivedConversationsStore } from "#/stores/archived-conversations-store";
+import { useActiveBackend } from "#/contexts/active-backend-context";
+import { isEffectivelyArchivedConversation } from "#/utils/conversation-archive-status";
 import DebugStackframeDot from "#/icons/debug-stackframe-dot.svg?react";
 import { ServerStatusContextMenu } from "../controls/server-status-context-menu";
+import { conversationStatusLabelKey } from "../conversation-panel/conversation-status-dot";
 import { ConversationName } from "./conversation-name";
 import { ConversationGitActionsToggle } from "./conversation-git-actions-toggle";
+import { ConversationOnTheMapLink } from "./conversation-on-the-map-link";
 import { ConversationOverviewToggle } from "./conversation-overview-toggle";
 import { RightPanelToggle } from "./right-panel-toggle";
 import {
@@ -23,10 +29,14 @@ import {
 } from "#/utils/status";
 import { I18nKey } from "#/i18n/declaration";
 
+/** A stable empty list, so the selector never makes a new one. */
+const EMPTY_ARCHIVED_IDS: string[] = [];
+
 export function ConversationNameWithStatus() {
   const { t } = useTranslation("openhands");
   const { conversationId } = useConversationId();
   const { data: conversation } = useActiveConversation();
+  const { backend } = useActiveBackend();
   const { curAgentState } = useAgentState();
   const { isTask, taskStatus } = useTaskPolling();
   const { mutate: pauseConversation } = useUnifiedPauseConversation();
@@ -40,6 +50,32 @@ export function ConversationNameWithStatus() {
   const isStartingStatus =
     curAgentState === AgentState.LOADING || curAgentState === AgentState.INIT;
   const isStopStatus = isExecutionErrored(executionStatus);
+
+  /**
+   * Whether this conversation is archived — explicitly, or because its
+   * sandbox is gone and cannot come back. The list rows have said so on
+   * their own dots all along; the header's word did not, and reported the
+   * last thing the agent did instead, as though it might still be doing it.
+   */
+  const archivedIds = useArchivedConversationsStore(
+    (state) => state.archivesByBackendId[backend.id] ?? EMPTY_ARCHIVED_IDS,
+  );
+  const isArchived = isEffectivelyArchivedConversation(
+    conversation?.sandbox_status,
+    conversationId !== null && archivedIds.includes(conversationId),
+  );
+
+  /**
+   * What the live agent says, when it says anything the record cannot know
+   * yet. `null` leaves the conversation's own execution status to speak.
+   */
+  const liveStatus: ExecutionStatus | null = (() => {
+    if (isStartingStatus || curAgentState === AgentState.RUNNING)
+      return ExecutionStatus.RUNNING;
+    if (curAgentState === AgentState.PAUSED) return ExecutionStatus.PAUSED;
+    if (curAgentState === AgentState.ERROR) return ExecutionStatus.ERROR;
+    return null;
+  })();
 
   const statusColor = getStatusColor({
     isPausing: false,
@@ -150,8 +186,34 @@ export function ConversationNameWithStatus() {
           ) : null}
         </div>
         <ConversationName />
+        {/* The status in words, beside the name. The dot carries the colour
+            and opens the server menu; what a reader wants to know first —
+            did this finish, or did it stop — was a hover away.
+
+            The word follows the live agent while it is working, not the
+            conversation record: that record is polled every thirty seconds
+            and nothing invalidates it when the agent moves, so the chip
+            could read "Finished" beside a dot pulsing green. Where the two
+            disagree the agent in front of you is the truth. */}
+        <span
+          data-testid="conversation-status-chip"
+          data-status={
+            isArchived
+              ? "archived"
+              : (liveStatus ?? executionStatus ?? "unknown")
+          }
+          className="ml-2 shrink-0 rounded-md bg-contrast/10 px-2 py-0.5 text-micro text-muted"
+        >
+          {t(
+            conversationStatusLabelKey(
+              liveStatus ?? executionStatus,
+              isArchived,
+            ) as I18nKey,
+          )}
+        </span>
       </div>
       <div className="mr-2 flex shrink-0 items-center gap-1">
+        <ConversationOnTheMapLink />
         <ConversationGitActionsToggle />
         <ConversationOverviewToggle />
         <RightPanelToggle />

@@ -39,6 +39,7 @@ export function FeatureAnnouncement({ trials }: FeatureAnnouncementProps) {
   const markAnnounced = useFeatureTrialStore((state) => state.markAnnounced);
   const [dismissed, setDismissed] = React.useState<string[]>([]);
   const [step, setStep] = React.useState(0);
+  const panelRef = React.useRef<HTMLElement | null>(null);
 
   const trial =
     trials.find(
@@ -61,8 +62,32 @@ export function FeatureAnnouncement({ trials }: FeatureAnnouncementProps) {
     // Scrolling is the nicety and the outline is the point, so a host without
     // `scrollIntoView` loses the scroll rather than the whole walkthrough: an
     // exception here would throw out of an effect and take the panel with it.
-    if (typeof element.scrollIntoView === "function") {
-      element.scrollIntoView({ block: "center", behavior: "smooth" });
+    //
+    // And only when the target cannot be seen at all. A step's target is
+    // usually in the same scrolling column as this panel and often taller
+    // than it, so any scroll at all moves the panel out of view: centring
+    // took the map's rail 1421 px down a 627 px column, and even the
+    // smallest scroll left the reader with the explanation off screen.
+    // Something already on screen does not need bringing onto it; the
+    // outline is what says which one it is.
+    const box = element.getBoundingClientRect();
+    const onScreen = box.top < window.innerHeight && box.bottom > 0;
+    if (!onScreen && typeof element.scrollIntoView === "function") {
+      element.scrollIntoView({ block: "nearest" });
+      // And undone if it cost the reader this panel. On the home screen the
+      // target sits 91 px below the fold and the panel starts at the very
+      // top of the same column, so the smallest scroll that reveals one cuts
+      // the other's title off. The explanation wins: a target nobody can see
+      // is a scroll away, an explanation nobody can read is gone.
+      const panel = panelRef.current;
+      const seat = panel?.getBoundingClientRect();
+      if (
+        panel &&
+        seat &&
+        (seat.top < 0 || seat.bottom > window.innerHeight) &&
+        typeof panel.scrollIntoView === "function"
+      )
+        panel.scrollIntoView({ block: "nearest" });
     }
     return () => element.classList.remove(...HIGHLIGHT_CLASS.split(" "));
   }, [target]);
@@ -73,6 +98,7 @@ export function FeatureAnnouncement({ trials }: FeatureAnnouncementProps) {
 
   return (
     <section
+      ref={panelRef}
       data-testid="feature-announcement"
       data-feature-id={trial.id}
       data-step={step}

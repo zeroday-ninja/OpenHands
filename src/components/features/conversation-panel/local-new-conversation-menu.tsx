@@ -83,11 +83,11 @@ export function LocalNewConversationMenu({
   const { mutate: addWorkspaceParents } = useAddWorkspaceParents();
   const { mutate: removeWorkspaceParent } = useRemoveWorkspaceParent();
   const { workspaces } = useResolvedWorkspaces();
-  const { isolated, unsupportedMessage: runtimeWorkspaceMessage } =
-    useConversationWorkspace();
-  const workspacesUnsupportedMessage =
-    runtimeWorkspaceMessage ??
-    getWorkspacesUnsupportedMessage(workspacesError, t);
+  const { isolated } = useConversationWorkspace();
+  const workspacesUnsupportedMessage = getWorkspacesUnsupportedMessage(
+    workspacesError,
+    t,
+  );
   const [browserOpen, setBrowserOpen] = React.useState(false);
   const [manageOpen, setManageOpen] = React.useState(false);
 

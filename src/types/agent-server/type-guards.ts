@@ -41,6 +41,7 @@ import {
 } from "./core/events/conversation-state-event";
 import { HookExecutionEvent } from "./core/events/hook-execution-event";
 import { ACPToolCallEvent } from "./core/events/acp-tool-call-event";
+import { ACPAdapterIncidentEvent } from "./core/events/acp-adapter-incident-event";
 import { StreamingDeltaEvent } from "./core/events/streaming-delta-event";
 import { SystemPromptEvent } from "./core/events/system-event";
 import { CondensationEvent } from "./core/events/condensation-event";
@@ -306,6 +307,19 @@ export const isHookExecutionEvent = (
   event: OpenHandsEvent,
 ): event is HookExecutionEvent =>
   "kind" in event && event.kind === "HookExecutionEvent";
+
+/** An ACP adapter's own report of something it could not translate. */
+export function isACPAdapterIncidentEvent(
+  event: unknown,
+): event is ACPAdapterIncidentEvent {
+  return (
+    typeof event === "object" &&
+    event !== null &&
+    (event as { kind?: unknown }).kind === "ACPAdapterIncidentEvent" &&
+    typeof (event as { adapter?: unknown }).adapter === "string" &&
+    typeof (event as { what?: unknown }).what === "string"
+  );
+}
 
 /**
  * Type guard function to check if an event is an ACP tool call event

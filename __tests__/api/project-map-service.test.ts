@@ -14,6 +14,7 @@ import ProjectMapService, {
   ProjectMapUnsupportedError,
 } from "#/api/project-map-service/project-map-service.api";
 import { PROJECT_MAP_FILE_PATH } from "#/types/project-map";
+import { FileClient } from "@openhands/typescript-client/clients";
 
 /**
  * A Docker-sandbox conversation as the agent server describes it: its
@@ -124,6 +125,38 @@ describe("ProjectMapService", () => {
       workingDir: "/home/agent/workspace/project",
     });
     expect(batch).not.toHaveBeenCalled();
+  });
+
+  it("reads a chosen folder from the host, whatever conversation is bound", async () => {
+    // Arrange: a map conversation is bound, but the user pointed the page at a
+    // folder on the host. The sandbox mounts that folder, so the file the host
+    // sees is the file the agent writes — and the host can still serve it
+    // once the sandbox is gone.
+    const batch = vi.spyOn(
+      AgentServerConversationService,
+      "batchGetAppConversations",
+    );
+    downloadTextFile.mockResolvedValue("{}");
+
+    // Act
+    const file = await ProjectMapService.readProjectMap({
+      conversationId: "conversation-1",
+      workingDir: "/home/agent/repos/hazard/",
+    });
+
+    // Assert: the host's filesystem, by the chosen path, with no conversation
+    // consulted and none on the request.
+    expect(file.workspace).toEqual({
+      conversationId: null,
+      workingDir: "/home/agent/repos/hazard",
+    });
+    expect(file.absolutePath).toBe(
+      `/home/agent/repos/hazard/${PROJECT_MAP_FILE_PATH}`,
+    );
+    expect(batch).not.toHaveBeenCalled();
+    expect(vi.mocked(FileClient).mock.calls.at(-1)?.[0]).not.toHaveProperty(
+      "conversationId",
+    );
   });
 
   it("refuses to answer for a conversation the server cannot describe", async () => {

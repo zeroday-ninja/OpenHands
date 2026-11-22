@@ -35,6 +35,116 @@ export const FEATURE_TRIALS: readonly FeatureTrial[] = [
       },
     ],
   },
+  {
+    id: "map-repository-picker",
+    kind: "widget",
+    shippedOn: "2026-10-26",
+    titleKey: I18nKey.FEATURE$PICKER$TITLE,
+    summaryKey: I18nKey.FEATURE$PICKER$SUMMARY,
+    route: "/map",
+    steps: [
+      {
+        titleKey: I18nKey.FEATURE$PICKER$STEP1_TITLE,
+        bodyKey: I18nKey.FEATURE$PICKER$STEP1_BODY,
+        testId: "project-map-workspace-picker",
+      },
+      {
+        titleKey: I18nKey.FEATURE$PICKER$STEP2_TITLE,
+        bodyKey: I18nKey.FEATURE$PICKER$STEP2_BODY,
+        testId: "project-map-chat-dock-toggle",
+      },
+    ],
+  },
+  {
+    id: "map-overview",
+    kind: "widget",
+    shippedOn: "2026-10-26",
+    titleKey: I18nKey.FEATURE$OVERVIEW$TITLE,
+    summaryKey: I18nKey.FEATURE$OVERVIEW$SUMMARY,
+    route: "/map",
+    steps: [
+      {
+        titleKey: I18nKey.FEATURE$OVERVIEW$STEP1_TITLE,
+        bodyKey: I18nKey.FEATURE$OVERVIEW$STEP1_BODY,
+        testId: "project-map-overview",
+      },
+      {
+        titleKey: I18nKey.FEATURE$OVERVIEW$STEP2_TITLE,
+        bodyKey: I18nKey.FEATURE$OVERVIEW$STEP2_BODY,
+        testId: "project-map-view-switch",
+      },
+    ],
+  },
+  {
+    id: "map-page",
+    kind: "panel",
+    shippedOn: "2026-10-26",
+    titleKey: I18nKey.FEATURE$PAGE$TITLE,
+    summaryKey: I18nKey.FEATURE$PAGE$SUMMARY,
+    route: "/map",
+    steps: [
+      {
+        titleKey: I18nKey.FEATURE$PAGE$STEP1_TITLE,
+        bodyKey: I18nKey.FEATURE$PAGE$STEP1_BODY,
+        testId: "project-map-rail-toggle",
+      },
+      {
+        titleKey: I18nKey.FEATURE$PAGE$STEP2_TITLE,
+        bodyKey: I18nKey.FEATURE$PAGE$STEP2_BODY,
+        testId: "project-map-waiting-mark",
+      },
+    ],
+  },
+  {
+    id: "map-work-layers",
+    kind: "widget",
+    shippedOn: "2026-10-26",
+    titleKey: I18nKey.FEATURE$WORKLAYERS$TITLE,
+    summaryKey: I18nKey.FEATURE$WORKLAYERS$SUMMARY,
+    route: "/map",
+    steps: [
+      {
+        titleKey: I18nKey.FEATURE$WORKLAYERS$STEP1_TITLE,
+        bodyKey: I18nKey.FEATURE$WORKLAYERS$STEP1_BODY,
+        testId: "project-map-layer-work",
+      },
+      {
+        titleKey: I18nKey.FEATURE$WORKLAYERS$STEP2_TITLE,
+        bodyKey: I18nKey.FEATURE$WORKLAYERS$STEP2_BODY,
+        testId: "project-map-all-layers",
+      },
+    ],
+  },
+  {
+    id: "map-links",
+    kind: "widget",
+    shippedOn: "2026-10-26",
+    titleKey: I18nKey.FEATURE$MAPLINKS$TITLE,
+    summaryKey: I18nKey.FEATURE$MAPLINKS$SUMMARY,
+    route: "/automations",
+    steps: [
+      {
+        titleKey: I18nKey.FEATURE$MAPLINKS$STEP1_TITLE,
+        bodyKey: I18nKey.FEATURE$MAPLINKS$STEP1_BODY,
+        testId: "automations-see-on-the-map",
+      },
+    ],
+  },
+  {
+    id: "home-host-folders",
+    kind: "widget",
+    shippedOn: "2026-10-26",
+    titleKey: I18nKey.FEATURE$HOME_FOLDERS$TITLE,
+    summaryKey: I18nKey.FEATURE$HOME_FOLDERS$SUMMARY,
+    route: "/conversations",
+    steps: [
+      {
+        titleKey: I18nKey.FEATURE$HOME_FOLDERS$STEP1_TITLE,
+        bodyKey: I18nKey.FEATURE$HOME_FOLDERS$STEP1_BODY,
+        testId: "open-workspace-button",
+      },
+    ],
+  },
 ];
 
 export function findFeatureTrial(id: string): FeatureTrial | null {

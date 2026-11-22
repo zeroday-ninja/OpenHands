@@ -32,15 +32,20 @@ const SAMPLE_HEIGHT = 18;
 
 export function ProjectMapLegend({
   document: map,
+  waiting = false,
 }: {
   document: ProjectMapDocument;
+  /** True when some part of the drawing wears the waiting mark. */
+  waiting?: boolean;
 }) {
   const { t } = useTranslation("openhands");
   const usedKinds = new Set(map.nodes.map((node) => node.kind));
   const usedEdges = new Set(map.edges.map((edge) => edge.kind));
 
   return (
-    <details data-testid="project-map-legend">
+    // Open by default: the key is the one thing in the rail a first visit
+    // needs before clicking anything, and a closed one reads as a heading.
+    <details open data-testid="project-map-legend">
       <summary className={`${PROJECT_MAP_SECTION_LABEL_CLASS} cursor-pointer`}>
         {t(I18nKey.PROJECT_MAP$LEGEND)}
       </summary>
@@ -129,6 +134,31 @@ export function ProjectMapLegend({
           },
         )}
       </ul>
+      {/* The amber dot is the one mark on the drawing that is not a shape or
+          a line, and the one a reader asked about first. */}
+      {waiting && (
+        <ul className="mt-2">
+          <li className="flex items-center gap-2">
+            <svg
+              width={SAMPLE_WIDTH + 2}
+              height={SAMPLE_HEIGHT}
+              viewBox={`0 0 ${SAMPLE_WIDTH + 2} ${SAMPLE_HEIGHT}`}
+              aria-hidden
+              className="shrink-0"
+            >
+              <circle
+                cx={SAMPLE_WIDTH / 2}
+                cy={SAMPLE_HEIGHT / 2}
+                r={5}
+                className="fill-warning"
+              />
+            </svg>
+            <span className="text-xs text-text-secondary">
+              {t(I18nKey.PROJECT_MAP$LEGEND_WAITING)}
+            </span>
+          </li>
+        </ul>
+      )}
     </details>
   );
 }

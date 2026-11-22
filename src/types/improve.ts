@@ -377,7 +377,9 @@ export type LessonTrigger =
   | "thumbs_down"
   | "comment"
   | "chat_instruction"
-  | "rejected_approach";
+  | "rejected_approach"
+  /** An agent runtime's adapter met an event it has no translation for. */
+  | "adapter_incident";
 
 /** Which stage of the pipeline let a repeated correction through. */
 export type LessonFailureStage =

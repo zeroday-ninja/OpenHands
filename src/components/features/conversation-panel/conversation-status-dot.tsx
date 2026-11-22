@@ -52,6 +52,18 @@ const visualFor = (status: ExecutionStatus | null | undefined): Visual => {
   }
 };
 
+/**
+ * The status in words, for anywhere that shows it as text rather than as a
+ * dot. The conversation's own title bar had only the dot, which left the one
+ * fact a reader wants — did this finish, or did it stop — to a hover.
+ */
+export function conversationStatusLabelKey(
+  status: ExecutionStatus | null | undefined,
+  isArchived?: boolean,
+): string {
+  return labelKeyFor(visualFor(status), isArchived);
+}
+
 const labelKeyFor = (visual: Visual, isArchived?: boolean): string => {
   if (isArchived) return "COMMON$ARCHIVED";
   switch (visual) {

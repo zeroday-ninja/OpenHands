@@ -106,6 +106,60 @@ describe("the shim a sandbox runs", () => {
     }
   });
 
+  it("stays connected through a quiet stretch longer than the connect timeout", async () => {
+    // The connect timeout used to stay on the socket, so every read gave up
+    // after thirty seconds of nothing — which a tool run of a few minutes is.
+    // Five antigravity cycles died that way in one night, each right after
+    // a long tool, each recorded as "Connection closed".
+    const listener = net.createServer();
+    await new Promise<void>((resolve) =>
+      listener.listen(0, "127.0.0.1", resolve),
+    );
+    const { port } = listener.address() as net.AddressInfo;
+    listener.once("connection", (socket) => {
+      let seen = "";
+      socket.on("data", (chunk) => {
+        seen += chunk;
+        if (seen.includes("\n")) {
+          // Quiet for longer than the connect timeout, then a line.
+          setTimeout(
+            () => socket.write('{"jsonrpc":"2.0","method":"late"}\n'),
+            2500,
+          );
+        }
+      });
+    });
+
+    const child = spawn(
+      "python3",
+      ["-c", shimSource({ host: "127.0.0.1", port, connectTimeout: 1 })],
+      {
+        env: {
+          PATH: process.env.PATH ?? "",
+          [BRIDGE_TOKEN_ENV]: "sentinel-token",
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+      },
+    );
+    try {
+      const relayed = await new Promise<string>((resolve, reject) => {
+        let out = "";
+        child.stdout.on("data", (chunk) => {
+          out += chunk;
+          if (out.includes("\n")) resolve(out.trim());
+        });
+        child.on("exit", (code) =>
+          reject(new Error(`the shim exited early with ${code}`)),
+        );
+        setTimeout(() => reject(new Error("nothing relayed")), 8000);
+      });
+      expect(relayed).toBe('{"jsonrpc":"2.0","method":"late"}');
+    } finally {
+      child.kill();
+      await new Promise<void>((resolve) => listener.close(() => resolve()));
+    }
+  });
+
   it("says where to put the token when it is missing", () => {
     // Without this it exits on a KeyError and the conversation reports an
     // opaque ACP startup failure, which is the same wall this whole bridge

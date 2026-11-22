@@ -193,6 +193,14 @@ export interface ProjectMapTarget {
   /** The conversation whose workspace holds the map, when there is one. */
   conversationId?: string | null;
   conversation?: AppConversation | null;
+  /**
+   * A folder on the backend's host the page was pointed at. It wins over the
+   * conversation: the map is read from the agent server's own filesystem
+   * whatever conversation is bound, because a sandbox mounted on this folder
+   * writes the very same file, and a sandbox that is gone cannot be asked for
+   * it. That is what lets a map outlive the conversation that drew it.
+   */
+  workingDir?: string | null;
 }
 
 /** A resolved target: the workspace, and the file inside it. */
@@ -232,24 +240,29 @@ async function resolveConversationWorkspaceDir(
 /**
  * The workspace the map belongs to, and the absolute path of the file in it.
  *
- * With a conversation, its own working directory wins, so the map belongs to
- * the repository you are actually working in — under Docker sandboxes that is
- * the only directory that holds one, and under host workspaces it is the
- * folder the conversation was attached to. Without one — the `/map` page
- * opened straight from the sidebar — the backend's configured working
- * directory is the only sensible answer.
+ * A chosen folder comes first: the user said which repository this is a map
+ * of, and the file is read from that folder on the host however the agent
+ * reaches it. Otherwise, with a conversation, its own working directory wins,
+ * so the map belongs to the repository you are actually working in — under
+ * Docker sandboxes that is the only directory that holds one, and under host
+ * workspaces it is the folder the conversation was attached to. Without
+ * either — the `/map` page opened straight from the sidebar — the backend's
+ * configured working directory is the only sensible answer.
  */
 export async function resolveProjectMapPath(
   target: ProjectMapTarget = {},
 ): Promise<ResolvedProjectMapPath> {
-  const conversationId = target.conversationId || null;
+  const chosenDir = target.workingDir?.trim() || null;
+  const conversationId =
+    chosenDir === null ? target.conversationId || null : null;
   const workingDir =
-    conversationId === null
+    chosenDir ??
+    (conversationId === null
       ? getAgentServerWorkingDir()
       : await resolveConversationWorkspaceDir(
           conversationId,
           target.conversation ?? null,
-        );
+        ));
   // A relative working dir is anchored on the agent server's home directory
   // (spec WUP-001). Only host workspaces are ever relative; an isolated
   // sandbox reports an absolute dir, which passes through untouched.

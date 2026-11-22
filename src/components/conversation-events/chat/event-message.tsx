@@ -16,6 +16,7 @@ import {
   isUserMessageEvent,
   isPlanningFileEditorObservationEvent,
   isHookExecutionEvent,
+  isACPAdapterIncidentEvent,
   isACPToolCallEvent,
   isStreamingDeltaEvent,
   isConversationStateUpdateEvent,
@@ -33,6 +34,7 @@ import { ErrorEventMessage } from "./event-message-components/error-event-messag
 import { UserAssistantEventMessage } from "./event-message-components/user-assistant-event-message";
 import { FinishEventMessage } from "./event-message-components/finish-event-message";
 import { GenericEventMessageWrapper } from "./event-message-components/generic-event-message-wrapper";
+import { AdapterIncidentEventMessage } from "./event-message-components/adapter-incident-event-message";
 import { ThoughtEventMessage } from "./event-message-components/thought-event-message";
 import { CollapsibleThinking } from "./event-message-components/collapsible-thinking";
 import { HookExecutionEventMessage } from "./event-message-components/hook-execution-event-message";
@@ -249,6 +251,10 @@ function EventMessageComponent({
     return (
       <GenericEventMessageWrapper event={event} isLastMessage={isLastMessage} />
     );
+  }
+
+  if (isACPAdapterIncidentEvent(event)) {
+    return <AdapterIncidentEventMessage event={event} />;
   }
 
   const renderStreamingReply = (reasoning: string) => {

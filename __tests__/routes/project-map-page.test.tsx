@@ -1,8 +1,16 @@
 import React from "react";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithProviders } from "../../test-utils";
+import { featureTrialsOn } from "#/features/feature-trials";
+import { useFeatureTrialStore } from "#/stores/feature-trial-store";
 
 /**
  * Chat is behind a dock now: the canvas is the work, and a panel over it is
@@ -46,6 +54,8 @@ import {
 } from "#/api/backend-registry/active-store";
 import type { Backend } from "#/api/backend-registry/types";
 import { useProjectMapStore } from "#/stores/project-map-store";
+import { useProjectMapWorkspaceStore } from "#/stores/project-map-workspace-store";
+import WorkspacesService from "#/api/workspaces-service/workspaces-service.api";
 import { useEventStore } from "#/stores/use-event-store";
 import {
   SecurityRisk,
@@ -60,6 +70,10 @@ import {
 } from "#/types/project-map";
 
 const launchConversation = vi.hoisted(() => vi.fn());
+/** The live work graph, empty unless a case puts work on it. */
+const workGraphNodes = vi.hoisted(() => ({ current: [] as unknown[] }));
+/** Whether that graph is still being assembled from the backends. */
+const workGraphFetching = vi.hoisted(() => ({ current: false }));
 
 /**
  * The shared test i18n instance carries no resources, so `t()` returns the key
@@ -91,6 +105,24 @@ vi.mock("react-i18next", async (importOriginal) => {
 // state and its result handling in the test.
 vi.mock("#/hooks/mutation/resolve-conversation-launch", () => ({
   launchConversation: launchConversation,
+}));
+
+// The live work graph is assembled from every backend's answer; the page's
+// own job is what it does with the result, so the fetch is the stub.
+vi.mock("#/hooks/query/use-work-graph", () => ({
+  useWorkGraph: () => ({
+    graph: {
+      nodes: workGraphNodes.current,
+      edges: [],
+      omissions: [],
+      findings: [],
+      inFlight: 0,
+      generatedAt: null,
+    },
+    contributions: [],
+    isPending: false,
+    isFetching: workGraphFetching.current,
+  }),
 }));
 
 // The pane's conversation transport. Stubbed as a pass-through so these cases
@@ -289,14 +321,35 @@ describe("the project map page", () => {
     });
     useProjectMapStore.getState().reset();
     useEventStore.getState().clearEvents();
+    // The folder a page was pointed at is remembered across reloads, so each
+    // case starts with none chosen.
+    window.localStorage.clear();
+    useProjectMapWorkspaceStore.setState({ selectionByBackendId: {} });
+    // The repository picker lists saved workspaces and, in dev builds, the
+    // children of an implicit `/projects` parent. Answered here so no case
+    // reaches past MSW to whatever is listening on the test backend's port.
+    server.use(
+      http.get(`${localBackend.host}/api/file/search_subdirs`, () =>
+        HttpResponse.json({ items: [], next_page_id: null }),
+      ),
+    );
     setRegisteredBackends([localBackend]);
     setActiveSelection({ backendId: localBackend.id });
   });
 
   afterEach(() => {
+    // The binding outlives the page by design — a launch that settles after
+    // the user has moved on is still remembered — so every case that starts a
+    // conversation waits for it to be bound before ending, or the next case
+    // inherits a conversation it never started.
+    useProjectMapWorkspaceStore.setState({ selectionByBackendId: {} });
+    window.localStorage.clear();
     vi.restoreAllMocks();
     useEventStore.getState().clearEvents();
     useProjectMapStore.getState().reset();
+    useFeatureTrialStore.setState({ records: {} });
+    workGraphNodes.current = [];
+    workGraphFetching.current = false;
     setActiveSelection(null);
     setRegisteredBackends([]);
   });
@@ -367,7 +420,7 @@ describe("the project map page", () => {
     );
   });
 
-  it("names the workspace an unbound map was read from", async () => {
+  it("names the folder an unbound map was read from, once", async () => {
     // Arrange
     vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
       workspace: HOST_WORKSPACE,
@@ -384,11 +437,12 @@ describe("the project map page", () => {
     );
 
     // Assert: an empty or unexpected map is only readable as such when the
-    // page says which workspace it came from.
-    const label = await screen.findByTestId("project-map-workspace");
-    expect(label).toHaveTextContent(HOST_WORKSPACE.workingDir);
-    expect(label).toHaveTextContent(localBackend.name);
-    expect(label).not.toHaveAttribute("data-conversation-id");
+    // page says which folder it came from — which the picker does, with the
+    // whole path on hover. Saying it twice read as two different things.
+    const picker = await screen.findByTestId("project-map-workspace-picker");
+    expect(picker).toHaveAttribute("data-path", HOST_WORKSPACE.workingDir);
+    expect(picker).toHaveAttribute("title", HOST_WORKSPACE.workingDir);
+    expect(screen.queryByTestId("project-map-workspace")).toBeNull();
   });
 
   it("tells the analysis to use its own workspace when conversations are isolated", async () => {
@@ -427,6 +481,12 @@ describe("the project map page", () => {
     expect(options.initialUserMsg).toContain(PROJECT_MAP_FILE_PATH);
     expect(options.initialUserMsg).not.toContain(ABSOLUTE_PATH);
     expect(options.workingDirOverride).toBeUndefined();
+    // And the page follows the conversation it started.
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("project-map-analysis-running"),
+      ).toHaveTextContent("conversation-1"),
+    );
   });
 
   it("explains a malformed document instead of rendering a blank canvas", async () => {
@@ -447,8 +507,273 @@ describe("the project map page", () => {
     expect(screen.queryByTestId("project-map-canvas")).toBeNull();
   });
 
-  it("draws the map and shows which commit it was generated against", async () => {
+  it("offers a way out of a map that cannot be drawn, including the conversation that wrote it", async () => {
+    // Arrange: the page generated a map, and what the agent wrote does not
+    // parse. The chat dock only exists over a drawn canvas, so without this
+    // the conversation that could fix the file in one turn was unreachable.
+    const read = vi
+      .spyOn(ProjectMapService, "readProjectMap")
+      .mockImplementation(async (target) => emptyRead(target));
+    const navigate = vi.fn();
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, {
+      navigation: { currentPath: "/map", conversationId: null, navigate },
+    });
+    await user.click(await screen.findByTestId("project-map-generate"));
+    await screen.findByTestId("project-map-analysis-running");
+    read.mockResolvedValue({
+      workspace: SANDBOX_WORKSPACE,
+      absolutePath: SANDBOX_PATH,
+      raw: JSON.stringify({
+        version: PROJECT_MAP_VERSION,
+        nodes: [],
+        edges: [{ source: "a", target: "b", kind: "calls" }],
+      }),
+    });
+
+    // Act: the file arrives, and the user re-reads it.
+    await user.click(screen.getByTestId("project-map-empty-refresh"));
+
+    // Assert: the complaint names the field, and the conversation is one click
+    // away — as are re-reading and regenerating.
+    await screen.findByTestId("project-map-invalid");
+    expect(screen.getByTestId("project-map-invalid")).toHaveTextContent(
+      "edges[0].from",
+    );
+    expect(
+      screen.getByTestId("project-map-invalid-refresh"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("project-map-invalid-regenerate"),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByTestId("project-map-invalid-open-conversation"),
+    );
+    expect(navigate).toHaveBeenCalledWith("/conversations/conversation-1");
+  });
+
+  /** A map big enough to be a wall: three layers, fifteen parts each. */
+  function bigMapFile() {
+    const groups = ["web", "api", "data"];
+    const nodes = groups.flatMap((group, g) =>
+      Array.from({ length: 15 }, (_, i) => ({
+        id: `src/${group}/${i}.ts`,
+        kind: "module",
+        label: `${group} ${i}`,
+        path: `src/${group}/${i}.ts`,
+        group,
+        summary: "",
+        size: 100,
+        x: g * 260,
+        y: i * 96,
+      })),
+    );
+    return mapFile({
+      groups: groups.map((id, i) => ({ id, label: id, accent: `${i + 1}` })),
+      nodes,
+      edges: [
+        { from: "src/web/0.ts", to: "src/api/0.ts", kind: "calls" },
+        { from: "src/api/1.ts", to: "src/data/0.ts", kind: "reads" },
+      ],
+    });
+  }
+
+  it("comes back as its layers after a detour through a repository with no map", async () => {
+    // Arrange: two saved repositories; one has a big map, the other none.
+    const OTHER = {
+      id: "/home/agent/repos/other",
+      name: "other",
+      path: "/home/agent/repos/other",
+    };
+    saveWorkspaces([HAZARD, OTHER]);
+    vi.spyOn(ProjectMapService, "readProjectMap").mockImplementation(
+      async (target) => ({
+        workspace: {
+          conversationId: null,
+          workingDir: target?.workingDir ?? HOST_WORKSPACE.workingDir,
+        },
+        absolutePath: `${target?.workingDir ?? HOST_WORKSPACE.workingDir}/${PROJECT_MAP_FILE_PATH}`,
+        raw: target?.workingDir === HAZARD.path ? bigMapFile() : null,
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-empty");
+    await chooseRepository(user, "hazard");
+    await screen.findByTestId("project-map-overview");
+
+    // Act: away to a repository with no map, and back.
+    await chooseRepository(user, "other");
+    await screen.findByTestId("project-map-empty");
+    await chooseRepository(user, "hazard");
+
+    // Assert: the layers again, not the wall — "I clicked another repo and
+    // now my map is gone".
+    await screen.findByTestId("project-map-overview");
+    expect(screen.getByTestId("project-map-view-overview")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+  });
+
+  it("opens a big map as its layers, and a small one in full", async () => {
+    // Arrange: forty-five parts in three layers.
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: bigMapFile(),
+    });
+    const user = userEvent.setup();
+    const { unmount } = renderWithProviders(<MapRoute />, {
+      navigation: { currentPath: "/map" },
+    });
+
+    // Assert: blocks with counts, not forty-five plates.
+    await screen.findByTestId("project-map-overview");
+    expect(
+      screen.getByTestId("project-map-overview-block-web"),
+    ).toHaveAttribute("data-count", "15");
+    expect(screen.queryByTestId("project-map-node-src/web/0.ts")).toBeNull();
+    expect(screen.getByTestId("project-map-view-overview")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    // And what the blocks are is said on the paper, not only in a card.
+    expect(screen.getByTestId("project-map-overview-hint")).toHaveTextContent(
+      copy("PROJECT_MAP$OVERVIEW_HINT"),
+    );
+
+    // Act: ask for the whole drawing.
+    await user.click(screen.getByTestId("project-map-view-details"));
+
+    // Assert: the drawing, with the way back up on it; the drawing tools
+    // stay out of the way in the analysis mode the map opens in.
+    expect(screen.queryByTestId("project-map-overview")).toBeNull();
+    expect(
+      screen.getByTestId("project-map-node-src/web/0.ts"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("project-map-tool-box")).toBeNull();
+    expect(screen.queryByTestId("project-map-overview-hint")).toBeNull();
+    await user.click(screen.getByTestId("project-map-all-layers"));
+    expect(screen.getByTestId("project-map-overview")).toBeInTheDocument();
+    expect(screen.queryByTestId("project-map-all-layers")).toBeNull();
+    unmount();
+
+    // A small map has nothing to fold and opens in full, switch and all.
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+    expect(screen.queryByTestId("project-map-overview")).toBeNull();
+    expect(
+      screen.getByTestId("project-map-node-src/routes/home.tsx"),
+    ).toBeInTheDocument();
+  });
+
+  /** Nothing new to introduce, so the rail has nothing it must show. */
+  function everythingAnnounced() {
+    featureTrialsOn("/map").forEach((trial) =>
+      useFeatureTrialStore.getState().markAnnounced(trial.id),
+    );
+  }
+
+  it("gives the map the width once its features have introduced themselves", async () => {
     // Arrange
+    everythingAnnounced();
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    const user = userEvent.setup();
+
+    // Act
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+
+    // Assert: the rail is folded, and the toolbar says it can be opened.
+    expect(screen.queryByTestId("project-map-legend")).toBeNull();
+    const toggle = screen.getByTestId("project-map-rail-toggle");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await user.click(toggle);
+    expect(screen.getByTestId("project-map-legend")).toBeInTheDocument();
+  });
+
+  it("shows the conversation it started when the map is rebuilt", async () => {
+    // Arrange: a drawn map, rebuilt. Reading it again through the new
+    // conversation puts the loading notice over the canvas, which unmounts
+    // the dock — the press that starts the work must still show it.
+    everythingAnnounced();
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+    expect(screen.getByTestId("project-map-chat-dock")).toHaveAttribute(
+      "data-open",
+      "false",
+    );
+
+    // Act
+    await user.click(screen.getByTestId("project-map-regenerate"));
+
+    // Assert
+    await waitFor(() =>
+      expect(screen.getByTestId("project-map-chat-dock")).toHaveAttribute(
+        "data-open",
+        "true",
+      ),
+    );
+  });
+
+  it("shows an agent's transcript when you click it on the work layer", async () => {
+    // Arrange: one agent at work, with the conversation that is doing it.
+    everythingAnnounced();
+    workGraphNodes.current = [
+      {
+        key: "oh:1/local/agent:a1",
+        kind: "agent",
+        label: "codex",
+        status: "in_flight",
+        attrs: { role: "builder", conversation_id: "conversation-1" },
+      },
+    ];
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+
+    // Act: look at what the agents are doing, and click one.
+    act(() => useProjectMapStore.getState().setLayer("work"));
+    await screen.findByTestId("project-map-node-oh:1/local/agent:a1");
+    act(() =>
+      useProjectMapStore.getState().setSelection(["oh:1/local/agent:a1"]),
+    );
+
+    // Assert: the transcript is the whole point of drawing the agent, and
+    // binding it remounts the dock under the socket providers — so the page
+    // opens it rather than leaving the dock to notice a change it cannot see.
+    await waitFor(() =>
+      expect(screen.getByTestId("project-map-chat-dock")).toHaveAttribute(
+        "data-open",
+        "true",
+      ),
+    );
+  });
+
+  it("says on the paper what a plate and a line are", async () => {
+    // Arrange: a map small enough to open in full, so the detail view is
+    // what a first visit lands on.
+    everythingAnnounced();
     vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
       workspace: HOST_WORKSPACE,
       absolutePath: ABSOLUTE_PATH,
@@ -457,11 +782,368 @@ describe("the project map page", () => {
 
     // Act
     renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+
+    // Assert: the key is in the rail, which is folded by default, so the
+    // paper carries the sentence a newcomer needs instead.
+    expect(screen.getByTestId("project-map-detail-hint")).toHaveTextContent(
+      copy("PROJECT_MAP$DETAIL_HINT"),
+    );
+    expect(screen.queryByTestId("project-map-legend")).toBeNull();
+  });
+
+  it("opens on the agents when the link asks for them", async () => {
+    // Arrange: a screen about what the agents are doing links here, and the
+    // drawing of that work is the point of the link.
+    everythingAnnounced();
+    workGraphNodes.current = [
+      {
+        key: "oh:1/local/agent:a1",
+        kind: "agent",
+        label: "codex",
+        status: "in_flight",
+        attrs: { role: "builder", conversation_id: "conversation-1" },
+      },
+    ];
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+
+    // Act
+    renderWithProviders(<MapRoute />, {
+      navigation: { currentPath: "/map?layer=work" },
+    });
+
+    // Assert: the work layer is on the paper, without a press.
+    expect(
+      await screen.findByTestId("project-map-node-oh:1/local/agent:a1"),
+    ).toBeInTheDocument();
+    expect(useProjectMapStore.getState().layer).toBe("work");
+  });
+
+  it("lands on the agent a transcript came from", async () => {
+    // Arrange: the conversation page links here with its own id, asking the
+    // map where that work sits.
+    everythingAnnounced();
+    workGraphNodes.current = [
+      {
+        key: "oh:1/local/agent:a1",
+        kind: "agent",
+        label: "codex",
+        status: "in_flight",
+        attrs: { role: "builder", conversation_id: "conversation-1" },
+      },
+    ];
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+
+    // Act
+    renderWithProviders(<MapRoute />, {
+      navigation: {
+        currentPath: "/map?layer=work&conversation=conversation-1",
+      },
+    });
+    await screen.findByTestId("project-map-node-oh:1/local/agent:a1");
+
+    // Assert: that agent is the selection, so the rail describes it and the
+    // dock shows what it is doing.
+    await waitFor(() =>
+      expect(useProjectMapStore.getState().selection).toEqual([
+        "oh:1/local/agent:a1",
+      ]),
+    );
+  });
+
+  it("says nothing has run while the machines are the only thing on the graph", async () => {
+    // Arrange: every backend that answers contributes a node for itself, so
+    // the graph is never empty once anyone answers. What a person means by
+    // nothing having run is no runs, cycles or agents.
+    everythingAnnounced();
+    workGraphNodes.current = [
+      {
+        key: "oh:1/local/backend:self",
+        kind: "backend",
+        label: "Local",
+        status: "idle",
+        attrs: {},
+      },
+    ];
+    workGraphFetching.current = false;
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+
+    // Act
+    act(() => useProjectMapStore.getState().setLayer("work"));
+
+    // Assert
+    expect(
+      await screen.findByTestId("project-map-work-empty"),
+    ).toBeInTheDocument();
+  });
+
+  it("says it is still asking, rather than that nothing has run", async () => {
+    // Arrange: the work graph answers eventually. While it is answering the
+    // page has no nodes, which is indistinguishable from an idle machine —
+    // and "Nothing has run yet" is a claim the reader cannot check.
+    everythingAnnounced();
+    workGraphNodes.current = [];
+    workGraphFetching.current = true;
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+
+    // Act
+    act(() => useProjectMapStore.getState().setLayer("work"));
+
+    // Assert
+    expect(
+      await screen.findByTestId("project-map-work-assembling"),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("project-map-work-empty")).toBeNull();
+  });
+
+  it("says whose folder it is drawing until you choose one", async () => {
+    // Arrange: nothing chosen, so the page reads the backend's own working
+    // directory — an honest answer to a question nobody asked.
+    everythingAnnounced();
+    saveWorkspaces([HAZARD]);
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+
+    // Assert
+    expect(screen.getByTestId("project-map-not-chosen")).toHaveTextContent(
+      copy("PROJECT_MAP$NOT_YOURS_YET"),
+    );
+
+    // Act: choose one, and the page stops explaining itself.
+    await chooseRepository(user, "hazard");
+
+    // Assert
+    await waitFor(() =>
+      expect(screen.queryByTestId("project-map-not-chosen")).toBeNull(),
+    );
+  });
+
+  it("follows a link to the work layer without making it a habit", async () => {
+    // Arrange: a link asks for the agents. That is a navigation, not a
+    // statement about every future visit.
+    everythingAnnounced();
+    workGraphNodes.current = [
+      {
+        key: "oh:1/local/agent:a1",
+        kind: "agent",
+        label: "codex",
+        status: "in_flight",
+        attrs: { role: "builder", conversation_id: "conversation-1" },
+      },
+    ];
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+
+    // Act
+    renderWithProviders(<MapRoute />, {
+      navigation: { currentPath: "/map?layer=work" },
+    });
+    await screen.findByTestId("project-map-node-oh:1/local/agent:a1");
+
+    // Assert: the paper shows the agents, and nothing was written about
+    // what a later visit should open on.
+    expect(useProjectMapStore.getState().layer).toBe("work");
+    expect(window.localStorage.getItem("project-map-layer")).toBeNull();
+  });
+
+  it("puts what you clicked above the rest of the rail", async () => {
+    // Arrange: a feature still to introduce itself, so the rail has
+    // something tall above the inspector — on the live map, three parked
+    // changes and an announcement ran to three thousand pixels.
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+    const announcement = await screen.findByTestId("feature-announcement");
+
+    // Act: click a part, which is what opens the rail in the first place.
+    act(() =>
+      useProjectMapStore.getState().setSelection(["src/routes/home.tsx"]),
+    );
+
+    // Assert: the panel describing it comes first. It used to be last, which
+    // on a real rail put it past the bottom of the window.
+    const inspector = await screen.findByTestId("project-map-inspector");
+    expect(
+      inspector.compareDocumentPosition(announcement) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("keeps the work export out from under the chat toggle", async () => {
+    // Arrange: the work layer, which is the only one with an export.
+    everythingAnnounced();
+    workGraphNodes.current = [
+      {
+        key: "oh:1/local/agent:a1",
+        kind: "agent",
+        label: "codex",
+        status: "in_flight",
+        attrs: { role: "builder", conversation_id: "conversation-1" },
+      },
+    ];
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+
+    // Act
+    renderWithProviders(<MapRoute />, {
+      navigation: { currentPath: "/map?layer=work" },
+    });
+    await screen.findByTestId("project-map-work-export");
+
+    // Assert: both controls are in the dock's own stack, which is what keeps
+    // them off each other — placed in that corner independently, "Open chat"
+    // was drawn across the word "Export".
+    const dock = screen.getByTestId("project-map-chat-dock");
+    expect(
+      within(dock).getByTestId("project-map-work-export"),
+    ).toBeInTheDocument();
+    expect(
+      within(dock).getByTestId("project-map-chat-dock-toggle"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the view you chose for a map that can fold", async () => {
+    // Arrange: a map big enough to open as its layers.
+    everythingAnnounced();
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: bigMapFile(),
+    });
+    const user = userEvent.setup();
+    const { unmount } = renderWithProviders(<MapRoute />, {
+      navigation: { currentPath: "/map" },
+    });
+    await screen.findByTestId("project-map-overview");
+
+    // Act: ask for the detail instead, then come back.
+    await user.click(screen.getByTestId("project-map-view-details"));
+    expect(screen.queryByTestId("project-map-overview")).toBeNull();
+    unmount();
+    useProjectMapStore.getState().reset();
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+
+    // Assert: the size rule decides for a drawing you have said nothing
+    // about; once you have said something it stops deciding every visit.
+    expect(screen.queryByTestId("project-map-overview")).toBeNull();
+  });
+
+  it("remembers the side panel when you open it yourself", async () => {
+    // Arrange
+    everythingAnnounced();
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    const user = userEvent.setup();
+    const { unmount } = renderWithProviders(<MapRoute />, {
+      navigation: { currentPath: "/map" },
+    });
+    await screen.findByTestId("project-map-canvas");
+
+    // Act: open it, then come back to the page.
+    await user.click(screen.getByTestId("project-map-rail-toggle"));
+    expect(screen.getByTestId("project-map-legend")).toBeInTheDocument();
+    unmount();
+    useProjectMapStore.getState().reset();
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+
+    // Assert: a panel you opened stays open; it used to fold again on every
+    // visit, and the automatic opens are still for now rather than for good.
+    expect(await screen.findByTestId("project-map-legend")).toBeInTheDocument();
+  });
+
+  it("opens the rail for the part you click", async () => {
+    // Arrange
+    everythingAnnounced();
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile(),
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-canvas");
+
+    // Act: a selection is a question about one part, which the rail answers.
+    await user.click(
+      screen.getByTestId("project-map-node-src/routes/home.tsx"),
+    );
+
+    // Assert
+    expect(screen.getByTestId("project-map-inspector")).toBeInTheDocument();
+  });
+
+  it("draws the map and says which commit it came from, and when", async () => {
+    // Arrange
+    vi.spyOn(ProjectMapService, "readProjectMap").mockResolvedValue({
+      workspace: HOST_WORKSPACE,
+      absolutePath: ABSOLUTE_PATH,
+      raw: mapFile({
+        generated_at: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+      }),
+    });
+
+    // Act
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
 
     // Assert
     expect(await screen.findByTestId("project-map-canvas")).toBeInTheDocument();
-    expect(screen.getByTestId("project-map-provenance")).toHaveTextContent(
-      "abc1234",
+    const provenance = screen.getByTestId("project-map-provenance");
+    expect(provenance).toHaveTextContent("abc1234");
+    expect(provenance).toHaveTextContent(/ago/);
+    // The controls say what they do, and the key is open without a click.
+    expect(screen.getByTestId("project-map-regenerate")).toHaveAttribute(
+      "title",
+    );
+    expect(screen.getByTestId("project-map-legend")).toHaveAttribute("open");
+    expect(
+      await screen.findByTestId("project-map-chat-dock-toggle"),
+    ).toHaveAttribute("title");
+    // Nothing was chosen, so the picker names the folder the map was read
+    // from rather than asking beside a map it is already showing.
+    expect(screen.getByTestId("project-map-workspace-picker")).toHaveAttribute(
+      "data-path",
+      HOST_WORKSPACE.workingDir,
     );
   });
 
@@ -581,6 +1263,12 @@ describe("the project map page", () => {
       { initialUserMsg?: string },
     ];
     expect(options.initialUserMsg).toBe(shown);
+    await waitFor(() =>
+      expect(screen.getByTestId("project-map-conversation")).toHaveAttribute(
+        "data-conversation-id",
+        "conversation-1",
+      ),
+    );
   });
 
   it("keeps unsaved moves when a regenerated file arrives under them", async () => {
@@ -1088,6 +1776,155 @@ describe("the project map page", () => {
       expect(screen.getByTestId("project-map-unsaved")).toBeInTheDocument();
     },
   );
+
+  /** A saved workspace on the backend's host, as the picker lists it. */
+  const HAZARD = {
+    id: "/home/agent/repos/hazard",
+    name: "hazard",
+    path: "/home/agent/repos/hazard",
+  };
+
+  /** The saved-workspaces list the picker draws from. */
+  function saveWorkspaces(workspaces: (typeof HAZARD)[]) {
+    vi.spyOn(WorkspacesService, "listWorkspaces").mockResolvedValue({
+      workspaces,
+      workspaceParents: [],
+    });
+  }
+
+  /** Picks a saved workspace in the picker, the way a person would. */
+  async function chooseRepository(
+    user: ReturnType<typeof userEvent.setup>,
+    name: string,
+  ) {
+    await user.click(await screen.findByTestId("workspace-dropdown"));
+    const menu = await screen.findByTestId("workspace-dropdown-menu");
+    await user.click(await within(menu).findByText(name));
+  }
+
+  it("reads the map from the repository the user chose, and remembers it", async () => {
+    // Arrange: the backend's own directory has no map; the chosen folder has
+    // one. Only a read aimed at that folder, on the host, finds it.
+    saveWorkspaces([HAZARD]);
+    const read = vi
+      .spyOn(ProjectMapService, "readProjectMap")
+      .mockImplementation(async (target) =>
+        target?.workingDir
+          ? {
+              workspace: {
+                conversationId: null,
+                workingDir: target.workingDir,
+              },
+              absolutePath: `${target.workingDir}/${PROJECT_MAP_FILE_PATH}`,
+              raw: mapFile(),
+            }
+          : emptyRead(target),
+      );
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    // The empty state leads with the question the page used to answer
+    // silently.
+    const empty = await screen.findByTestId("project-map-empty");
+    expect(
+      within(empty).getByTestId("project-map-workspace-picker"),
+    ).toBeInTheDocument();
+
+    // Act
+    await chooseRepository(user, "hazard");
+
+    // Assert: the drawing is that folder's, read from the host by its path,
+    // and the page says so.
+    await screen.findByTestId("project-map-canvas");
+    expect(read).toHaveBeenLastCalledWith({
+      conversationId: null,
+      workingDir: HAZARD.path,
+    });
+    // The picker sits in the header, showing the choice, for switching.
+    expect(screen.getByTestId("project-map-workspace-picker")).toHaveAttribute(
+      "data-path",
+      HAZARD.path,
+    );
+    // And the choice outlives this page: it is written through for the next
+    // visit, under the backend it was made on.
+    const persisted = JSON.parse(
+      window.localStorage.getItem("project-map-workspace") ?? "{}",
+    ).state.selectionByBackendId as Record<string, { path: string | null }>;
+    expect(Object.values(persisted).map((entry) => entry.path)).toEqual([
+      HAZARD.path,
+    ]);
+  });
+
+  it("generates the chosen repository's map inside a sandbox mounted on it", async () => {
+    // Arrange: a Docker backend, and a chosen folder with no map yet.
+    clearCachedAgentServerInfo();
+    server.use(
+      http.get(`${localBackend.host}/server_info`, () =>
+        HttpResponse.json({
+          version: "1.57.0",
+          uptime: 0,
+          idle_time: 0,
+          conversation_runtime: "docker",
+        }),
+      ),
+    );
+    saveWorkspaces([HAZARD]);
+    vi.spyOn(ProjectMapService, "readProjectMap").mockImplementation(
+      async (target) =>
+        target?.workingDir
+          ? {
+              workspace: {
+                conversationId: null,
+                workingDir: target.workingDir,
+              },
+              absolutePath: `${target.workingDir}/${PROJECT_MAP_FILE_PATH}`,
+              raw: null,
+            }
+          : emptyRead(target),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(<MapRoute />, { navigation: { currentPath: "/map" } });
+    await screen.findByTestId("project-map-empty");
+    await chooseRepository(user, "hazard");
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("project-map-workspace-picker"),
+      ).toHaveAttribute("data-path", HAZARD.path),
+    );
+    // A chosen repository with no map is named, and the other maps are said
+    // to be where they were — "No project map yet" after switching away from
+    // a repository that had one read as that map being gone.
+    expect(screen.getByTestId("project-map-empty")).toHaveTextContent(
+      copy("PROJECT_MAP$EMPTY_TITLE_FOR").replace("{{repository}}", "hazard"),
+    );
+    expect(
+      screen.getByTestId("project-map-empty-other-maps"),
+    ).toBeInTheDocument();
+
+    // Act
+    await user.click(screen.getByTestId("project-map-generate"));
+
+    // Assert: the conversation is attached to the folder — the runtime mounts
+    // it as the sandbox's working directory — and told the repository-relative
+    // name, because the host's absolute path names nothing in there.
+    await waitFor(() => expect(launchConversation).toHaveBeenCalledTimes(1));
+    const [, options] = launchConversation.mock.calls[0] as [
+      unknown,
+      { initialUserMsg?: string; workingDirOverride?: string },
+    ];
+    expect(options.workingDirOverride).toBe(HAZARD.path);
+    expect(options.initialUserMsg).toContain(PROJECT_MAP_FILE_PATH);
+    expect(options.initialUserMsg).not.toContain(HAZARD.path);
+    // The page keeps watching the folder, with the conversation bound to it.
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("project-map-analysis-running"),
+      ).toHaveTextContent("conversation-1"),
+    );
+    expect(screen.getByTestId("project-map-workspace-picker")).toHaveAttribute(
+      "data-path",
+      HAZARD.path,
+    );
+  });
 
   it("says which kind of backend cannot serve the map, for the harness too", async () => {
     // Arrange: the active backend only reaches the page through its provider.

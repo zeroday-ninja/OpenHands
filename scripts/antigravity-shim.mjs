@@ -28,6 +28,7 @@ export function shimSource({
   host = "172.17.0.1",
   port = 8771,
   tokenEnv = BRIDGE_TOKEN_ENV,
+  connectTimeout = 30,
 } = {}) {
   return `import os,socket,sys,threading
 token=os.environ.get(${JSON.stringify(tokenEnv)})
@@ -38,7 +39,7 @@ if not token:
         "receives it; it is deliberately not stored in the profile itself.\\n")
     raise SystemExit(2)
 try:
-    s=socket.create_connection((${JSON.stringify(host)},${port}),timeout=30)
+    s=socket.create_connection((${JSON.stringify(host)},${port}),timeout=${connectTimeout})
 except OSError as exc:
     sys.stderr.write(
         "Could not reach the Antigravity bridge at ${host}:${port}: %s. "
@@ -46,6 +47,12 @@ except OSError as exc:
         "oh-antigravity-bridge or set ${tokenEnv} in .env so the stack "
         "does.\\n" % exc)
     raise SystemExit(2)
+# The connect timeout stays on the socket unless it is taken off, and then
+# every read gives up after that long with nothing arriving. A tool the CLI
+# runs for minutes -- a test suite, a search -- is minutes of nothing on this
+# socket, so the shim died at the first long tool, its stdout closed, and
+# the sandbox recorded "Connection closed". A turn has no deadline here.
+s.settimeout(None)
 s.sendall((token+"\\n").encode())
 def up():
     while True:

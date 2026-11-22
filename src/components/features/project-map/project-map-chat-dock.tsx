@@ -8,14 +8,18 @@
  * provider behind it, which is the largest thing on this route that most
  * visits never need.
  *
- * The dock opens itself when a conversation is bound and working. Watching the
- * drawing change with no idea why is worse than a panel appearing.
+ * The dock opens itself when a conversation starts from this page. Watching
+ * the drawing change with no idea why is worse than a panel appearing. A
+ * conversation the page merely remembers from an earlier visit does not open
+ * it: that covered the map with a transcript on every return, which is the
+ * opposite of a canvas that takes the width.
  */
 
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { I18nKey } from "#/i18n/declaration";
 import type { PlacedProjectMapDocument } from "#/types/project-map";
+import { LoadingSpinner } from "#/components/shared/loading-spinner";
 import { useProjectMapStore } from "#/stores/project-map-store";
 
 const ProjectMapConversation = React.lazy(() =>
@@ -31,6 +35,14 @@ export interface ProjectMapChatDockProps {
   launchWorkingDir: string | null;
   onConversationStarted: (id: string) => void;
   onDetach: () => void;
+  /**
+   * Anything else that belongs in this corner, stacked above the toggle.
+   *
+   * The dock owns the bottom-right of the paper. A second control placed
+   * there independently is drawn on top of this one — which is what the work
+   * layer's export did, with "Open chat" sitting across the word "Export".
+   */
+  aside?: React.ReactNode;
 }
 
 export function ProjectMapChatDock({
@@ -40,17 +52,22 @@ export function ProjectMapChatDock({
   launchWorkingDir,
   onConversationStarted,
   onDetach,
+  aside,
 }: ProjectMapChatDockProps) {
   const { t } = useTranslation("openhands");
   const chatOpen = useProjectMapStore((state) => state.chatOpen);
   const setChatOpen = useProjectMapStore((state) => state.setChatOpen);
 
   // A conversation appearing means work started, and work the user cannot see
-  // is work they have to guess at.
-  const bound = conversationId !== null;
+  // is work they have to guess at. Appearing: the binding changing under a
+  // mounted page, not a page mounting already bound.
+  const previous = React.useRef<string | null | undefined>(undefined);
   React.useEffect(() => {
-    if (bound) setChatOpen(true);
-  }, [bound, setChatOpen]);
+    const before = previous.current;
+    previous.current = conversationId;
+    if (before === undefined) return;
+    if (conversationId !== null && conversationId !== before) setChatOpen(true);
+  }, [conversationId, setChatOpen]);
 
   return (
     <div
@@ -60,7 +77,18 @@ export function ProjectMapChatDock({
     >
       {chatOpen && (
         <div className="pointer-events-auto flex max-h-[70vh] w-full flex-col overflow-y-auto rounded-lg border border-border-subtle bg-base-secondary p-3 custom-scrollbar">
-          <React.Suspense fallback={null}>
+          {/* Not nothing: the panel's border is already on the paper, so an
+              empty fallback is a bordered box with nothing in it for as long
+              as the transcript's chunk takes to arrive — over a second in the
+              dev server, and this is the largest import on the route. The
+              spinner is the one the app uses everywhere else it waits. */}
+          <React.Suspense
+            fallback={
+              <div className="flex justify-center py-6">
+                <LoadingSpinner size="small" />
+              </div>
+            }
+          >
             <ProjectMapConversation
               document={map}
               mapPath={mapPath}
@@ -72,10 +100,14 @@ export function ProjectMapChatDock({
           </React.Suspense>
         </div>
       )}
+      {aside !== undefined && (
+        <div className="pointer-events-auto">{aside}</div>
+      )}
       <button
         type="button"
         data-testid="project-map-chat-dock-toggle"
         aria-expanded={chatOpen}
+        title={t(I18nKey.PROJECT_MAP$CHAT_PLACEHOLDER)}
         className="pointer-events-auto rounded-md border border-border-subtle bg-base-secondary px-3 py-1.5 text-micro text-muted hover:text-content"
         onClick={() => setChatOpen(!chatOpen)}
       >

@@ -1,5 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import ProjectMapService from "#/api/project-map-service/project-map-service.api";
+import ProjectMapService, {
+  type ProjectMapTarget,
+} from "#/api/project-map-service/project-map-service.api";
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import { PROJECT_MAP_QUERY_KEYS } from "#/hooks/query/query-keys";
 import type { ProjectMapDocument } from "#/types/project-map";
@@ -19,21 +21,27 @@ export const SAVE_PROJECT_MAP_MUTATION_KEY = ["save-project-map"] as const;
  * edits, and the map's header shows which commit the open document was
  * generated against so a stale one is visibly stale.
  */
-export function useSaveProjectMap(conversationId: string | null = null) {
+export function useSaveProjectMap(
+  target: Pick<ProjectMapTarget, "conversationId" | "workingDir"> = {},
+) {
   const queryClient = useQueryClient();
   const { backend } = useActiveBackend();
+  const conversationId = target.conversationId ?? null;
+  const workingDir = target.workingDir ?? null;
 
   return useMutation({
     mutationKey: SAVE_PROJECT_MAP_MUTATION_KEY,
     mutationFn: (document: ProjectMapDocument) =>
       ProjectMapService.writeProjectMap(serializeProjectMap(document), {
         conversationId,
+        workingDir,
       }),
     onSuccess: () =>
       queryClient.invalidateQueries({
         queryKey: PROJECT_MAP_QUERY_KEYS.byWorkspace(
           backend.id,
           conversationId,
+          workingDir,
         ),
       }),
   });

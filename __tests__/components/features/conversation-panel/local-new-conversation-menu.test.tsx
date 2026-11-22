@@ -101,7 +101,7 @@ const renderMenu = ({
 };
 
 describe("LocalNewConversationMenu", () => {
-  it("disables saved host workspaces and explains isolated Docker creation", async () => {
+  it("offers saved host workspaces on an isolated backend, and still a fresh sandbox", async () => {
     clearCachedAgentServerInfo();
     server.use(
       http.get("*/server_info", () =>
@@ -124,14 +124,16 @@ describe("LocalNewConversationMenu", () => {
       ],
     });
     await user.click(screen.getByTestId("new-conversation-button"));
+    // A folder on the host is mounted into the sandbox, so it is offered like
+    // anywhere else; the no-folder option says the conversation gets its own.
     await waitFor(() =>
-      expect(screen.getByTestId("launch-workspace")).toBeDisabled(),
+      expect(screen.getByTestId("launch-workspace")).toBeEnabled(),
     );
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "HOME$ISOLATED_WORKSPACE_NOTICE",
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByTestId("add-workspaces-button")).toBeEnabled();
+    expect(screen.getByTestId("launch-no-workspace")).toHaveTextContent(
+      "HOME$ISOLATED_WORKSPACE_NEW",
     );
-    expect(screen.getByTestId("add-workspaces-button")).toBeDisabled();
-    expect(screen.getByTestId("launch-no-workspace")).toBeEnabled();
     expect(screen.getByTestId("launch-workspace")).toHaveAttribute(
       "data-workspace-path",
       "/home/user/project",

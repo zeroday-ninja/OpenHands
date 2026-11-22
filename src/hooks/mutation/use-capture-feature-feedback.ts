@@ -13,13 +13,10 @@
 import { useMutation } from "@tanstack/react-query";
 import AutomationService from "#/api/automation-service/automation-service.api";
 import { getRegisteredBackends } from "#/api/backend-registry/active-store";
-import SoulService, {
-  eligibleForSync,
-  isSoulUnsupportedError,
-} from "#/api/soul-service/soul-service.api";
+import { eligibleForSync } from "#/api/soul-service/soul-service.api";
 import type { FeatureTrial } from "#/types/feature-trial";
 import { useSyncMemoryAcrossBackends } from "#/hooks/mutation/use-sync-memory-across-backends";
-import { correctionEntry } from "#/utils/soul/correction-entry";
+import { fileCorrectionInMemory } from "#/utils/soul/file-correction-in-memory";
 
 export interface CaptureFeatureFeedbackInput {
   trial: FeatureTrial;
@@ -51,7 +48,13 @@ export function useCaptureFeatureFeedback() {
       // person can read it rather than only in a row and in prompts. The rule
       // asks for both: injection is what guarantees a cycle sees it, the
       // document is what makes the record readable and complete.
-      await recordInMemory(captured.lesson.id, trial.id, trigger, text);
+      await fileCorrectionInMemory({
+        lessonId: captured.lesson.id,
+        scope: "surface",
+        subject: trial.id,
+        trigger,
+        text,
+      });
       // And on to the other machines, because the plan asks for memory
       // "synced across backends, eventually consistent" and the only thing
       // that synced it was a button in settings — so a correction given on
@@ -80,55 +83,4 @@ export function useCaptureFeatureFeedback() {
     // toast either, because the thing that needs correcting is on screen.
     meta: { disableToast: true },
   });
-}
-
-/**
- * Append the correction to MEMORY.md, best effort and never silently.
- *
- * Best effort because the correction is already captured by the time this
- * runs: failing the whole mutation here would tell the user their rating did
- * not land when it did. Not silent, because a document that quietly missed an
- * entry is the `out_of_scope` failure this pipeline exists to diagnose — so
- * the reason is logged, and a backend too old to have an identity set is told
- * apart from one that refused.
- *
- * **Through the merge, not a read and a write.** This read the document,
- * appended to it and wrote the whole thing back — so two corrections filed
- * close together each read the same document and the second write dropped
- * the first's entry. MEMORY.md is append-only for exactly this reason, and
- * the server already owns the union: it "converges whichever order the
- * backends are reached in, running it twice changes nothing, and an entry can
- * only ever appear or stay". One entry is a log of one, and the entry's own
- * id is what makes filing it twice the same as filing it once.
- */
-async function recordInMemory(
-  lessonId: string,
-  subject: string,
-  trigger: string,
-  text: string,
-): Promise<void> {
-  try {
-    await SoulService.mergeMemory([
-      correctionEntry({
-        lessonId,
-        scope: "surface",
-        subject,
-        trigger,
-        text,
-        at: new Date(),
-      }),
-    ]);
-  } catch (error) {
-    if (isSoulUnsupportedError(error)) {
-      // An older agent server has no identity set to file it in. The lesson
-      // still reaches every cycle; only the readable copy is missing.
-
-      console.warn(
-        "The correction was captured but this backend has no identity set to file it in.",
-      );
-      return;
-    }
-
-    console.warn("The correction was captured but could not be filed:", error);
-  }
 }

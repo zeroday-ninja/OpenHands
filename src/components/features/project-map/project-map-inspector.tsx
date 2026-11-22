@@ -11,7 +11,10 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import { Eye, EyeOff, MapPin, Pencil, StickyNote } from "lucide-react";
 import { I18nKey } from "#/i18n/declaration";
-import type { PlacedProjectMapDocument } from "#/types/project-map";
+import type {
+  PlacedProjectMapDocument,
+  PlacedProjectMapNode,
+} from "#/types/project-map";
 import {
   projectMapNeighbors,
   resolveProjectMapSelection,
@@ -34,12 +37,41 @@ const NOTE_OFFSET = { x: 40, y: -56 };
 
 export interface ProjectMapInspectorProps {
   document: PlacedProjectMapDocument;
+  /**
+   * False when the paper shows a drawing this panel cannot change — the live
+   * work graph is assembled on every fetch, so renaming or pinning one of its
+   * plates would write a note about a node the committed file has never heard
+   * of. It still reads: what the thing is, and what it connects to.
+   */
+  editable?: boolean;
+  /**
+   * True when the plates borrowed their silhouettes from another vocabulary.
+   *
+   * The live work graph is drawn with the shapes the canvas already has: an
+   * agent takes a service's outline, a cycle a module's. That loan is
+   * deliberate and the legend explains it, but a *word* cannot be borrowed
+   * the way a shape can — this panel was calling an agent a service. The
+   * category then comes from the layer the node sits in, which the work
+   * graph names for a reader.
+   */
+  shapesAreBorrowed?: boolean;
 }
 
 export function ProjectMapInspector({
   document: map,
+  editable = true,
+  shapesAreBorrowed = false,
 }: ProjectMapInspectorProps) {
   const { t } = useTranslation("openhands");
+  /** What sort of thing a plate is, in the vocabulary it actually belongs to. */
+  const categoryOf = React.useCallback(
+    (node: PlacedProjectMapNode) => {
+      const layer = map.groups.find((group) => group.id === node.group)?.label;
+      if (shapesAreBorrowed && layer !== undefined) return layer;
+      return t(PROJECT_MAP_NODE_KIND_LABELS[node.kind]);
+    },
+    [map.groups, shapesAreBorrowed, t],
+  );
   const selection = useProjectMapStore((state) => state.selection);
   const setSelection = useProjectMapStore((state) => state.setSelection);
   const renameNode = useProjectMapStore((state) => state.renameNode);
@@ -149,7 +181,7 @@ export function ProjectMapInspector({
             >
               <span className="font-medium text-foreground">{node.label}</span>
               <span className="truncate font-mono text-micro text-muted">
-                {node.path ?? t(PROJECT_MAP_NODE_KIND_LABELS[node.kind])}
+                {node.path ?? categoryOf(node)}
               </span>
             </button>
           </li>
@@ -167,7 +199,7 @@ export function ProjectMapInspector({
     <div data-testid="project-map-inspector" className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
         <span className={PROJECT_MAP_SECTION_LABEL_CLASS}>
-          {t(PROJECT_MAP_NODE_KIND_LABELS[node.kind])}
+          {categoryOf(node)}
         </span>
         {renaming === node.id ? (
           <input
@@ -205,93 +237,97 @@ export function ProjectMapInspector({
           : node.summary}
       </p>
 
-      <div className="flex flex-wrap gap-1.5">
-        <button
-          type="button"
-          className={PROJECT_MAP_BUTTON_CLASS}
-          onClick={() => setRenaming(node.id)}
-        >
-          <Pencil size={ICON_SIZE} aria-hidden />
-          {t(I18nKey.PROJECT_MAP$RENAME)}
-        </button>
-        <button
-          type="button"
-          data-testid="project-map-toggle-hidden"
-          className={PROJECT_MAP_BUTTON_CLASS}
-          onClick={() => setNodeHidden(node.id, !node.hidden)}
-        >
-          {node.hidden ? (
-            <Eye size={ICON_SIZE} aria-hidden />
-          ) : (
-            <EyeOff size={ICON_SIZE} aria-hidden />
-          )}
-          {t(
-            node.hidden
-              ? I18nKey.PROJECT_MAP$SHOW_HIDDEN
-              : I18nKey.PROJECT_MAP$HIDE_NODE,
-          )}
-        </button>
-        <button
-          type="button"
-          className={PROJECT_MAP_BUTTON_CLASS}
-          onClick={() => setNodePinned(node.id, !node.pinned)}
-        >
-          <MapPin size={ICON_SIZE} aria-hidden />
-          {t(
-            node.pinned
-              ? I18nKey.PROJECT_MAP$UNPIN_NODE
-              : I18nKey.PROJECT_MAP$PIN_NODE,
-          )}
-        </button>
-        <button
-          type="button"
-          data-testid="project-map-add-note"
-          className={PROJECT_MAP_BUTTON_CLASS}
-          onClick={() =>
-            addNote({
-              id: `note-${Date.now().toString(36)}`,
-              text: "",
-              anchor: node.id,
-              x: node.x + NOTE_OFFSET.x,
-              y: node.y + NOTE_OFFSET.y,
-            })
-          }
-        >
-          <StickyNote size={ICON_SIZE} aria-hidden />
-          {t(I18nKey.PROJECT_MAP$ADD_NOTE)}
-        </button>
-        {/* There is no "Open in Files" here on purpose. The Files browser is a
+      {editable && (
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            className={PROJECT_MAP_BUTTON_CLASS}
+            onClick={() => setRenaming(node.id)}
+          >
+            <Pencil size={ICON_SIZE} aria-hidden />
+            {t(I18nKey.PROJECT_MAP$RENAME)}
+          </button>
+          <button
+            type="button"
+            data-testid="project-map-toggle-hidden"
+            className={PROJECT_MAP_BUTTON_CLASS}
+            onClick={() => setNodeHidden(node.id, !node.hidden)}
+          >
+            {node.hidden ? (
+              <Eye size={ICON_SIZE} aria-hidden />
+            ) : (
+              <EyeOff size={ICON_SIZE} aria-hidden />
+            )}
+            {t(
+              node.hidden
+                ? I18nKey.PROJECT_MAP$SHOW_HIDDEN
+                : I18nKey.PROJECT_MAP$HIDE_NODE,
+            )}
+          </button>
+          <button
+            type="button"
+            className={PROJECT_MAP_BUTTON_CLASS}
+            onClick={() => setNodePinned(node.id, !node.pinned)}
+          >
+            <MapPin size={ICON_SIZE} aria-hidden />
+            {t(
+              node.pinned
+                ? I18nKey.PROJECT_MAP$UNPIN_NODE
+                : I18nKey.PROJECT_MAP$PIN_NODE,
+            )}
+          </button>
+          <button
+            type="button"
+            data-testid="project-map-add-note"
+            className={PROJECT_MAP_BUTTON_CLASS}
+            onClick={() =>
+              addNote({
+                id: `note-${Date.now().toString(36)}`,
+                text: "",
+                anchor: node.id,
+                x: node.x + NOTE_OFFSET.x,
+                y: node.y + NOTE_OFFSET.y,
+              })
+            }
+          >
+            <StickyNote size={ICON_SIZE} aria-hidden />
+            {t(I18nKey.PROJECT_MAP$ADD_NOTE)}
+          </button>
+          {/* There is no "Open in Files" here on purpose. The Files browser is a
             view of one conversation's sandbox, mounted on the conversation
             route and keyed by its id; this page has no conversation, and the
             paths it holds are relative to the backend's working directory,
             which is the *parent* of every conversation's. Nothing reachable
             from `/map` can reveal the file, so the panel shows the path
             instead of offering a button that goes to the wrong place. */}
-      </div>
+        </div>
+      )}
 
-      <label className="flex flex-col gap-1">
-        <span className={PROJECT_MAP_SECTION_LABEL_CLASS}>
-          {t(I18nKey.PROJECT_MAP$GROUP)}
-        </span>
-        <select
-          data-testid="project-map-group-select"
-          value={node.group ?? ""}
-          className="rounded border border-border-input bg-surface px-2 py-1 text-sm text-foreground"
-          onChange={(event) =>
-            setNodeGroup(
-              node.id,
-              event.target.value === "" ? null : event.target.value,
-            )
-          }
-        >
-          <option value="">{t(I18nKey.PROJECT_MAP$NO_GROUP)}</option>
-          {map.groups.map((group) => (
-            <option key={group.id} value={group.id}>
-              {group.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      {editable && (
+        <label className="flex flex-col gap-1">
+          <span className={PROJECT_MAP_SECTION_LABEL_CLASS}>
+            {t(I18nKey.PROJECT_MAP$GROUP)}
+          </span>
+          <select
+            data-testid="project-map-group-select"
+            value={node.group ?? ""}
+            className="rounded border border-border-input bg-surface px-2 py-1 text-sm text-foreground"
+            onChange={(event) =>
+              setNodeGroup(
+                node.id,
+                event.target.value === "" ? null : event.target.value,
+              )
+            }
+          >
+            <option value="">{t(I18nKey.PROJECT_MAP$NO_GROUP)}</option>
+            {map.groups.map((group) => (
+              <option key={group.id} value={group.id}>
+                {group.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <EdgeList
         title={t(I18nKey.PROJECT_MAP$INBOUND)}

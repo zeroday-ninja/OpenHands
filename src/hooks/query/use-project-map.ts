@@ -3,6 +3,7 @@ import ProjectMapService, {
   projectMapReadErrorPath,
   projectMapUnavailableRuntimeConversation,
   projectMapUnsupportedReasonFor,
+  type ProjectMapTarget,
   type ProjectMapUnsupportedReason,
   type ProjectMapWorkspace,
 } from "#/api/project-map-service/project-map-service.api";
@@ -41,13 +42,15 @@ export interface ProjectMapView {
 }
 
 /**
- * The project map of one workspace: the conversation's when the page is bound
- * to one, the backend's own working directory when it is not.
+ * The project map of one workspace: the folder the user chose when there is
+ * one, else the conversation's when the page is bound to one, else the
+ * backend's own working directory.
  *
- * The conversation is passed in rather than read from the route, because the
- * `/map` page can hold a conversation the URL does not name (see
- * `project-map-page.tsx`). It is part of the query key, so switching workspace
- * is a different cache entry rather than a stale document from somewhere else.
+ * The target is passed in rather than read from the route, because the `/map`
+ * page can hold a conversation the URL does not name and a folder it never
+ * does (see `project-map-page.tsx`). Both are part of the query key, so
+ * switching workspace is a different cache entry rather than a stale document
+ * from somewhere else.
  *
  * Parsing happens in the query function rather than in the component so the
  * page re-renders against a stable object, and so a malformed document is a
@@ -59,15 +62,26 @@ export interface ProjectMapView {
  * behind the user's back is exactly the surprise this feature must not have —
  * the page refetches when the user asks, or after it or the agent writes.
  */
-export function useProjectMap(conversationId: string | null = null) {
+export function useProjectMap(
+  target: Pick<ProjectMapTarget, "conversationId" | "workingDir"> = {},
+) {
   const { backend } = useActiveBackend();
+  const conversationId = target.conversationId ?? null;
+  const workingDir = target.workingDir ?? null;
   const unsupportedReason: ProjectMapUnsupportedReason | null =
     projectMapUnsupportedReasonFor(backend);
 
   const query = useQuery<ProjectMapView>({
-    queryKey: PROJECT_MAP_QUERY_KEYS.byWorkspace(backend.id, conversationId),
+    queryKey: PROJECT_MAP_QUERY_KEYS.byWorkspace(
+      backend.id,
+      conversationId,
+      workingDir,
+    ),
     queryFn: async () => {
-      const file = await ProjectMapService.readProjectMap({ conversationId });
+      const file = await ProjectMapService.readProjectMap({
+        conversationId,
+        workingDir,
+      });
       const revision = projectMapRevision(file.absolutePath, file.raw);
       if (file.raw === null) {
         return {

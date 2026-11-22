@@ -1,5 +1,6 @@
 // Import all event types
 import {
+  ACPAdapterIncidentEvent,
   ACPToolCallEvent,
   ActionEvent,
   MessageEvent,
@@ -32,6 +33,8 @@ export type OpenHandsEvent =
   | SystemPromptEvent
   // ACP sub-agent tool call events
   | ACPToolCallEvent
+  // An ACP adapter met something it could not translate
+  | ACPAdapterIncidentEvent
   // Hook events
   | HookExecutionEvent
   // Conversation management events

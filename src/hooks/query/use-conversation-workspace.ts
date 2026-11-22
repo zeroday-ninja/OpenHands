@@ -1,5 +1,3 @@
-import { useTranslation } from "react-i18next";
-import { I18nKey } from "#/i18n/declaration";
 import { useQuery } from "@tanstack/react-query";
 import { useActiveBackend } from "#/contexts/active-backend-context";
 import {
@@ -7,8 +5,18 @@ import {
   usesIsolatedWorkspace,
 } from "#/api/conversation-workspace";
 
+/**
+ * Whether the active backend runs each conversation in its own container.
+ *
+ * This used to also hand back an "unsupported" message that disabled every
+ * host-folder control on such a backend. The Docker runtime mounts a chosen
+ * host folder at `/workspace` inside the sandbox — it has since agent server
+ * 1.55 — so a folder attaches there as well as anywhere; what still cannot
+ * attach is a repository from a Git provider, which the launch guard refuses
+ * with its own message. Callers that hid folders behind the flag now only use
+ * it to say that the conversation gets a sandbox.
+ */
 export function useConversationWorkspace() {
-  const { t } = useTranslation();
   const { backend } = useActiveBackend();
   const query = useQuery({
     queryKey: [
@@ -23,12 +31,7 @@ export function useConversationWorkspace() {
     retry: false,
     meta: { disableToast: true },
   });
-  const isolated =
-    backend.kind === "local" && usesIsolatedWorkspace(query.data);
   return {
-    isolated,
-    unsupportedMessage: isolated
-      ? t(I18nKey.HOME$ISOLATED_WORKSPACE_NOTICE)
-      : null,
+    isolated: backend.kind === "local" && usesIsolatedWorkspace(query.data),
   };
 }

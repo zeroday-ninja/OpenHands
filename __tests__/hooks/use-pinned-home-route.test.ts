@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  CONVERSATIONS_PATH,
+  PINNED_HOME_ROUTE_KEY,
   getPinnedHomeRouteKey,
   isPinnableRoute,
-  PINNED_HOME_ROUTE_KEY,
 } from "#/hooks/use-pinned-home-route";
 import { getLockedCloudHost } from "#/api/agent-server-config";
 import { PROJECT_MAP_ROUTE_PATH } from "#/types/project-map";
@@ -33,6 +34,17 @@ describe("getPinnedHomeRouteKey", () => {
 describe("isPinnableRoute", () => {
   afterEach(() => {
     vi.mocked(getLockedCloudHost).mockReturnValue(null);
+  });
+
+  it("lets the conversation list be home, which is how you get it back", () => {
+    // The map became the front door on the grounds that a pin puts the
+    // conversation list back for anyone who wants it. Nothing could be
+    // pinned to Home until now, so that choice did not exist.
+    expect(isPinnableRoute(CONVERSATIONS_PATH)).toBe(true);
+
+    // Still true on a canvas locked to Cloud, where the map is not.
+    vi.mocked(getLockedCloudHost).mockReturnValue("https://app.all-hands.dev");
+    expect(isPinnableRoute(CONVERSATIONS_PATH)).toBe(true);
   });
 
   it("lets the map be home, except on a canvas locked to a cloud host", () => {

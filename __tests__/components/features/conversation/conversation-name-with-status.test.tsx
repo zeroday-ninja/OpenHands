@@ -14,7 +14,12 @@ const mocks = vi.hoisted(() => ({
   conversationId: "conversation-1" as string | undefined,
   conversation: {
     execution_status: "running",
-  } as { execution_status?: ExecutionStatus | null } | undefined,
+  } as
+    | {
+        execution_status?: ExecutionStatus | null;
+        sandbox_status?: string | null;
+      }
+    | undefined,
   curAgentState: "running" as AgentState,
   isTask: false,
   taskStatus: null as string | null,
@@ -163,6 +168,56 @@ describe("conversation name status controls", () => {
     mocks.isTask = false;
     mocks.taskStatus = null;
     mocks.providers = [{ name: "provider-1" }];
+  });
+
+  it("says the status in words beside the name", () => {
+    // Arrange: a conversation that has stopped. The dot carries the colour
+    // and opens the server menu; which state it is in was a hover away.
+    mocks.conversation = { execution_status: ExecutionStatus.FINISHED };
+    mocks.curAgentState = AgentState.FINISHED;
+
+    // Act
+    renderSubject();
+
+    // Assert
+    const chip = screen.getByTestId("conversation-status-chip");
+    expect(chip).toHaveAttribute("data-status", ExecutionStatus.FINISHED);
+    expect(chip).toHaveTextContent("COMMON$FINISHED");
+  });
+
+  it("says archived when the sandbox is gone for good", () => {
+    // Arrange: a conversation whose runtime cannot come back. Its last
+    // execution status is still "running", which read as though it might
+    // still be doing something.
+    mocks.conversation = {
+      execution_status: ExecutionStatus.RUNNING,
+      sandbox_status: "MISSING",
+    };
+    mocks.curAgentState = AgentState.STOPPED;
+
+    // Act
+    renderSubject();
+
+    // Assert
+    const chip = screen.getByTestId("conversation-status-chip");
+    expect(chip).toHaveAttribute("data-status", "archived");
+    expect(chip).toHaveTextContent("COMMON$ARCHIVED");
+  });
+
+  it("follows the live agent when the record has not caught up", () => {
+    // Arrange: the conversation record still says finished — it is polled
+    // every thirty seconds and nothing invalidates it when the agent moves
+    // — while the agent in front of the reader is running.
+    mocks.conversation = { execution_status: ExecutionStatus.FINISHED };
+    mocks.curAgentState = AgentState.RUNNING;
+
+    // Act
+    renderSubject();
+
+    // Assert: the word agrees with the dot beside it.
+    const chip = screen.getByTestId("conversation-status-chip");
+    expect(chip).toHaveAttribute("data-status", ExecutionStatus.RUNNING);
+    expect(chip).toHaveTextContent("COMMON$WORKING");
   });
 
   it("pauses an active conversation without triggering its parent", () => {

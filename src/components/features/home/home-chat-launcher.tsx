@@ -109,11 +109,10 @@ export function HomeChatLauncher() {
   const homeLlmProfile = useModelStore((s) => s.homeLlmProfile);
   const { data: llmProfiles } = useLlmProfiles();
   const { error: workspacesError } = useLocalWorkspaces({ enabled: isLocal });
-  const { isolated, unsupportedMessage: runtimeWorkspaceMessage } =
-    useConversationWorkspace();
-  const workspacesUnsupportedMessage =
-    runtimeWorkspaceMessage ??
-    (isLocal ? getWorkspacesUnsupportedMessage(workspacesError, t) : null);
+  const { isolated } = useConversationWorkspace();
+  const workspacesUnsupportedMessage = isLocal
+    ? getWorkspacesUnsupportedMessage(workspacesError, t)
+    : null;
 
   const setWorkspaceMode = (mode: WorkspaceMode) => {
     setWorkspaceModeState(mode);
@@ -150,12 +149,10 @@ export function HomeChatLauncher() {
       automationSetup: isAutomateMode,
       entryPoint: "home_chat_launcher",
     };
-    // An isolated backend owns its workspace, so a host selection left over
-    // from a non-isolated session must not be forwarded: the server rejects it
-    // (`HOME$ISOLATED_WORKSPACE_NOTICE`) and the user sees an error toast for a
-    // selection they may not have noticed. Creation proceeds isolated instead;
-    // the launcher still offers an explicit "clear" affordance for the UI.
-    if (isLocal && pendingWorkspace && !isolated) {
+    // On an isolated backend the folder is forwarded too: the Docker runtime
+    // mounts it at `/workspace` as the sandbox's working directory, which is
+    // what the status line under the composer says will happen.
+    if (isLocal && pendingWorkspace) {
       variables = {
         ...variables,
         workingDir: pendingWorkspace.path,
@@ -333,7 +330,7 @@ export function HomeChatLauncher() {
         {isolated && (
           <p role="status" className="text-xs text-[var(--oh-text-secondary)]">
             {pendingWorkspace
-              ? runtimeWorkspaceMessage
+              ? t(I18nKey.HOME$ISOLATED_WORKSPACE_MOUNTED)
               : t(I18nKey.HOME$ISOLATED_WORKSPACE_NEW)}
             {pendingWorkspace && (
               <button

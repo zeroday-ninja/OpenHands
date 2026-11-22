@@ -28,6 +28,7 @@ import type {
   ProjectMapNote,
   ProjectMapShape,
 } from "#/types/project-map";
+import { PROJECT_MAP_LAYER_IDS } from "#/types/project-map";
 import {
   PROJECT_MAP_GRID,
   projectMapGroupAtPoint,
@@ -70,6 +71,31 @@ export interface ProjectMapViewport {
   x: number;
   y: number;
   scale: number;
+}
+
+/** Where the "which layer" habit is kept, across visits. */
+const LAYER_PREFERENCE_KEY = "project-map-layer";
+
+function readLayerPreference(): ProjectMapLayerId | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = window.localStorage.getItem(LAYER_PREFERENCE_KEY);
+    return stored !== null && PROJECT_MAP_LAYER_IDS.includes(stored as never)
+      ? (stored as ProjectMapLayerId)
+      : null;
+  } catch {
+    // Storage a browser refuses to read is no preference, not an error.
+    return null;
+  }
+}
+
+function writeLayerPreference(layer: ProjectMapLayerId): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LAYER_PREFERENCE_KEY, layer);
+  } catch {
+    // Nothing to recover: the view is already set, only the habit is lost.
+  }
 }
 
 export const PROJECT_MAP_MIN_SCALE = 0.25;
@@ -125,6 +151,34 @@ interface ProjectMapState {
   viewport: ProjectMapViewport;
   /** Hidden nodes are drawn, faint, while this is on, so they can be restored. */
   showHidden: boolean;
+  /**
+   * Whether the paper shows the map's layers as blocks instead of its parts.
+   *
+   * A view, like `showHidden`, not a document field: a wall of a hundred
+   * plates opens as its eight layers, and clicking one opens the detail.
+   */
+  overview: boolean;
+  /**
+   * Which derived layer is on the paper.
+   *
+   * A view, like `overview` and `showHidden`. It used to be written into the
+   * committed document, so looking at the live work graph marked the map
+   * unsaved and, if saved, told every machine that opened the repository to
+   * start on the agents rather than the code. What a person is looking at
+   * right now is not a fact about the repository. A document that already
+   * carries one is still honoured when it opens, and never rewritten.
+   */
+  layer: ProjectMapLayerId;
+  /**
+   * The layer a person opened from the overview, if any.
+   *
+   * Opening a block used to put the viewport over that layer and leave every
+   * other layer drawn around it, so the reader arrived at the same wall they
+   * had just folded. The rest of the drawing stays on the paper — a relation
+   * leaving the layer is half the point — but faded, as a selection's
+   * neighbourhood already fades what it is not about.
+   */
+  openedGroup: string | null;
 
   hydrate: (source: string, document: PlacedProjectMapDocument) => void;
   reset: () => void;
@@ -142,6 +196,7 @@ interface ProjectMapState {
   setNodePinned: (id: string, pinned: boolean) => void;
   setGroupCollapsed: (groupId: string, collapsed: boolean) => void;
   toggleShowHidden: () => void;
+  setOverview: (overview: boolean) => void;
 
   addNote: (note: ProjectMapNote) => void;
   updateNote: (id: string, text: string) => void;
@@ -150,6 +205,9 @@ interface ProjectMapState {
 
   setMode: (mode: ProjectMapMode) => void;
   setLayer: (layer: ProjectMapLayerId) => void;
+  /** Puts a layer on the paper without making it a habit. */
+  showLayer: (layer: ProjectMapLayerId) => void;
+  setOpenedGroup: (groupId: string | null) => void;
   setTool: (tool: ProjectMapTool) => void;
   setChatOpen: (open: boolean) => void;
   setEditingShape: (id: string | null) => void;
@@ -341,6 +399,9 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
   future: [],
   viewport: INITIAL_VIEWPORT,
   showHidden: false,
+  overview: false,
+  layer: "code",
+  openedGroup: null,
 
   hydrate: (source, incoming) =>
     set((state) => {
@@ -367,6 +428,11 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
       return {
         source,
         document,
+        // A document that already names a layer opens on it; switching away
+        // is this session's business and is never written back.
+        // The document first: a committed choice is about the repository and
+        // outranks a habit. Then the habit. Then the code.
+        layer: document.canvas.view.layer ?? readLayerPreference() ?? "code",
         //: Shapes whose anchor the newest revision dropped, for the surface
         //: to name. Replaced rather than accumulated: it describes this
         //: revision, and a list that grew would keep reporting a release the
@@ -413,6 +479,9 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
       future: [],
       viewport: INITIAL_VIEWPORT,
       showHidden: false,
+      overview: false,
+      layer: "code",
+      openedGroup: null,
     }),
 
   markSaved: () => set({ dirty: false }),
@@ -512,6 +581,8 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
     ),
 
   toggleShowHidden: () => set((state) => ({ showHidden: !state.showHidden })),
+  setOverview: (overview) =>
+    set(overview ? { overview, openedGroup: null } : { overview }),
 
   /** A new note opens its own editor: an empty note nobody can type in is litter. */
   addNote: (note) =>
@@ -546,26 +617,41 @@ export const useProjectMapStore = create<ProjectMapState>((set) => ({
   setEditingNote: (id) => set({ editingNote: id }),
 
   setMode: (mode) =>
-    set((state) =>
-      editCanvas(state, (canvas) => ({
+    set((state) => ({
+      ...editCanvas(state, (canvas) => ({
         ...canvas,
         view: { ...canvas.view, mode },
       })),
-    ),
+      // The drawing is not shown in the analysis mode, so a drawing tool in
+      // hand there would put invisible shapes on the paper. It goes down.
+      tool: mode === "derived" ? "select" : state.tool,
+    })),
 
   /**
    * Which derived layer is on the paper.
    *
-   * Goes through `edit` like any other view change, so switching to watch the
-   * agents work and back is one undo step and is saved with everything else.
+   * Sets a view and nothing else: watching the agents work is not an edit to
+   * the repository's map, so it costs no undo step and writes no file. It is
+   * remembered, though — someone who works in the live graph had to ask for
+   * it again on every open, because the document decides and most documents
+   * say nothing.
    */
-  setLayer: (layer) =>
-    set((state) =>
-      editCanvas(state, (canvas) => ({
-        ...canvas,
-        view: { ...canvas.view, layer },
-      })),
-    ),
+  setLayer: (layer) => {
+    writeLayerPreference(layer);
+    set({ layer, openedGroup: null });
+  },
+
+  /**
+   * The same view, without the habit.
+   *
+   * Following a link is a navigation, not a statement about every future
+   * visit. `?layer=work` used to go through `setLayer` and quietly make the
+   * work graph the front of the map for good — one press of "See it on the
+   * map" changing what every later `/map` opened on, with nothing on the
+   * page saying so.
+   */
+  showLayer: (layer) => set({ layer, openedGroup: null }),
+  setOpenedGroup: (openedGroup) => set({ openedGroup }),
 
   setTool: (tool) => set({ tool }),
   setChatOpen: (chatOpen) => set({ chatOpen }),

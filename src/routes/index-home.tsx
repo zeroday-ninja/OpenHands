@@ -1,17 +1,61 @@
 import { redirect } from "react-router";
-import { readPinnedHomeRoute } from "#/hooks/use-pinned-home-route";
+import {
+  CONVERSATIONS_PATH,
+  readPinnedHomeRoute,
+} from "#/hooks/use-pinned-home-route";
+import { getActiveBackend } from "#/api/backend-registry/active-store";
+import { getLockedCloudHost } from "#/api/agent-server-config";
+import { projectMapUnsupportedReasonFor } from "#/api/project-map-service/project-map-service.api";
 
 /**
- * With a home pin set for the active backend + org, `/` redirects to the
- * pinned page. `readPinnedHomeRoute` only returns routes that currently
- * resolve (never `/` itself), so a stale pin falls back to the default
- * home with no error and no redirect loop; the built-in home stays
- * reachable unmodified at /conversations.
+ * Where `/` goes.
+ *
+ * A home pin for the active backend + org wins: `readPinnedHomeRoute` only
+ * returns routes that currently resolve (never `/` itself), so a stale pin
+ * falls through with no error and no redirect loop.
+ *
+ * With no pin, the map. The plan's centre of gravity is the canvas — "the
+ * visual canvas is where you work, with chat secondary" — and a product
+ * whose front door was still the conversation list said the opposite every
+ * time it opened. The conversation list stays reachable unmodified at
+ * /conversations, and a pin to it puts it back as the front door for anyone
+ * who wants that.
  */
-export const clientLoader = () => {
+export const clientLoader = ({ request }: { request: Request }) => {
+  // The query comes along. `/?previewOnboardingStep=2` is a documented way
+  // in, and dropping the search string made it a plain redirect to the
+  // front door with no preview and no error — the same silence this plan
+  // forbids everywhere else.
+  const { search } = new URL(request.url);
   const pinnedRoute = readPinnedHomeRoute();
-  if (pinnedRoute) return redirect(pinnedRoute);
-  return null;
+  if (pinnedRoute) return redirect(`${pinnedRoute}${search}`);
+  return redirect(`${defaultHomeRoute()}${search}`);
 };
+
+/** The front door when nothing is pinned. */
+export const DEFAULT_HOME_ROUTE = "/map";
+
+/** Where Home lives when the map cannot be the front door. */
+export const HOME_ROUTE = CONVERSATIONS_PATH;
+
+/**
+ * The front door for the backend in front of the user.
+ *
+ * The map reads a file from a local workspace, so a cloud backend — and a
+ * canvas locked to a cloud host, where the sidebar hides the map entirely —
+ * can only show "unsupported here". `isPinnableRoute` already refuses to
+ * pin the map for that reason, in those words; the default was not held to
+ * the same rule, so `/` opened on a page that says it cannot work. The
+ * conversation list is the front door there.
+ */
+export function defaultHomeRoute(): string {
+  if (getLockedCloudHost() !== null) return HOME_ROUTE;
+  const { backend } = getActiveBackend();
+  // Any reason, not just a cloud one: with nothing registered the map can
+  // only say "no backend", which is the same dead end by another name.
+  return projectMapUnsupportedReasonFor(backend) === null
+    ? DEFAULT_HOME_ROUTE
+    : HOME_ROUTE;
+}
 
 export { default } from "./home";

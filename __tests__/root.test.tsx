@@ -9,7 +9,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoutesStub } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
-import App, { links } from "#/root";
+import App, { HydrateFallback, links } from "#/root";
 import { server } from "#/mocks/node";
 import { __resetActiveStoreForTests } from "#/api/backend-registry/active-store";
 import { LOCKED_CLOUD_BACKEND_ID } from "#/api/backend-registry/default-backend";
@@ -148,6 +148,19 @@ function mockLockedCookieDeployment() {
   __resetActiveStoreForTests();
   return assign;
 }
+
+describe("App root hydrate fallback", () => {
+  it("paints a loading indicator in the served shell before the route modules arrive", () => {
+    // Arrange: `ssr: false` renders this one export into the HTML, so it is
+    // all the window can show while the modules and clientLoaders run.
+
+    // Act
+    render(<HydrateFallback />);
+
+    // Assert
+    expect(screen.getByTestId("loading-spinner")).toBeInTheDocument();
+  });
+});
 
 describe("App root agent-server availability guard", () => {
   beforeEach(() => {

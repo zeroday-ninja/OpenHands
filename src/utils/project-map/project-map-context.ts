@@ -27,17 +27,24 @@ export interface ProjectMapContextOptions {
   /**
    * Where the open map is, absolute in the workspace the page read it from.
    *
-   * It has to be absolute and it has to be passed in, because the page and the
-   * conversation need not share a working directory: an unbound page reads the
-   * backend's own, and a conversation gets its own directory or its own
-   * container. A relative `.openhands/project-map.json` would send the agent
-   * looking wherever it happens to be, where there may be no map — so the one
-   * thing this feature cannot do without, the agent and the user editing the
-   * same file, would quietly not happen. The page keeps both ends on one
+   * It has to be passed in, because the page and the conversation need not
+   * share a working directory: an unbound page reads the backend's own, and a
+   * conversation gets its own directory or its own container. On a host
+   * workspace it is absolute, since a relative `.openhands/project-map.json`
+   * would send the agent looking wherever it happens to be, where there may
+   * be no map — so the one thing this feature cannot do without, the agent
+   * and the user editing the same file, would quietly not happen. Inside a
+   * sandbox it is the repository-relative path instead: the sandbox mounts
+   * the folder the page reads at its own working directory, and the host's
+   * absolute path names nothing in there. The page keeps both ends on one
    * workspace (see `project-map-page.tsx`); this path is what names the file
    * inside it.
    */
   mapPath: string;
+}
+
+function isAbsolutePath(path: string): boolean {
+  return path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path);
 }
 
 /** One line per selected node: kind, label, path. */
@@ -63,7 +70,11 @@ export function buildProjectMapContextBlock(
     `Selected on the project map (${provenance}):`,
     ...nodes.map(describeProjectMapNode),
     "",
-    `You can edit ${options.mapPath} to change the map itself — grouping, labels, hidden nodes and positions all live in that file. It is an absolute path because it may be outside your working directory. Keep every node's x, y, pinned, hidden, group and any label whose label_source is "user".`,
+    `You can edit ${options.mapPath} to change the map itself — grouping, labels, hidden nodes and positions all live in that file. ${
+      isAbsolutePath(options.mapPath)
+        ? "It is an absolute path because it may be outside your working directory."
+        : "The path is relative to your working directory."
+    } Keep every node's x, y, pinned, hidden, group and any label whose label_source is "user".`,
   ].join("\n");
 }
 

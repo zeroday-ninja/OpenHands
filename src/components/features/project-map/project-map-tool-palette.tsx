@@ -8,8 +8,11 @@
 
 import { useTranslation } from "react-i18next";
 import { I18nKey } from "#/i18n/declaration";
-import { PROJECT_MAP_LAYOUT_KINDS } from "#/types/project-map";
-import type { ProjectMapLayoutKind } from "#/types/project-map";
+import {
+  PROJECT_MAP_LAYOUT_KINDS,
+  type ProjectMapMode,
+  ProjectMapLayoutKind,
+} from "#/types/project-map";
 import {
   PROJECT_MAP_TOOLS,
   useProjectMapStore,
@@ -37,8 +40,13 @@ const BUTTON_CLASS =
   "rounded-md border border-border-subtle px-2 py-1 text-micro text-muted hover:text-content disabled:opacity-40";
 const ACTIVE_CLASS = "border-primary text-content";
 
-export function ProjectMapToolPalette() {
+export function ProjectMapToolPalette({ mode }: { mode: ProjectMapMode }) {
   const { t } = useTranslation("openhands");
+  // The drawing tools and the layouts act on the drawn layer, which the
+  // analysis mode does not show. Offering them there is a row of buttons that
+  // do nothing visible — most of the chrome on a first visit, since a
+  // generated map opens in that mode. Undo and redo apply to everything.
+  const drawing = mode !== "derived";
   const tool = useProjectMapStore((state) => state.tool);
   const setTool = useProjectMapStore((state) => state.setTool);
   const runLayout = useProjectMapStore((state) => state.runLayout);
@@ -54,35 +62,39 @@ export function ProjectMapToolPalette() {
       aria-label={t(I18nKey.PROJECT_MAP$TOOLS_LABEL)}
       className="flex flex-wrap items-center gap-1.5"
     >
-      {PROJECT_MAP_TOOLS.map((candidate) => (
-        <button
-          key={candidate}
-          type="button"
-          data-testid={`project-map-tool-${candidate}`}
-          aria-pressed={tool === candidate}
-          className={`${BUTTON_CLASS} ${tool === candidate ? ACTIVE_CLASS : ""}`}
-          onClick={() => setTool(candidate)}
-        >
-          {t(TOOL_LABELS[candidate])}
-        </button>
-      ))}
-
-      <span className="mx-1 text-micro text-muted">
-        {t(I18nKey.PROJECT_MAP$ARRANGE)}
-      </span>
-      {PROJECT_MAP_LAYOUT_KINDS.filter((kind) => kind !== "free").map(
-        (kind) => (
+      {drawing &&
+        PROJECT_MAP_TOOLS.map((candidate) => (
           <button
-            key={kind}
+            key={candidate}
             type="button"
-            data-testid={`project-map-layout-${kind}`}
-            className={BUTTON_CLASS}
-            onClick={() => runLayout(kind)}
+            data-testid={`project-map-tool-${candidate}`}
+            aria-pressed={tool === candidate}
+            className={`${BUTTON_CLASS} ${tool === candidate ? ACTIVE_CLASS : ""}`}
+            onClick={() => setTool(candidate)}
           >
-            {t(LAYOUT_LABELS[kind])}
+            {t(TOOL_LABELS[candidate])}
           </button>
-        ),
+        ))}
+
+      {drawing && (
+        <span className="mx-1 text-micro text-muted">
+          {t(I18nKey.PROJECT_MAP$ARRANGE)}
+        </span>
       )}
+      {drawing &&
+        PROJECT_MAP_LAYOUT_KINDS.filter((kind) => kind !== "free").map(
+          (kind) => (
+            <button
+              key={kind}
+              type="button"
+              data-testid={`project-map-layout-${kind}`}
+              className={BUTTON_CLASS}
+              onClick={() => runLayout(kind)}
+            >
+              {t(LAYOUT_LABELS[kind])}
+            </button>
+          ),
+        )}
 
       <button
         type="button"

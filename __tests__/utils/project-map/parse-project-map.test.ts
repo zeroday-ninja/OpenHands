@@ -328,6 +328,40 @@ describe("parseProjectMap", () => {
     expect(result.warnings).toEqual([{ kind: "orphan-note", count: 1 }]);
   });
 
+  it("sits a note that has no position beside the node it is about", () => {
+    // Arrange: the analysis names what a note is about, not where it goes.
+    // Two notes on the same node stack; one on an unplaced node has nowhere
+    // to go yet.
+    const base = minimalDocument();
+    const raw = JSON.stringify({
+      ...base,
+      nodes: [
+        { ...base.nodes[0], id: "src/a.ts", x: 100, y: 50, size: 100 },
+        { ...base.nodes[0], id: "src/b.ts", x: null, y: null },
+      ],
+      notes: [
+        { id: "n1", text: "first", anchor: "src/a.ts" },
+        { id: "n2", text: "second", anchor: "src/a.ts" },
+        { id: "n3", text: "elsewhere", anchor: "src/b.ts" },
+        { id: "n4", text: "placed", anchor: "src/a.ts", x: 7, y: 8 },
+      ],
+    });
+
+    // Act
+    const result = parseProjectMap(raw);
+
+    // Assert
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const [n1, n2, n3, n4] = result.document.notes;
+    expect(n1.x).toBeGreaterThan(100);
+    expect(n1.y).toBe(50);
+    expect(n2.x).toBe(n1.x);
+    expect(n2.y).toBeGreaterThan(n1.y);
+    expect([n3.x, n3.y]).toEqual([0, 0]);
+    expect([n4.x, n4.y]).toEqual([7, 8]);
+  });
+
   it("round-trips through serialization so the agent and the page read one file", () => {
     // Arrange
     const first = parseProjectMap(JSON.stringify(minimalDocument()));

@@ -40,9 +40,11 @@ import type {
   ProjectMapShapeKind,
 } from "#/types/project-map";
 import {
-  PROJECT_MAP_GRID,
+  fitProjectMapViewBox,
   projectMapGroupBounds,
   projectMapNodeSize,
+  PROJECT_MAP_GRID,
+  PROJECT_MAP_GROUP_PADDING,
 } from "#/utils/project-map/project-map-layout";
 import {
   PROJECT_MAP_GROUP_NODE_PREFIX,
@@ -68,6 +70,12 @@ import {
   PROJECT_MAP_MIN_SCALE,
   useProjectMapStore,
 } from "#/stores/project-map-store";
+import {
+  projectMapOverview,
+  type ProjectMapOverview,
+} from "#/utils/project-map/project-map-overview";
+import { ProjectMapOverviewLayer } from "./project-map-overview-layer";
+import { projectMapWaitingLayers } from "#/utils/project-map/project-map-waiting-parts";
 import { ProjectMapNodePlate } from "./project-map-node-plate";
 import { projectMapNodeDomId } from "./project-map-labels";
 import {
@@ -84,7 +92,27 @@ const COLLAPSED_HEIGHT = 56;
 /** Width of the gap left in a group boundary for its label. */
 const GROUP_LABEL_PADDING = 12;
 /** Below this zoom the grid and the path lines stop helping and start buzzing. */
+/**
+ * How many plates are drawn before only what is in view is drawn.
+ *
+ * The plan's own measure is one frame per pointer move at 200 shapes; this
+ * leaves room above that for a code map, and catches the work graph.
+ */
+const PLATE_BUDGET = 400;
+/** How far outside the view a plate is still drawn, in pixels. */
+const OFFSCREEN_MARGIN = 600;
+
 const DETAIL_SCALE = 0.62;
+/** Opening a layer from the overview lands at least this close. */
+/**
+ * How far an opened layer may be shrunk to get its width in frame.
+ *
+ * `DETAIL_SCALE` exactly, not a hair under it: at 0.6 a layer floored by the
+ * fit arrived with the dot grid and the plates' path lines switched off,
+ * which is most of what opening a layer is for.
+ */
+const OPEN_LAYER_MIN_SCALE = DETAIL_SCALE;
+const OPEN_LAYER_MAX_SCALE = 1.25;
 /**
  * A press that travels no further than this, in screen pixels, was a click.
  * Hands shake; a plate that needs a perfectly still finger to select is a
@@ -257,18 +285,30 @@ export interface ProjectMapCanvasProps {
    * whichever layer is on the paper.
    */
   derivedLayer?: ProjectMapDerivedLayer | null;
+  /**
+   * Node id to the parked change that names it. The rail says a change is
+   * waiting; this is what puts it where the work is, on the drawing.
+   */
+  waitingParts?: ReadonlyMap<string, string>;
 }
+
+const NOTHING_WAITING: ReadonlyMap<string, string> = new Map();
 
 export function ProjectMapCanvas({
   document: map,
   frameRef,
   derivedLayer = null,
+  waitingParts = NOTHING_WAITING,
 }: ProjectMapCanvasProps) {
   const { t } = useTranslation("openhands");
   const viewport = useProjectMapStore((state) => state.viewport);
   const selection = useProjectMapStore((state) => state.selection);
   const focused = useProjectMapStore((state) => state.focused);
   const showHidden = useProjectMapStore((state) => state.showHidden);
+  const overview = useProjectMapStore((state) => state.overview);
+  const setOverview = useProjectMapStore((state) => state.setOverview);
+  const openedGroup = useProjectMapStore((state) => state.openedGroup);
+  const setOpenedGroup = useProjectMapStore((state) => state.setOpenedGroup);
   const setViewport = useProjectMapStore((state) => state.setViewport);
   const setSelection = useProjectMapStore((state) => state.setSelection);
   const toggleInSelection = useProjectMapStore(
@@ -340,13 +380,100 @@ export function ProjectMapCanvas({
    * Selecting a drawn box has no edges to be adjacent to, so dimming on it
    * would fade the entire analysis for no reason a reader could work out.
    */
+  /**
+   * The paper's size in pixels, for deciding what is in view.
+   *
+   * Read through a ResizeObserver rather than during render: a layout read
+   * in the render path on a drawing this size is exactly the cost this
+   * whole mechanism exists to avoid.
+   */
+  const [frameSize, setFrameSize] = React.useState<{
+    width: number;
+    height: number;
+  } | null>(null);
+  React.useEffect(() => {
+    const element = frameRef.current;
+    if (!element || typeof ResizeObserver === "undefined") return undefined;
+    const read = () => {
+      const rect = element.getBoundingClientRect();
+      setFrameSize({ width: rect.width, height: rect.height });
+    };
+    read();
+    const observer = new ResizeObserver(read);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [frameRef]);
+
+  /**
+   * What is actually drawn: everything, until there is too much of it.
+   *
+   * The live work graph brings about 1,800 plates, nine times what this
+   * canvas was measured at, and at that size a drag across the paper took
+   * five seconds and a click on the toolbar more than one. Above the
+   * threshold only the plates within a screen of the view are rendered; the
+   * model keeps every node, so selection, framing, the fold and the edges'
+   * geometry are unchanged. Below it nothing is filtered, because a hundred
+   * plates cost nothing and a half-drawn small map would be a regression.
+   */
+  const visibleNodes = React.useMemo(() => {
+    if (
+      drawn.length <= PLATE_BUDGET ||
+      frameSize === null ||
+      frameSize.width === 0
+    )
+      return drawn;
+    const margin = OFFSCREEN_MARGIN / viewport.scale;
+    const left = viewport.x - margin;
+    const top = viewport.y - margin;
+    const right = viewport.x + frameSize.width / viewport.scale + margin;
+    const bottom = viewport.y + frameSize.height / viewport.scale + margin;
+    return drawn.filter((node) => {
+      const { width, height } = projectMapNodeSize(node.size);
+      return (
+        node.x < right &&
+        node.x + width > left &&
+        node.y < bottom &&
+        node.y + height > top
+      );
+    });
+  }, [drawn, frameSize, viewport]);
+
+  const visibleIds = React.useMemo(
+    () => new Set(visibleNodes.map((node) => node.id)),
+    [visibleNodes],
+  );
+
+  /**
+   * Which layer each part belongs to, by id.
+   *
+   * Every edge asks this to colour itself, and it was asking with a linear
+   * search through every part on the paper — a hundred edges over a hundred
+   * plates is ten thousand comparisons, on every render, including every
+   * pointer move of a pan. The same mistake the edge rectangles already had
+   * an index built for.
+   */
+  const groupOfNode = React.useMemo(() => {
+    const index = new Map<string, string | null>();
+    for (const node of drawn) index.set(node.id, node.group);
+    return index;
+  }, [drawn]);
+
   const focusIds = React.useMemo(() => {
     const derivedSelection = selection.filter((id) =>
       drawn.some((node) => node.id === id),
     );
-    if (derivedSelection.length === 0) return new Set<string>();
-    return projectMapFocusIds(derivedSelection, layerEdges);
-  }, [selection, layerEdges, drawn]);
+    if (derivedSelection.length > 0)
+      return projectMapFocusIds(derivedSelection, layerEdges);
+    // Nothing selected, but a layer was opened from the overview: that layer
+    // is what the reader asked for, and everything else is context.
+    if (openedGroup !== null)
+      return new Set(
+        drawn
+          .filter((node) => node.group === openedGroup)
+          .map((node) => node.id),
+      );
+    return new Set<string>();
+  }, [selection, layerEdges, drawn, openedGroup]);
 
   const accentOf = React.useCallback(
     (groupId: string | null) => {
@@ -492,6 +619,107 @@ export function ProjectMapCanvas({
       scale: next,
       x: anchor.x - (event.clientX - frame.left) / next,
       y: anchor.y - (event.clientY - frame.top) / next,
+    });
+  };
+
+  /**
+   * Whichever drawing is on the paper, as a document the fold understands.
+   *
+   * The work layer carries its own layers now — machines, programs, runs,
+   * agents — so it folds the same way the committed analysis does, which it
+   * needs more: it arrives with every run and every source on it.
+   */
+  const paper = React.useMemo<PlacedProjectMapDocument>(
+    () =>
+      derivedLayer === null
+        ? map
+        : {
+            ...map,
+            nodes: derivedLayer.nodes,
+            edges: derivedLayer.edges,
+            groups: derivedLayer.groups,
+          },
+    [map, derivedLayer],
+  );
+
+  /**
+   * The layers as blocks, when that is what the paper shows. A freeform
+   * drawing has nothing to fold, and neither has a drawing with no layers.
+   * Whether folding is offered at all is the page's call; null here means
+   * draw the detail.
+   */
+  const overviewModel = React.useMemo<ProjectMapOverview | null>(
+    () =>
+      overview && showsDerived && paper.groups.length > 0
+        ? projectMapOverview(paper)
+        : null,
+    [overview, showsDerived, paper],
+  );
+
+  /**
+   * From a block to its layer: leave the overview, unfold the group, put the
+   * viewport on it, and say that this is the layer you opened.
+   *
+   * Without that last part a click on one block arrived at four layers' worth
+   * of plates — "I clicked one block and I am looking at four group headers",
+   * in the words of someone seeing it for the first time. The rest of the
+   * drawing stays on the paper, because a relation leaving the layer is half
+   * of what a layer means, but it is faded the way a selection's surroundings
+   * already fade.
+   */
+  const openGroup = (groupId: string) => {
+    setOverview(false);
+    setOpenedGroup(groupId);
+    const group = paper.groups.find((candidate) => candidate.id === groupId);
+    // Only the committed analysis has groups a person can fold; the work
+    // layer's are assembled on every fetch, and unfolding one there would
+    // write a view into the repository's file.
+    if (group?.collapsed && derivedLayer === null)
+      setGroupCollapsed(groupId, false);
+    const bounds = projectMapGroupBounds(
+      paper.nodes.filter((node) => !node.hidden),
+      groupId,
+    );
+    const frame = frameRef.current?.getBoundingClientRect();
+    if (bounds === null || !frame || frame.width === 0) return;
+    // Floored, not fitted outright: a layer fifteen plates tall shrank to
+    // unreadable when the whole of it had to be in frame. The width fits,
+    // the height is panned through, and the fade says which layer this is.
+    const fitted = fitProjectMapViewBox(bounds, frame, {
+      min: OPEN_LAYER_MIN_SCALE,
+      max: OPEN_LAYER_MAX_SCALE,
+    });
+    const pad = PROJECT_MAP_GROUP_PADDING / fitted.scale;
+    // Centred across, anchored at the top. A layer is usually taller than it
+    // is wide, so the height is what forces the floor and the width is left
+    // with slack; spending that slack on the left margin put the layer you
+    // asked for in a third of the paper with the faded rest filling the other
+    // two. Vertically there is nothing to centre: the drawing runs past the
+    // bottom edge and is panned through.
+    const slack = Math.max(0, frame.width / fitted.scale - bounds.width);
+    setViewport({
+      scale: fitted.scale,
+      x: bounds.x - Math.max(pad, slack / 2),
+      y: bounds.y - pad,
+    });
+  };
+
+  /**
+   * A press on the overview's paper only ever pans. The drawing tools act on
+   * the detail's coordinates, which are not the ones under the pointer here,
+   * so a box drawn now would land somewhere else later.
+   */
+  const handleOverviewPointerDown = (
+    event: React.PointerEvent<SVGSVGElement>,
+  ) => {
+    if (event.button !== 0 && event.button !== 1) return;
+    capturePointer(event.currentTarget, event.pointerId);
+    event.currentTarget.focus();
+    setDrag({
+      kind: "pan",
+      pointerId: event.pointerId,
+      screen: { x: event.clientX, y: event.clientY },
+      origin: { x: viewport.x, y: viewport.y },
     });
   };
 
@@ -710,6 +938,22 @@ export function ProjectMapCanvas({
     });
   };
 
+  /**
+   * The plates' handlers, stable for the life of the canvas.
+   *
+   * `React.memo` on a plate is only worth anything if its props hold still,
+   * and a handler defined in the render body is a new prop every time. These
+   * forward to the current implementation through a ref, so a plate that
+   * skipped a render still calls today's closure rather than yesterday's.
+   */
+  const latestNodePointerDown = React.useRef(handleNodePointerDown);
+  latestNodePointerDown.current = handleNodePointerDown;
+  const onNodePointerDown = React.useCallback(
+    (event: React.PointerEvent<SVGGElement>, node: PlacedProjectMapNode) =>
+      latestNodePointerDown.current(event, node),
+    [],
+  );
+
   const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
     if (drag?.pointerId !== event.pointerId) return;
     if (drag.kind === "pan") {
@@ -835,6 +1079,18 @@ export function ProjectMapCanvas({
     }
   };
 
+  const latestNodeKeyDown = React.useRef(handleNodeKeyDown);
+  latestNodeKeyDown.current = handleNodeKeyDown;
+  const onNodeKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<SVGGElement>, node: PlacedProjectMapNode) =>
+      latestNodeKeyDown.current(event, node),
+    [],
+  );
+  const onNodeFocus = React.useCallback(
+    (node: PlacedProjectMapNode) => setFocused(node.id),
+    [setFocused],
+  );
+
   /**
    * Keyboard on a drawn shape.
    *
@@ -900,6 +1156,82 @@ export function ProjectMapCanvas({
     [],
   );
 
+  /**
+   * The edge lines, rebuilt only when the drawing changes.
+   *
+   * A pan re-renders the canvas on every pointer move; without this, each of
+   * those rebuilt a hundred lines, each resolving two rectangles, its
+   * geometry, its dash and its arrowhead. Nothing here depends on the
+   * viewport, so a pan can reuse the whole list.
+   */
+  const edgeMarks = React.useMemo(
+    () =>
+      showsDerived &&
+      layerEdges.map((edge) => {
+        // An edge with neither end on screen draws a line nobody
+        // can see, and there are two thousand of them.
+        if (
+          visibleNodes.length !== drawn.length &&
+          !visibleIds.has(edge.from) &&
+          !visibleIds.has(edge.to)
+        )
+          return null;
+        const from = rectOf(edge.from);
+        const to = rectOf(edge.to);
+        if (from === null || to === null) return null;
+        const geometry = projectMapEdgeGeometry(from, to);
+        const style = projectMapEdgeStyle(edge.kind);
+        const head = projectMapEdgeHeadPath(
+          style.head,
+          geometry.tip,
+          geometry.direction,
+        );
+        const lit =
+          focusIds.size === 0 ||
+          focusIds.has(edge.from) ||
+          focusIds.has(edge.to);
+        const accent = accentOf(groupOfNode.get(edge.from) ?? null);
+        return (
+          <g
+            key={edge.key}
+            opacity={lit ? 0.85 : 0.1}
+            data-testid={`project-map-edge-${edge.key}`}
+          >
+            <path
+              d={geometry.d}
+              fill="none"
+              stroke={accent}
+              strokeWidth={style.weight}
+              strokeDasharray={style.dash ?? undefined}
+              vectorEffect="non-scaling-stroke"
+            />
+            {head !== null && (
+              <path
+                d={head}
+                fill={
+                  style.head === "open" ? "var(--color-canvas-base)" : accent
+                }
+                stroke={accent}
+                strokeWidth={1}
+                vectorEffect="non-scaling-stroke"
+              />
+            )}
+          </g>
+        );
+      }),
+    [
+      showsDerived,
+      layerEdges,
+      visibleNodes,
+      drawn,
+      visibleIds,
+      rectOf,
+      focusIds,
+      accentOf,
+      groupOfNode,
+    ],
+  );
+
   const transform = `translate(${-viewport.x * viewport.scale} ${-viewport.y * viewport.scale}) scale(${viewport.scale})`;
   const detailed = viewport.scale >= DETAIL_SCALE;
 
@@ -914,7 +1246,11 @@ export function ProjectMapCanvas({
       tabIndex={-1}
       className="h-full w-full touch-none select-none bg-canvas-base outline-none"
       onWheel={handleWheel}
-      onPointerDown={handleBackgroundPointerDown}
+      onPointerDown={
+        overviewModel === null
+          ? handleBackgroundPointerDown
+          : handleOverviewPointerDown
+      }
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       // A cancelled pointer is a gesture the system took away, not a release:
@@ -1005,314 +1341,323 @@ export function ProjectMapCanvas({
             fill="url(#project-map-grid)"
           />
         )}
+        {overviewModel !== null ? (
+          <ProjectMapOverviewLayer
+            overview={overviewModel}
+            accentOf={accentOf}
+            waitingLayers={projectMapWaitingLayers(map, waitingParts)}
+            onOpen={openGroup}
+          />
+        ) : (
+          <>
+            {/* Frames first of all: a region is painted behind what it holds. */}
+            {shapes
+              .filter((shape) => shape.kind === "frame")
+              .map((shape) => (
+                <ProjectMapShapeMark
+                  key={shape.id}
+                  shape={shape}
+                  rect={rects.get(shape.id) ?? shape}
+                  selected={selection.includes(shape.id)}
+                  focused={focused === shape.id}
+                  resizable={
+                    selection.length === 1 && selection[0] === shape.id
+                  }
+                  onPointerDown={onShapePointerDown}
+                  onHandlePointerDown={onShapeHandlePointerDown}
+                  onKeyDown={onShapeKeyDown}
+                />
+              ))}
 
-        {/* Frames first of all: a region is painted behind what it holds. */}
-        {shapes
-          .filter((shape) => shape.kind === "frame")
-          .map((shape) => (
-            <ProjectMapShapeMark
-              key={shape.id}
-              shape={shape}
-              rect={rects.get(shape.id) ?? shape}
-              selected={selection.includes(shape.id)}
-              focused={focused === shape.id}
-              resizable={selection.length === 1 && selection[0] === shape.id}
-              onPointerDown={onShapePointerDown}
-              onHandlePointerDown={onShapeHandlePointerDown}
-              onKeyDown={onShapeKeyDown}
-            />
-          ))}
-
-        {/* Group boundaries, drawn first so the plates sit on them. */}
-        {showsDerived &&
-          map.groups.map((group) => {
-            const bounds = projectMapGroupBounds(
-              group.collapsed ? map.nodes : drawn,
-              group.id,
-            );
-            if (bounds === null) return null;
-            const accent = accentOf(group.id);
-            const labelWidth = group.label.length * 6 + GROUP_LABEL_PADDING * 2;
-            return (
-              <g key={group.id} data-testid={`project-map-group-${group.id}`}>
-                {group.collapsed ? (
-                  <rect
-                    x={bounds.x}
-                    y={bounds.y}
-                    width={bounds.width}
-                    height={COLLAPSED_HEIGHT}
-                    fill={accent}
-                    fillOpacity={0.1}
-                    stroke={accent}
-                    strokeWidth={1.25}
-                    vectorEffect="non-scaling-stroke"
-                  />
-                ) : (
-                  // The boundary breaks for its own label, the way a section
-                  // callout does on a plate. That break is the group's signature.
-                  <path
-                    d={groupBoundary(bounds, labelWidth)}
-                    fill="none"
-                    stroke={accent}
-                    strokeOpacity={0.6}
-                    strokeWidth={1}
-                    strokeDasharray="7 5"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                )}
-                <text
-                  x={bounds.x + GROUP_LABEL_PADDING}
-                  y={bounds.y + (group.collapsed ? 22 : 4)}
-                  fill={accent}
-                  fontSize={10}
-                  fontWeight={600}
-                  letterSpacing={1.4}
-                  className="uppercase"
-                >
-                  {group.label}
-                </text>
-                {group.collapsed && (
-                  <text
-                    x={bounds.x + GROUP_LABEL_PADDING}
-                    y={bounds.y + 40}
-                    fontSize={9.5}
-                    className="fill-muted font-mono"
+            {/* Group boundaries, drawn first so the plates sit on them. */}
+            {showsDerived &&
+              map.groups.map((group) => {
+                const bounds = projectMapGroupBounds(
+                  group.collapsed ? map.nodes : drawn,
+                  group.id,
+                );
+                if (bounds === null) return null;
+                const accent = accentOf(group.id);
+                const labelWidth =
+                  group.label.length * 6 + GROUP_LABEL_PADDING * 2;
+                // A layer nobody opened is context, and so is its outline.
+                // The plates inside it already fade; leaving the dashed
+                // boundary and the lettered header at full strength made the
+                // loudest marks on the paper belong to the layers that were
+                // not asked for — the same "I clicked one block and I am
+                // looking at four group headers" complaint, fixed for the
+                // plates and not for the frames around them.
+                const lit = openedGroup === null || group.id === openedGroup;
+                return (
+                  <g
+                    key={group.id}
+                    data-testid={`project-map-group-${group.id}`}
+                    opacity={lit ? 1 : 0.18}
                   >
-                    {map.nodes.filter((node) => node.group === group.id).length}
-                  </text>
-                )}
-              </g>
-            );
-          })}
+                    {group.collapsed ? (
+                      <rect
+                        x={bounds.x}
+                        y={bounds.y}
+                        width={bounds.width}
+                        height={COLLAPSED_HEIGHT}
+                        fill={accent}
+                        fillOpacity={0.1}
+                        stroke={accent}
+                        strokeWidth={1.25}
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    ) : (
+                      // The boundary breaks for its own label, the way a section
+                      // callout does on a plate. That break is the group's signature.
+                      <path
+                        d={groupBoundary(bounds, labelWidth)}
+                        fill="none"
+                        stroke={accent}
+                        strokeOpacity={0.6}
+                        strokeWidth={1}
+                        strokeDasharray="7 5"
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    )}
+                    <text
+                      x={bounds.x + GROUP_LABEL_PADDING}
+                      y={bounds.y + (group.collapsed ? 22 : 4)}
+                      fill={accent}
+                      fontSize={10}
+                      fontWeight={600}
+                      letterSpacing={1.4}
+                      className="uppercase"
+                    >
+                      {group.label}
+                    </text>
+                    {group.collapsed && (
+                      <text
+                        x={bounds.x + GROUP_LABEL_PADDING}
+                        y={bounds.y + 40}
+                        fontSize={9.5}
+                        className="fill-muted font-mono"
+                      >
+                        {
+                          map.nodes.filter((node) => node.group === group.id)
+                            .length
+                        }
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
 
-        {/* Edges under the plates: a line should pass behind what it joins. */}
-        <g>
-          {showsDerived &&
-            layerEdges.map((edge) => {
-              const from = rectOf(edge.from);
-              const to = rectOf(edge.to);
-              if (from === null || to === null) return null;
-              const geometry = projectMapEdgeGeometry(from, to);
-              const style = projectMapEdgeStyle(edge.kind);
-              const head = projectMapEdgeHeadPath(
-                style.head,
-                geometry.tip,
-                geometry.direction,
-              );
-              const lit =
-                focusIds.size === 0 ||
-                focusIds.has(edge.from) ||
-                focusIds.has(edge.to);
-              const accent = accentOf(
-                drawn.find((node) => node.id === edge.from)?.group ?? null,
-              );
-              return (
-                <g
-                  key={edge.key}
-                  opacity={lit ? 0.85 : 0.1}
-                  data-testid={`project-map-edge-${edge.key}`}
-                >
+            {/* Edges under the plates: a line should pass behind what it joins. */}
+            <g>{edgeMarks}</g>
+
+            {/* Branch lines are derived from the tree, never stored, so the mind
+            map has one source of truth. */}
+            <g>
+              {shapes.map((shape) => {
+                if (shape.parent === null) return null;
+                const parent = rects.get(shape.parent);
+                const child = rects.get(shape.id);
+                if (parent === undefined || child === undefined) return null;
+                return (
                   <path
-                    d={geometry.d}
-                    fill="none"
-                    stroke={accent}
-                    strokeWidth={style.weight}
-                    strokeDasharray={style.dash ?? undefined}
+                    key={`branch-${shape.id}`}
+                    data-testid={`project-map-branch-${shape.id}`}
+                    d={projectMapBranchPath(parent, child)}
+                    className="fill-none stroke-border"
+                    strokeWidth={1.5}
                     vectorEffect="non-scaling-stroke"
                   />
-                  {head !== null && (
-                    <path
-                      d={head}
-                      fill={
-                        style.head === "open"
-                          ? "var(--color-canvas-base)"
-                          : accent
+                );
+              })}
+            </g>
+
+            {connectors.map((connector) => {
+              const roughTo = endpointPoint(connector.to, { x: 0, y: 0 });
+              const from = endpointPoint(
+                connector.from,
+                roughTo ?? { x: 0, y: 0 },
+              );
+              const to =
+                from === null ? null : endpointPoint(connector.to, from);
+              if (from === null || to === null) return null;
+              return (
+                <ProjectMapConnectorMark
+                  key={connector.id}
+                  connector={connector}
+                  from={from}
+                  to={to}
+                  selected={selection.includes(connector.id)}
+                  onPointerDown={(event) => {
+                    event.stopPropagation();
+                    setSelection([connector.id]);
+                  }}
+                />
+              );
+            })}
+
+            {visibleNodes.map((node) => (
+              <ProjectMapNodePlate
+                key={node.id}
+                waiting={waitingParts.has(node.id)}
+                node={
+                  drag?.kind === "node" && drag.ids.includes(node.id)
+                    ? {
+                        ...node,
+                        x: node.x + drag.to.x - drag.from.x,
+                        y: node.y + drag.to.y - drag.from.y,
                       }
+                    : node
+                }
+                accent={accentOf(node.group)}
+                selected={selection.includes(node.id)}
+                focused={focused === node.id}
+                lit={focusIds.size === 0 || focusIds.has(node.id)}
+                showPath={detailed}
+                onFocus={onNodeFocus}
+                onKeyDown={onNodeKeyDown}
+                onPointerDown={onNodePointerDown}
+              />
+            ))}
+
+            {/* Drawn shapes over the analysis: the drawing is what the user is
+            working in, so it is never hidden behind a plate. */}
+            {shapes
+              .filter((shape) => shape.kind !== "frame")
+              .map((shape) => (
+                <ProjectMapShapeMark
+                  key={shape.id}
+                  shape={shape}
+                  rect={rects.get(shape.id) ?? shape}
+                  selected={selection.includes(shape.id)}
+                  focused={focused === shape.id}
+                  resizable={
+                    selection.length === 1 && selection[0] === shape.id
+                  }
+                  onPointerDown={onShapePointerDown}
+                  onHandlePointerDown={onShapeHandlePointerDown}
+                  onKeyDown={onShapeKeyDown}
+                />
+              ))}
+
+            {drag?.kind === "connect" && (
+              <ProjectMapConnectorDraft from={drag.start} to={drag.to} />
+            )}
+
+            {drag?.kind === "create" && (
+              <rect
+                data-testid="project-map-create-preview"
+                {...dragBox(drag.from, drag.to)}
+                className="fill-transparent stroke-border"
+                strokeWidth={1.5}
+                strokeDasharray="4 4"
+                vectorEffect="non-scaling-stroke"
+              />
+            )}
+
+            {showsDerived &&
+              map.notes.map((note) => (
+                <ProjectMapNoteMark
+                  key={note.id}
+                  note={note}
+                  anchorRect={note.anchor === null ? null : rectOf(note.anchor)}
+                  // A note about a part that has faded to context fades with
+                  // it. Left at full strength it read as a label floating
+                  // over the drawing, attached to nothing.
+                  lit={
+                    focusIds.size === 0 ||
+                    note.anchor === null ||
+                    focusIds.has(note.anchor)
+                  }
+                />
+              ))}
+
+            {/* Group controls come last in document order so tabbing reaches the
+            plates first, while the boundaries above still paint underneath
+            them. Paint order and tab order are different questions. */}
+            {showsDerived &&
+              map.groups.map((group) => {
+                const bounds = projectMapGroupBounds(
+                  group.collapsed ? map.nodes : drawn,
+                  group.id,
+                );
+                if (bounds === null) return null;
+                const accent = accentOf(group.id);
+                // With its layer, like the boundary it sits on. These are
+                // drawn in their own pass, after the plates, so the fade
+                // applied to the boundaries missed them and left two bright
+                // squares floating over an otherwise faded layer.
+                const lit = openedGroup === null || group.id === openedGroup;
+                return (
+                  <g
+                    key={group.id}
+                    role="button"
+                    tabIndex={0}
+                    opacity={lit ? 1 : 0.18}
+                    data-testid={`project-map-group-toggle-${group.id}`}
+                    aria-label={t(
+                      group.collapsed
+                        ? I18nKey.PROJECT_MAP$EXPAND_GROUP
+                        : I18nKey.PROJECT_MAP$COLLAPSE_GROUP,
+                    )}
+                    aria-expanded={!group.collapsed}
+                    className="cursor-pointer"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setGroupCollapsed(group.id, !group.collapsed);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      event.preventDefault();
+                      setGroupCollapsed(group.id, !group.collapsed);
+                    }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
+                    {/* An SVG tooltip: the minus in a layer's corner was
+                        "meaningful?" to a first visit, and the aria-label
+                        is read by nobody hovering. */}
+                    <title>
+                      {t(
+                        group.collapsed
+                          ? I18nKey.PROJECT_MAP$EXPAND_GROUP
+                          : I18nKey.PROJECT_MAP$COLLAPSE_GROUP,
+                      )}
+                    </title>
+                    <rect
+                      x={bounds.x + bounds.width - 26}
+                      y={bounds.y - 8}
+                      width={18}
+                      height={16}
+                      fill="var(--color-surface)"
                       stroke={accent}
                       strokeWidth={1}
                       vectorEffect="non-scaling-stroke"
                     />
-                  )}
-                </g>
-              );
-            })}
-        </g>
+                    <path
+                      d={
+                        group.collapsed
+                          ? `M${bounds.x + bounds.width - 21} ${bounds.y}h8M${bounds.x + bounds.width - 17} ${bounds.y - 4}v8`
+                          : `M${bounds.x + bounds.width - 21} ${bounds.y}h8`
+                      }
+                      stroke={accent}
+                      strokeWidth={1.25}
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  </g>
+                );
+              })}
 
-        {/* Branch lines are derived from the tree, never stored, so the mind
-            map has one source of truth. */}
-        <g>
-          {shapes.map((shape) => {
-            if (shape.parent === null) return null;
-            const parent = rects.get(shape.parent);
-            const child = rects.get(shape.id);
-            if (parent === undefined || child === undefined) return null;
-            return (
-              <path
-                key={`branch-${shape.id}`}
-                data-testid={`project-map-branch-${shape.id}`}
-                d={projectMapBranchPath(parent, child)}
-                className="fill-none stroke-border"
-                strokeWidth={1.5}
+            {drag?.kind === "marquee" && (
+              <rect
+                {...marqueeBox(drag)}
+                data-testid="project-map-marquee"
+                fill="var(--color-focus)"
+                fillOpacity={0.12}
+                stroke="var(--color-focus)"
+                strokeWidth={1}
                 vectorEffect="non-scaling-stroke"
               />
-            );
-          })}
-        </g>
-
-        {connectors.map((connector) => {
-          const roughTo = endpointPoint(connector.to, { x: 0, y: 0 });
-          const from = endpointPoint(connector.from, roughTo ?? { x: 0, y: 0 });
-          const to = from === null ? null : endpointPoint(connector.to, from);
-          if (from === null || to === null) return null;
-          return (
-            <ProjectMapConnectorMark
-              key={connector.id}
-              connector={connector}
-              from={from}
-              to={to}
-              selected={selection.includes(connector.id)}
-              onPointerDown={(event) => {
-                event.stopPropagation();
-                setSelection([connector.id]);
-              }}
-            />
-          );
-        })}
-
-        {drawn.map((node) => (
-          <ProjectMapNodePlate
-            key={node.id}
-            node={
-              drag?.kind === "node" && drag.ids.includes(node.id)
-                ? {
-                    ...node,
-                    x: node.x + drag.to.x - drag.from.x,
-                    y: node.y + drag.to.y - drag.from.y,
-                  }
-                : node
-            }
-            accent={accentOf(node.group)}
-            selected={selection.includes(node.id)}
-            focused={focused === node.id}
-            lit={focusIds.size === 0 || focusIds.has(node.id)}
-            showPath={detailed}
-            onFocus={(target) => setFocused(target.id)}
-            onKeyDown={handleNodeKeyDown}
-            onPointerDown={handleNodePointerDown}
-          />
-        ))}
-
-        {/* Drawn shapes over the analysis: the drawing is what the user is
-            working in, so it is never hidden behind a plate. */}
-        {shapes
-          .filter((shape) => shape.kind !== "frame")
-          .map((shape) => (
-            <ProjectMapShapeMark
-              key={shape.id}
-              shape={shape}
-              rect={rects.get(shape.id) ?? shape}
-              selected={selection.includes(shape.id)}
-              focused={focused === shape.id}
-              resizable={selection.length === 1 && selection[0] === shape.id}
-              onPointerDown={onShapePointerDown}
-              onHandlePointerDown={onShapeHandlePointerDown}
-              onKeyDown={onShapeKeyDown}
-            />
-          ))}
-
-        {drag?.kind === "connect" && (
-          <ProjectMapConnectorDraft from={drag.start} to={drag.to} />
-        )}
-
-        {drag?.kind === "create" && (
-          <rect
-            data-testid="project-map-create-preview"
-            {...dragBox(drag.from, drag.to)}
-            className="fill-transparent stroke-border"
-            strokeWidth={1.5}
-            strokeDasharray="4 4"
-            vectorEffect="non-scaling-stroke"
-          />
-        )}
-
-        {showsDerived &&
-          map.notes.map((note) => (
-            <ProjectMapNoteMark
-              key={note.id}
-              note={note}
-              anchorRect={note.anchor === null ? null : rectOf(note.anchor)}
-            />
-          ))}
-
-        {/* Group controls come last in document order so tabbing reaches the
-            plates first, while the boundaries above still paint underneath
-            them. Paint order and tab order are different questions. */}
-        {showsDerived &&
-          map.groups.map((group) => {
-            const bounds = projectMapGroupBounds(
-              group.collapsed ? map.nodes : drawn,
-              group.id,
-            );
-            if (bounds === null) return null;
-            const accent = accentOf(group.id);
-            return (
-              <g
-                key={group.id}
-                role="button"
-                tabIndex={0}
-                data-testid={`project-map-group-toggle-${group.id}`}
-                aria-label={t(
-                  group.collapsed
-                    ? I18nKey.PROJECT_MAP$EXPAND_GROUP
-                    : I18nKey.PROJECT_MAP$COLLAPSE_GROUP,
-                )}
-                aria-expanded={!group.collapsed}
-                className="cursor-pointer"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setGroupCollapsed(group.id, !group.collapsed);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key !== "Enter" && event.key !== " ") return;
-                  event.preventDefault();
-                  setGroupCollapsed(group.id, !group.collapsed);
-                }}
-                onPointerDown={(event) => event.stopPropagation()}
-              >
-                <rect
-                  x={bounds.x + bounds.width - 26}
-                  y={bounds.y - 8}
-                  width={18}
-                  height={16}
-                  fill="var(--color-surface)"
-                  stroke={accent}
-                  strokeWidth={1}
-                  vectorEffect="non-scaling-stroke"
-                />
-                <path
-                  d={
-                    group.collapsed
-                      ? `M${bounds.x + bounds.width - 21} ${bounds.y}h8M${bounds.x + bounds.width - 17} ${bounds.y - 4}v8`
-                      : `M${bounds.x + bounds.width - 21} ${bounds.y}h8`
-                  }
-                  stroke={accent}
-                  strokeWidth={1.25}
-                  vectorEffect="non-scaling-stroke"
-                />
-              </g>
-            );
-          })}
-
-        {drag?.kind === "marquee" && (
-          <rect
-            {...marqueeBox(drag)}
-            data-testid="project-map-marquee"
-            fill="var(--color-focus)"
-            fillOpacity={0.12}
-            stroke="var(--color-focus)"
-            strokeWidth={1}
-            vectorEffect="non-scaling-stroke"
-          />
+            )}
+          </>
         )}
       </g>
     </svg>
@@ -1377,9 +1722,12 @@ function noteRemoveCross(left: number, top: number): string {
 function ProjectMapNoteMark({
   note,
   anchorRect,
+  lit = true,
 }: {
   note: ProjectMapNote;
   anchorRect: Rect | null;
+  /** False while the part it is about is faded to context. */
+  lit?: boolean;
 }) {
   const { t } = useTranslation("openhands");
   const editingNote = useProjectMapStore((state) => state.editingNote);
@@ -1402,7 +1750,7 @@ function ProjectMapNoteMark({
   const removeTop = note.y - NOTE_REMOVE_SIZE / 2;
 
   return (
-    <g data-testid={`project-map-note-${note.id}`}>
+    <g data-testid={`project-map-note-${note.id}`} opacity={lit ? 1 : 0.18}>
       {anchorRect !== null && (
         <path
           d={`M${note.x} ${note.y}L${anchorRect.x + anchorRect.width / 2} ${anchorRect.y + anchorRect.height / 2}`}

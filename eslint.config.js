@@ -194,6 +194,13 @@ export default [
       },
     },
     rules: {
+      // A stray `console.log` ships to everyone who opens the page. Debugging
+      // one shipped from this repository on 2026-10-26, survived lint and
+      // review, and was found by a verification pass reading the source.
+      // `warn` and `error` stay: several surfaces report a degraded path
+      // that way, which the no-silent-errors rule asks for.
+      "no-console": ["error", { allow: ["warn", "error"] }],
+
       // Recommended rule packs we want everywhere.
       ...tsPlugin.configs["eslint-recommended"].overrides[0].rules,
       ...tsPlugin.configs.recommended.rules,

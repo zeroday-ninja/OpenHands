@@ -59,6 +59,19 @@ describe("the register of features this app shipped itself", () => {
     });
   });
 
+  it("points only at routes that host an announcement", () => {
+    // A trial on a route with no host announces itself to nobody, which is
+    // the one thing the register exists to prevent. Add the route here when
+    // you add `FeatureAnnouncement` and `FeatureFeedback` to its surface.
+    const hosts = ["/map", "/automations", "/conversations"];
+
+    expect(
+      FEATURE_TRIALS.filter((trial) => !hosts.includes(trial.route)).map(
+        (trial) => `${trial.id} on ${trial.route}`,
+      ),
+    ).toEqual([]);
+  });
+
   it("points at routes this app actually serves", () => {
     // A walkthrough can only point at an element where that element renders,
     // so a trial on a route nothing serves is a walkthrough nobody sees.

@@ -16,6 +16,11 @@ import {
 } from "./src/styles/agent-server-ui-style-scope";
 
 const LIB_ENTRY = fileURLToPath(new URL("./src/index.ts", import.meta.url));
+// The `@openhands/agent-canvas/i18n` subpath. It only re-exports, so unless
+// it is an entry of its own, rollup folds it into a facade with no exports.
+const LIB_I18N_ENTRY = fileURLToPath(
+  new URL("./src/i18n/library.ts", import.meta.url),
+);
 const LIB_EXTERNALS = [
   "react",
   "react-dom",
@@ -248,7 +253,7 @@ export default defineConfig(({ mode }) => {
           emptyOutDir: true,
           sourcemap: true,
           lib: {
-            entry: LIB_ENTRY,
+            entry: { index: LIB_ENTRY, "i18n/library": LIB_I18N_ENTRY },
             formats: ["es"],
             // Exported as @openhands/agent-canvas/styles.css.
             cssFileName: "styles",
@@ -337,6 +342,14 @@ export default defineConfig(({ mode }) => {
         "@openhands/typescript-client/clients",
         "@openhands/typescript-client/events/remote-events-list",
         "@openhands/typescript-client/workspace/remote-workspace",
+        // The extension catalogs are plain ESM in node_modules. Served file by
+        // file by the dev server (the automation catalog alone is a 600 KB
+        // module plus a hundred manifest.json imports), each comes with an
+        // inline source map that makes it five times its size. Pre-bundling
+        // folds every catalog into one cached, immutable file.
+        "@openhands/extensions/automations",
+        "@openhands/extensions/integrations",
+        "@openhands/extensions/skills",
         // Additional dependencies discovered at runtime
         "class-variance-authority",
         "downshift",
@@ -494,6 +507,22 @@ export default defineConfig(({ mode }) => {
       watch: {
         ignored: ["**/node_modules/**", "**/.git/**"],
       },
+      // Transform the shell and the main routes (and, through import
+      // analysis, everything they import) as soon as the server is up, so the
+      // first page load after a start or restart is served from the cache
+      // instead of waiting on a transform per module.
+      warmup: process.env.VITEST
+        ? undefined
+        : {
+            clientFiles: [
+              "./src/entry.client.tsx",
+              "./src/root.tsx",
+              "./src/routes/root-layout.tsx",
+              "./src/routes/index-home.tsx",
+              "./src/routes/map.tsx",
+              "./src/routes/conversation.tsx",
+            ],
+          },
     },
     ssr: {
       noExternal: ["react-syntax-highlighter"],

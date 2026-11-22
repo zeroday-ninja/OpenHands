@@ -9,6 +9,7 @@ import {
   runSelfUpdate,
   spawnRelaunch,
   toControlInfo,
+  envFileNames,
 } from "../../scripts/self-update.mjs";
 
 const tempDirs: string[] = [];
@@ -481,6 +482,46 @@ describe("runSelfUpdate", () => {
 });
 
 describe("spawnRelaunch", () => {
+  it("lets the relaunch read .env again instead of inheriting the old values", () => {
+    // Arrange: the file was edited after this stack started, so the running
+    // process still carries the old pin. Node's --env-file never overrides a
+    // set variable, so the inherited value must go.
+    const cwd = mkdtempSync(path.join(tmpdir(), "relaunch-env-"));
+    writeFileSync(
+      path.join(cwd, ".env"),
+      [
+        "# pins",
+        "OH_CONVERSATION_IMAGE=openhands-local/agent-server:new",
+        "export OH_AUTOMATION_LOCAL_PATH=/srv/automation",
+        "",
+      ].join("\n"),
+    );
+    const seen: unknown[] = [];
+    const spawnImpl = (_command: string, _args: string[], options: unknown) => {
+      seen.push(options);
+      return { unref: () => undefined };
+    };
+
+    // Act
+    spawnRelaunch(
+      { command: "/usr/bin/node", args: ["a"], cwd },
+      {
+        spawnImpl,
+        env: {
+          OH_CONVERSATION_IMAGE: "openhands-local/agent-server:old",
+          OH_AUTOMATION_LOCAL_PATH: "/old",
+          PATH: "/usr/bin",
+        },
+      },
+    );
+
+    // Assert: the file's names are dropped, everything else is kept.
+    expect((seen[0] as { env: Record<string, string> }).env).toEqual({
+      PATH: "/usr/bin",
+    });
+    expect(envFileNames(path.join(cwd, "missing.env")).size).toBe(0);
+  });
+
   it("starts the relaunch detached with inherited stdio and lets this process exit", () => {
     const seen: unknown[] = [];
     const spawnImpl = (command: string, args: string[], options: unknown) => {

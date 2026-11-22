@@ -12,6 +12,7 @@ import {
   type PlacedProjectMapNode,
 } from "#/types/project-map";
 import { projectMapGroupNodeId } from "#/utils/project-map/project-map-graph";
+import { projectMapGroupBounds } from "#/utils/project-map/project-map-layout";
 import { defaultProjectMapCanvas } from "#/utils/project-map/project-map-authoring";
 
 function node(
@@ -54,16 +55,26 @@ const document_: PlacedProjectMapDocument = {
  * otherwise an edit made through a store action (collapsing a group, revealing
  * hidden nodes) would never reach the drawing under test.
  */
-function Harness() {
+function Harness({
+  waitingParts,
+}: {
+  waitingParts?: ReadonlyMap<string, string>;
+}) {
   const frameRef = React.useRef<SVGSVGElement | null>(null);
   const open = useProjectMapStore((state) => state.document);
   if (open === null) return null;
-  return <ProjectMapCanvas document={open} frameRef={frameRef} />;
+  return (
+    <ProjectMapCanvas
+      document={open}
+      frameRef={frameRef}
+      waitingParts={waitingParts}
+    />
+  );
 }
 
-function renderCanvas() {
+function renderCanvas(waitingParts?: ReadonlyMap<string, string>) {
   useProjectMapStore.getState().hydrate("test-revision", document_);
-  return renderWithProviders(<Harness />);
+  return renderWithProviders(<Harness waitingParts={waitingParts} />);
 }
 
 /**
@@ -84,6 +95,11 @@ function stubFrame() {
   } as DOMRect);
 }
 
+/** A rendered element's opacity, with 1 standing for "none set". */
+function dimmed(testId: string): number {
+  return Number(screen.getByTestId(testId).getAttribute("opacity") ?? "1");
+}
+
 const POINTER = { pointerId: 1, button: 0 };
 
 /** A press and a release at the same place: a click, however it is delivered. */
@@ -100,6 +116,173 @@ describe("ProjectMapCanvas", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     useProjectMapStore.getState().reset();
+  });
+
+  it("draws the layers as blocks in the overview, and opens one close enough to read", () => {
+    // Arrange: two layers with parts and a relation between them, shown as
+    // the overview. The frame is a laptop's worth of paper.
+    stubFrame();
+    useProjectMapStore.getState().hydrate("test-revision", {
+      ...document_,
+      groups: [
+        { id: "web", label: "Web app", accent: "1", collapsed: true },
+        { id: "data", label: "Data", accent: "2", collapsed: false },
+      ],
+      nodes: [
+        node({ id: "left", x: 0, y: 0, group: "web" }),
+        node({ id: "right", x: 400, y: 0, group: "web" }),
+        node({ id: "table", x: 0, y: 2000, group: "data" }),
+      ],
+      edges: [
+        { from: "left", to: "table", kind: "reads", label: null },
+        { from: "right", to: "table", kind: "writes", label: null },
+      ],
+    });
+    useProjectMapStore.getState().setOverview(true);
+    renderWithProviders(<Harness />);
+
+    // Assert: blocks, not plates; the relations folded into one counted line.
+    expect(screen.getByTestId("project-map-overview")).toBeInTheDocument();
+    expect(screen.queryByTestId(projectMapNodeDomId("left"))).toBeNull();
+    expect(
+      screen.getByTestId("project-map-overview-block-web"),
+    ).toHaveTextContent("Web app");
+    expect(
+      screen.getByTestId("project-map-overview-link-web>data"),
+    ).toHaveTextContent("2");
+
+    // Act: open the web layer.
+    // The block says where its parts live, under the layer's name.
+    expect(
+      screen.getByTestId("project-map-overview-block-web"),
+    ).toHaveAttribute("data-where");
+    fireEvent.click(screen.getByTestId("project-map-overview-block-web"));
+
+    // Assert: the detail is back, the layer is unfolded, and the viewport
+    // sits on it at a legible scale rather than fitting the whole wall.
+    const state = useProjectMapStore.getState();
+    expect(state.overview).toBe(false);
+    expect(state.document?.groups.find((g) => g.id === "web")?.collapsed).toBe(
+      false,
+    );
+    expect(state.viewport.scale).toBeGreaterThanOrEqual(0.8);
+    expect(state.viewport.y).toBeLessThan(0);
+    expect(screen.getByTestId(projectMapNodeDomId("left"))).toBeInTheDocument();
+  });
+
+  it("names a layer in full when its name outruns one line", () => {
+    // Arrange: the live work graph draws names this long.
+    stubFrame();
+    useProjectMapStore.getState().hydrate("test-revision", {
+      ...document_,
+      groups: [
+        {
+          id: "web",
+          label: "Runs whose sandbox is gone",
+          accent: "1",
+          collapsed: false,
+        },
+      ],
+      nodes: [node({ id: "left", x: 0, y: 0, group: "web" })],
+      edges: [],
+    });
+    useProjectMapStore.getState().setOverview(true);
+    renderWithProviders(<Harness />);
+
+    // Assert: the last word is on the block, where the name used to end at
+    // `Runs whose sandbox is …`.
+    const block = screen.getByTestId("project-map-overview-block-web");
+    expect(block).toHaveTextContent("gone");
+    expect(block.textContent).not.toContain("…");
+  });
+
+  it("names every folder a layer lives in, even when one line is too short", () => {
+    // Arrange: a layer whose parts live in more folders than a block's width
+    // can hold on one line.
+    stubFrame();
+    useProjectMapStore.getState().hydrate("test-revision", {
+      ...document_,
+      groups: [{ id: "web", label: "Web app", accent: "1", collapsed: false }],
+      nodes: [
+        node({ id: "left", x: 0, y: 0, group: "web", path: "server/analyzer.js" }),
+        node({ id: "right", x: 400, y: 0, group: "web", path: "server/callgraph.js" }),
+        node({ id: "below", x: 0, y: 300, group: "web", path: "server/report-registry.js" }),
+      ],
+      edges: [],
+    });
+    useProjectMapStore.getState().setOverview(true);
+    renderWithProviders(<Harness />);
+
+    // Assert: the last folder is on the block and nothing was cut, where one
+    // line left half of them as `callgraph.j…`.
+    const block = screen.getByTestId("project-map-overview-block-web");
+    expect(block).toHaveTextContent("report-registry.js");
+    expect(block.textContent).not.toContain("…");
+  });
+
+  it("puts the layer you opened in the middle, and the rest behind it", () => {
+    // Arrange: two layers, the opened one narrower than the frame.
+    stubFrame();
+    useProjectMapStore.getState().hydrate("test-revision", {
+      ...document_,
+      groups: [
+        { id: "web", label: "Web app", accent: "1", collapsed: false },
+        { id: "data", label: "Data", accent: "2", collapsed: false },
+      ],
+      nodes: [
+        node({ id: "left", x: 0, y: 0, group: "web" }),
+        node({ id: "right", x: 400, y: 0, group: "web" }),
+        node({ id: "table", x: 0, y: 2000, group: "data" }),
+      ],
+      edges: [],
+    });
+    useProjectMapStore.getState().setOverview(true);
+    renderWithProviders(<Harness />);
+
+    // Act
+    fireEvent.click(screen.getByTestId("project-map-overview-block-web"));
+
+    // Assert: the frame's middle is the layer's middle, rather than the
+    // layer sitting against the left edge with faded neighbours filling the
+    // paper beside it.
+    const { viewport } = useProjectMapStore.getState();
+    const bounds = projectMapGroupBounds(
+      useProjectMapStore.getState().document?.nodes ?? [],
+      "web",
+    );
+    expect(viewport.x + 900 / (2 * viewport.scale)).toBeCloseTo(
+      (bounds?.x ?? 0) + (bounds?.width ?? 0) / 2,
+      0,
+    );
+
+    // Assert: and the layer nobody opened is drawn as context — outline,
+    // header, and the fold control that sits on the outline, which is drawn
+    // in a pass of its own and was left bright over a faded layer.
+    //
+    // Read as a number with 1 for "no opacity set at all", because
+    // `not.toHaveAttribute("opacity", "1")` also passes for an element that
+    // has no opacity, which is exactly the state being guarded against.
+    expect(dimmed("project-map-group-data")).toBeLessThan(1);
+    expect(dimmed("project-map-group-toggle-data")).toBeLessThan(1);
+  });
+
+  it("only pans on the overview's paper, whatever tool is in hand", () => {
+    // Arrange
+    stubFrame();
+    renderCanvas();
+    useProjectMapStore.getState().setOverview(true);
+    useProjectMapStore.getState().setTool("box");
+    const paper = screen.getByTestId("project-map-canvas");
+
+    // Act: a drag that would have drawn a box.
+    fireEvent.pointerDown(paper, { ...POINTER, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(paper, { ...POINTER, clientX: 160, clientY: 130 });
+    fireEvent.pointerUp(paper, { ...POINTER, clientX: 160, clientY: 130 });
+
+    // Assert: the paper moved and nothing was drawn.
+    const state = useProjectMapStore.getState();
+    expect(state.document?.canvas.shapes).toEqual([]);
+    expect(state.viewport.x).toBeLessThan(0);
   });
 
   it("leaves a hidden node out of the drawing until the user asks to see it", () => {
@@ -178,13 +361,85 @@ describe("ProjectMapCanvas", () => {
     ).toBeLessThan(1);
   });
 
+  it("draws every plate while the drawing is small enough to afford it", () => {
+    // Arrange: the budget is 400 plates; this document has four, one hidden.
+    renderCanvas();
+
+    // Assert: nothing is filtered, including a plate the fit leaves off
+    // screen — a half-drawn small map would be a regression, and jsdom has
+    // no layout to decide what is on screen anyway.
+    expect(screen.getByTestId("project-map-node-left")).toBeInTheDocument();
+    expect(screen.getByTestId("project-map-node-right")).toBeInTheDocument();
+    expect(screen.getByTestId("project-map-node-below")).toBeInTheDocument();
+  });
+
+  it("opens the layer you clicked, and fades the rest", () => {
+    // Arrange: two layers on the paper, folded to blocks.
+    renderCanvas();
+    act(() => useProjectMapStore.getState().setOverview(true));
+
+    // Act
+    fireEvent.click(screen.getByTestId("project-map-overview-block-web"));
+
+    // Assert: the layer's own parts are the drawing, the rest is context —
+    // a click on one block used to land among every neighbour's plates with
+    // no way to tell which layer had been opened.
+    expect(useProjectMapStore.getState().openedGroup).toBe("web");
+    expect(screen.getByTestId("project-map-node-left")).toHaveAttribute(
+      "opacity",
+      "1",
+    );
+    expect(screen.getByTestId("project-map-node-below")).not.toHaveAttribute(
+      "opacity",
+      "1",
+    );
+
+    // Act: back to the blocks.
+    act(() => useProjectMapStore.getState().setOverview(true));
+
+    // Assert
+    expect(useProjectMapStore.getState().openedGroup).toBeNull();
+  });
+
+  it("marks the part a change waiting on a person touches, and its layer", () => {
+    // Arrange: one part of the "web" layer is named by a parked change.
+    renderCanvas(new Map([["left", "cycle-1"]]));
+
+    // Assert: the mark is on the part itself, not only in the rail.
+    expect(screen.getByTestId("project-map-node-left")).toHaveAttribute(
+      "data-waiting",
+      "true",
+    );
+    expect(screen.getByTestId("project-map-node-right")).not.toHaveAttribute(
+      "data-waiting",
+    );
+    // Drawn last, so the silhouette cannot paint over it: a shape that
+    // reaches its own top-right corner hid the mark completely.
+    const drawn = Array.from(
+      screen.getByTestId("project-map-node-left").children,
+    );
+    expect(drawn.indexOf(screen.getByTestId("project-map-waiting-mark"))).toBe(
+      drawn.length - 1,
+    );
+
+    // Act: folded to layers, the layer holding it carries the count.
+    act(() => useProjectMapStore.getState().setOverview(true));
+
+    // Assert
+    expect(
+      screen.getByTestId("project-map-overview-block-web"),
+    ).toHaveAttribute("data-waiting", "1");
+  });
+
   it("folds a collapsed group into one plate that keeps the edges crossing it", async () => {
     // Arrange
     const user = userEvent.setup();
     renderCanvas();
 
     // Act
-    await user.click(screen.getByTestId("project-map-group-toggle-web"));
+    const toggle = screen.getByTestId("project-map-group-toggle-web");
+    expect(toggle.querySelector("title")).not.toBeNull(); // says what it does
+    await user.click(toggle);
 
     // Assert: the members are gone, the group remains, and the edge that left
     // the group now arrives at the group itself.

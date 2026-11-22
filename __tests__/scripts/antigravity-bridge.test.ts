@@ -187,6 +187,34 @@ describe("a running bridge", () => {
     expect(said.join("\n")).toMatch(/refused .*no container/);
   });
 
+  it("names an adapter that dies mid-connection, and the peer that leaves", async () => {
+    // Five cycles died with "Connection closed" on the sandbox side and only
+    // a banner on this side. The adapter's exit is the one fact this side
+    // has and the sandbox does not.
+    const said: string[] = [];
+    bridge = await startAntigravityBridge({
+      token: "right",
+      command: ["sh", "-c", "exit 3"],
+      host: "127.0.0.1",
+      port: 0,
+      docker: fakeDocker({ a: { ip: "127.0.0.1", workspace: "/w" } }),
+      log: (line: string) => said.push(line),
+    });
+    const { port } = bridge.server.address() as { port: number };
+
+    await new Promise<void>((resolve) => {
+      const socket = net.connect(port, "127.0.0.1", () =>
+        socket.write("right\n"),
+      );
+      socket.on("close", () => resolve());
+      socket.on("error", () => resolve());
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(said.join("\n")).toMatch(/adapter for .* exited \(code 3/);
+    expect(said.join("\n")).toMatch(/closed its connection/);
+  });
+
   it("refuses the wrong token before spawning anything", async () => {
     bridge = await startAntigravityBridge({
       token: "right",
