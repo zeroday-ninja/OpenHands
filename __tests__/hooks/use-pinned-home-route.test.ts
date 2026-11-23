@@ -7,6 +7,7 @@ import {
 } from "#/hooks/use-pinned-home-route";
 import { getLockedCloudHost } from "#/api/agent-server-config";
 import { PROJECT_MAP_ROUTE_PATH } from "#/types/project-map";
+import { WORKBENCH_ROUTE_PATH } from "#/types/workbench";
 
 // Whether this canvas is locked to a Cloud host is decided by another module,
 // from a value the host page injects. Driving that value here would mean
@@ -47,15 +48,16 @@ describe("isPinnableRoute", () => {
     expect(isPinnableRoute(CONVERSATIONS_PATH)).toBe(true);
   });
 
-  it("lets the map be home, except on a canvas locked to a cloud host", () => {
-    // Arrange / Act / Assert: on a local canvas the map is a valid home.
-    expect(isPinnableRoute(PROJECT_MAP_ROUTE_PATH)).toBe(true);
+  it.each([PROJECT_MAP_ROUTE_PATH, WORKBENCH_ROUTE_PATH])(
+    "allows %s as home only when the canvas can access local workspaces",
+    (path) => {
+      expect(isPinnableRoute(path)).toBe(true);
 
-    // Arrange: a canvas locked to Cloud, where the map has no workspace to
-    // read and the sidebar does not even offer the link.
-    vi.mocked(getLockedCloudHost).mockReturnValue("https://app.all-hands.dev");
+      vi.mocked(getLockedCloudHost).mockReturnValue(
+        "https://app.all-hands.dev",
+      );
 
-    // Assert: `/` must not redirect to a page that can only say "not here".
-    expect(isPinnableRoute(PROJECT_MAP_ROUTE_PATH)).toBe(false);
-  });
+      expect(isPinnableRoute(path)).toBe(false);
+    },
+  );
 });

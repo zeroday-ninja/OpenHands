@@ -627,32 +627,29 @@ describe("Sidebar", () => {
     },
   );
 
-  it("pins and unpins a sidebar page as the home route without navigating", () => {
-    // Arrange: the mocked active backend is `local` with no org.
-    const pinKey = getPinnedHomeRouteKey("local", null);
-    const { navigate } = renderSidebar("/conversations");
-    const pinToggle = screen.getByTestId("sidebar-pin-home-toggle-customize");
-    expect(pinToggle).toHaveAttribute("aria-pressed", "false");
-    expect(pinToggle).toHaveAttribute("aria-label", "Pin as home page");
+  it.each(["customize", "workbench"])(
+    "pins and unpins /%s as the home route without navigating",
+    (page) => {
+      const path = `/${page}`;
+      const pinKey = getPinnedHomeRouteKey("local", null);
+      const { navigate } = renderSidebar("/conversations");
+      const pinToggle = screen.getByTestId(`sidebar-pin-home-toggle-${page}`);
+      expect(pinToggle).toHaveAttribute("aria-pressed", "false");
+      expect(pinToggle).toHaveAttribute("aria-label", "Pin as home page");
 
-    // Act: pin Customize as the home page.
-    fireEvent.click(pinToggle);
+      fireEvent.click(pinToggle);
 
-    // Assert: the toggle flips and the pin persists for the active backend.
-    expect(pinToggle).toHaveAttribute("aria-pressed", "true");
-    expect(pinToggle).toHaveAttribute("aria-label", "Unpin as home page");
-    expect(window.localStorage.getItem(pinKey)).toBe(
-      JSON.stringify("/customize"),
-    );
-    expect(navigate).not.toHaveBeenCalled();
+      expect(pinToggle).toHaveAttribute("aria-pressed", "true");
+      expect(pinToggle).toHaveAttribute("aria-label", "Unpin as home page");
+      expect(window.localStorage.getItem(pinKey)).toBe(JSON.stringify(path));
+      expect(navigate).not.toHaveBeenCalled();
 
-    // Act: unpin from the same control.
-    fireEvent.click(pinToggle);
+      fireEvent.click(pinToggle);
 
-    // Assert: the pin is gone.
-    expect(pinToggle).toHaveAttribute("aria-pressed", "false");
-    expect(window.localStorage.getItem(pinKey)).not.toBe(
-      JSON.stringify("/customize"),
-    );
-  });
+      expect(pinToggle).toHaveAttribute("aria-pressed", "false");
+      expect(window.localStorage.getItem(pinKey)).not.toBe(
+        JSON.stringify(path),
+      );
+    },
+  );
 });

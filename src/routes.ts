@@ -22,6 +22,8 @@ export default [
     route("extensions/:extensionName/*", "routes/canvas-extension-page.tsx"),
     route("mcp", "routes/mcp.tsx"),
     route("map", "routes/map.tsx"),
+    route("workbench", "routes/workbench.tsx"),
+    route("workbench/:projectId", "routes/workbench-project.tsx"),
     route("settings", "routes/settings.tsx", [
       index("routes/settings-index.tsx"),
       route("llm", "routes/llm-settings.tsx"),

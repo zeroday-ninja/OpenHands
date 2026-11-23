@@ -71,39 +71,36 @@ function pathsFromACPEdit(event: OHEvent): string[] {
 }
 
 /**
- * True when this event is the agent reporting that it just wrote the map.
+ * True when this event is the agent reporting that it just wrote `filePath`.
  *
  * The path is compared by suffix because the two ends name it differently: the
  * agent reports an absolute path in whichever workspace it is working in — a
  * directory on the host, or `/workspace` inside its own container — and all
- * the page needs to know is that the file it wrote was the map, which is to
- * say that the path ends with `.openhands/project-map.json`.
+ * the page needs to know is that the file it wrote was the one it is showing,
+ * which is to say that the path ends with `.openhands/<file>.json`.
  */
-function wroteTheProjectMap(event: OHEvent): boolean {
+export function agentWroteFile(event: OHEvent, filePath: string): boolean {
   const paths = [...pathsFromObservation(event), ...pathsFromACPEdit(event)];
-  return paths.some((path) => path.endsWith(PROJECT_MAP_FILE_PATH));
+  return paths.some((path) => path.endsWith(filePath));
 }
 
 /**
- * Re-reads the project map when the agent writes it.
+ * Re-reads a workspace document when the agent writes it.
  *
- * The map is a document two parties edit, and the whole point of putting a
- * conversation beside the canvas is that asking for a change and seeing it
- * happen are the same moment. So the page watches the conversation it hosts
- * for a write to the map file and invalidates its own query; nothing polls,
- * and a conversation that never touches the file never causes a read.
- *
- * Unsaved hand edits survive this. The query's result is handed to
- * `useProjectMapStore.hydrate`, which merges a new revision onto a dirty
- * buffer via `mergeProjectMap` — the analysis wins on facts, the user's
- * arrangement is carried over — so picking up the agent's write never costs
- * the user the moves still in their hand.
+ * A document two parties edit only works beside a conversation if asking for
+ * a change and seeing it happen are the same moment. So the page watches the
+ * conversation it hosts for a write to the file and invalidates the query that
+ * reads it; nothing polls, and a conversation that never touches the file
+ * never causes a read.
  *
  * Events are tracked by object reference: the store rebuilds its array on
  * every mutation but keeps element identity, and a `WeakSet` therefore handles
  * events with and without an id without inventing a key for the ones without.
  */
-export function useRefreshProjectMapOnAgentEdit(): void {
+export function useRefreshQueryOnAgentEdit(
+  filePath: string,
+  queryKey: readonly unknown[],
+): void {
   const queryClient = useQueryClient();
   const events = useEventStore((state) => state.events);
   const seenRef = React.useRef<WeakSet<OHEvent>>(new WeakSet());
@@ -113,10 +110,23 @@ export function useRefreshProjectMapOnAgentEdit(): void {
     for (const event of events) {
       if (!seenRef.current.has(event)) {
         seenRef.current.add(event);
-        if (wroteTheProjectMap(event)) wrote = true;
+        if (agentWroteFile(event, filePath)) wrote = true;
       }
     }
     if (!wrote) return;
-    queryClient.invalidateQueries({ queryKey: PROJECT_MAP_QUERY_KEYS.all });
-  }, [events, queryClient]);
+    queryClient.invalidateQueries({ queryKey });
+  }, [events, queryClient, filePath, queryKey]);
+}
+
+/**
+ * Re-reads the project map when the agent writes it.
+ *
+ * Unsaved hand edits survive this. The query's result is handed to
+ * `useProjectMapStore.hydrate`, which merges a new revision onto a dirty
+ * buffer via `mergeProjectMap` — the analysis wins on facts, the user's
+ * arrangement is carried over — so picking up the agent's write never costs
+ * the user the moves still in their hand.
+ */
+export function useRefreshProjectMapOnAgentEdit(): void {
+  useRefreshQueryOnAgentEdit(PROJECT_MAP_FILE_PATH, PROJECT_MAP_QUERY_KEYS.all);
 }
